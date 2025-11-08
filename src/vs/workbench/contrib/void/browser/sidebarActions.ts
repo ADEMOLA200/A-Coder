@@ -252,49 +252,43 @@ registerAction2(class extends Action2 {
 		const mcpService = accessor.get(IMCPService);
 		const commandService = accessor.get(ICommandService);
 
-		// Get MCP servers
-		const mcpServers = mcpService.state.mcpServerOfName;
-		const serverNames = Object.keys(mcpServers);
+		// Get MCP tools
+		const mcpTools = mcpService.getMCPTools();
 
-		if (serverNames.length === 0) {
-			// No servers configured, open settings
+		if (!mcpTools || mcpTools.length === 0) {
+			// No tools available, open settings
 			commandService.executeCommand(VOID_TOGGLE_SETTINGS_ACTION_ID);
 			return;
 		}
 
-		// Create quick pick items
-		const items: Array<IQuickPickItem | IQuickPickSeparator> = serverNames.map(name => {
-			const server = mcpServers[name];
-			const statusIcon = server.status === 'success' ? '$(circle-filled)' : 
-			                   server.status === 'loading' ? '$(loading~spin)' : 
-			                   '$(circle-outline)';
-			const toolCount = server.tools?.length || 0;
-			
+		// Create quick pick items for tools
+		const items: Array<IQuickPickItem | IQuickPickSeparator> = mcpTools.map(tool => {
 			return {
-				label: name,
-				description: `${toolCount} tool${toolCount !== 1 ? 's' : ''}`,
-				detail: statusIcon + ' ' + server.status,
+				label: tool.name,
+				description: tool.mcpServerName || 'MCP',
+				detail: tool.description,
 			};
 		});
 
-		// Add "MCP Marketplace" option at the bottom
+		// Add separator and settings option at the bottom
 		items.push({
 			type: 'separator'
 		});
 		
 		items.push({
-			label: '$(globe) MCP Marketplace',
-			description: 'Coming soon',
+			label: '$(gear) MCP Settings',
+			description: 'Configure MCP servers',
 		});
 
 		// Show quick pick
 		const picked = await quickInputService.pick(items, {
-			placeHolder: 'Select an MCP server',
+			placeHolder: 'MCP Tools',
 			canPickMany: false,
 		});
 
-		if (picked && picked.label === '$(globe) MCP Marketplace') {
-			// Future: Open marketplace
+		if (picked && picked.label === '$(gear) MCP Settings') {
+			// Open settings
+			commandService.executeCommand(VOID_TOGGLE_SETTINGS_ACTION_ID);
 			return;
 		}
 	}

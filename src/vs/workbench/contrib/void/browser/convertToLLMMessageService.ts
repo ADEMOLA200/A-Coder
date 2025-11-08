@@ -577,10 +577,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			contextWindow,
 			supportsSystemMessage,
 		} = getModelCapabilities(providerName, modelName, overridesOfModel)
-		if (!specialToolFormat) {
-			throw new Error(`Model "${providerName}:${modelName}" does not support native tool calling`)
-		}
-		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat
+		
+		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
+		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
 
 		const modelSelectionOptions = this.voidSettingsService.state.optionsOfModelSelection[featureName][modelSelection.providerName]?.[modelSelection.modelName]
 
@@ -614,13 +613,14 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			contextWindow,
 			supportsSystemMessage,
 		} = getModelCapabilities(providerName, modelName, overridesOfModel)
-		if (!specialToolFormat) {
-			throw new Error(`Model "${providerName}:${modelName}" does not support native tool calling`)
-		}
-		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat
+		
+		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
+		// The actual tool calling will be handled via XML by the provider
+		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
 
 		const { disableSystemMessage } = this.voidSettingsService.state.globalSettings;
-		const fullSystemMessage = await this._generateChatMessagesSystemMessage(chatMode, ensuredSpecialToolFormat)
+		// Pass the ACTUAL specialToolFormat (can be undefined) to system message for XML tool calling
+		const fullSystemMessage = await this._generateChatMessagesSystemMessage(chatMode, specialToolFormat)
 		const systemMessage = disableSystemMessage ? '' : fullSystemMessage;
 
 		const modelSelectionOptions = this.voidSettingsService.state.optionsOfModelSelection['Chat'][modelSelection.providerName]?.[modelSelection.modelName]

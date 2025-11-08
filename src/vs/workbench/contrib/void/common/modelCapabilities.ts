@@ -170,6 +170,7 @@ export type VoidStaticModelInfo = { // not stateful
 	specialToolFormat?: 'openai-style' | 'anthropic-style' | 'gemini-style', // typically you should use 'openai-style'. null means "can't call tools by default", and asks the LLM to output XML in agent mode
 	supportsFIM: boolean; // whether the model was specifically designed for autocomplete or "FIM" ("fill-in-middle" format)
 
+	defaultTemperature?: number; // recommended temperature for this model (e.g., 0.6 for Kimi K2 Instruct, 1.0 for Kimi K2 Thinking)
 	additionalOpenAIPayload?: { [key: string]: string } // additional payload in the message body for requests that are openai-compatible (ollama, vllm, openai, openrouter, etc)
 
 	// reasoning options
@@ -211,6 +212,7 @@ export const modelOverrideKeys = [
 	'supportsSystemMessage',
 	'specialToolFormat',
 	'supportsFIM',
+	'defaultTemperature',
 	'reasoningCapabilities',
 	'additionalOpenAIPayload'
 ] as const
@@ -442,6 +444,15 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 
 	if (lower.includes('grok2') || lower.includes('grok2')) return toFallback(xAIModelOptions, 'grok-2')
 	if (lower.includes('grok')) return toFallback(xAIModelOptions, 'grok-3')
+
+	// Handle Ollama Cloud models first (before generic matches)
+	if (lower.includes('cloud')) {
+		if (lower.includes('deepseek') && lower.includes('v3')) return toFallback(openSourceModelOptions_assumingOAICompat, 'deepseekCoderV3')
+		if (lower.includes('gpt-oss')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3') // gpt-oss is based on Qwen
+		if (lower.includes('kimi')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3') // kimi-k2 is based on Qwen
+		if (lower.includes('qwen') && lower.includes('coder')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen2.5coder')
+		if (lower.includes('qwen')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3')
+	}
 
 	if (lower.includes('deepseek-r1') || lower.includes('deepseek-reasoner')) return toFallback(openSourceModelOptions_assumingOAICompat, 'deepseekR1')
 	if (lower.includes('deepseek') && lower.includes('v2')) return toFallback(openSourceModelOptions_assumingOAICompat, 'deepseekCoderV2')
@@ -1236,8 +1247,82 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style',
+		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
 		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
+	},
+	// Ollama Cloud models - https://docs.ollama.com/cloud
+	'deepseek-v3.1:671b-cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
+	},
+	'gpt-oss:20b-cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
+		reasoningCapabilities: false,
+	},
+	'gpt-oss:120b-cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
+		reasoningCapabilities: false,
+	},
+	'kimi-k2:1t-cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // ⚠️ Kimi K2 supports native OpenAI tools BUT Ollama Cloud API has bug (500 unmarshal error) - using XML fallback
+		defaultTemperature: 0.6, // Recommended by Moonshot AI
+		reasoningCapabilities: false,
+	},
+	'kimi-k2-thinking:1t-cloud': {
+		contextWindow: 256_000, // Kimi K2 Thinking supports 256k context
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // ⚠️ Kimi K2 Thinking supports native OpenAI tools BUT Ollama Cloud API has bug (500 unmarshal error) - using XML fallback
+		defaultTemperature: 1.0, // Recommended by Moonshot AI for reasoning model
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] }, // Long-horizon: can handle 200-300 consecutive tool calls
+	},
+	'qwen3-coder:480b-cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
+		reasoningCapabilities: false,
+	},
+	'minimax-m2:cloud': {
+		contextWindow: 128_000,
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		// specialToolFormat: 'openai-style', // ⚠️ MiniMax M2 uses CUSTOM XML format (<minimax:tool_call>) - not compatible with our current XML parser
+		defaultTemperature: 1.0, // Recommended by MiniMax AI
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] }, // ⚠️ Do NOT remove <think> tags - critical for performance
 	},
 
 } as const satisfies Record<string, VoidStaticModelInfo>

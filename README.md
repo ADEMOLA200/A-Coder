@@ -18,6 +18,22 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 - 🧭 Original Void: [voideditor.com](https://voideditor.com)
 
 - 📖 [Development Guide](./DEVELOPMENT_GUIDE.md)
+- 🛠️ [Latest Models Tool Calling Analysis](./LATEST_MODELS_TOOL_CALLING_ANALYSIS.md)
+- ⚠️ [Ollama Cloud Tool Calling Bug](./OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
+
+
+## Known Issues
+
+### Ollama Cloud Tool Calling
+**Issue:** Ollama Cloud models return `500 unmarshal` errors when using native OpenAI-style tool calling.
+
+**Affected Models:** All Ollama Cloud models (kimi-k2, gpt-oss, qwen3-coder, deepseek-v3.1, etc.)
+
+**Workaround:** We automatically use XML tool calling fallback for Ollama Cloud models. This works reliably and provides the same functionality.
+
+**Status:** This is a known Ollama API bug (see [GitHub #11800](https://github.com/ollama/ollama/issues/11800), [#12799](https://github.com/ollama/ollama/issues/12799)). When Ollama fixes it, we'll enable native tool calling.
+
+**Details:** See [OLLAMA_CLOUD_TOOL_CALLING_BUG.md](./OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
 
 
 ## Development

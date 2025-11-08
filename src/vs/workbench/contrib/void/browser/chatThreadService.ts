@@ -216,6 +216,7 @@ export type ThreadStreamState = {
 			displayContentSoFar: string;
 			reasoningSoFar: string;
 			toolCallSoFar: RawToolCallObj | null;
+			_rawTextBeforeStripping?: string; // For XML tool call detection in UI
 		};
 		toolInfo?: undefined;
 		interrupt: Promise<() => void>; // calling this should have no effect on state - would be too confusing. it just cancels the tool
@@ -806,6 +807,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		let nMessagesSent = 0
 		let shouldSendAnotherMessage = true
 		let isRunningWhenEnd: IsRunningType = undefined
+		let justCompletedToolCall = false // Track if we just completed a tool call
 
 		// before enter loop, call tool
 		if (callThisToolFirst) {
@@ -871,12 +873,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				overridesOfModel,
 				logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
 				separateSystemMessage: separateSystemMessage,
-				onText: ({ fullText, fullReasoning, toolCall }) => {
+				onText: ({ fullText, fullReasoning, toolCall, _rawTextBeforeStripping }) => {
 					const parsed = partitionReasoningContent(fullText, fullReasoning)
 					
 					// Detect repetition: ONLY check text content, NOT tool calls
 					// Tool calls can legitimately repeat (e.g., reading same file multiple times)
-					if (!toolCall) {
+					// Also skip if XML tool call is in progress (detected in raw text before stripping)
+					const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
+					if (!toolCall && !hasXMLToolCallInProgress) {
 						const recentText = parsed.displayText.slice(-50);
 						if (recentText.length > 10) {
 							lastChunks.push(recentText);
@@ -905,6 +909,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							displayContentSoFar: parsed.displayText,
 							reasoningSoFar: parsed.reasoningText,
 							toolCallSoFar: toolCall ?? null,
+							_rawTextBeforeStripping, // For XML tool call detection in UI
 						},
 						interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }),
 						tokenUsage, // Preserve token usage during streaming
@@ -1008,14 +1013,30 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						return
 					}
 					if (awaitingUserApproval) { isRunningWhenEnd = 'awaiting_user' }
-					else { shouldSendAnotherMessage = true }
+					else { 
+						shouldSendAnotherMessage = true
+						justCompletedToolCall = true // Mark that we just completed a tool call
+					}
 
 					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
+				}
+				// If we just completed a tool call and model returned empty/short response,
+				// automatically send "continue" to prompt the model to actually respond
+				// We use 200 chars as threshold because models often say "let me check..." but then stop
+				// This applies to BOTH XML and native tool calling models
+				else if (justCompletedToolCall && info.fullText.trim().length < 200) {
+					console.log(`[chatThreadService] Model returned short response (${info.fullText.trim().length} chars) after tool call, auto-continuing...`)
+					// Add a "continue" user message to prompt the model
+					const defaultMessageState = { stagingSelections: [], isBeingEdited: false }
+					this._addMessageToThread(threadId, { role: 'user', content: 'continue', displayContent: 'continue', selections: null, state: defaultMessageState })
+					shouldSendAnotherMessage = true
+					justCompletedToolCall = false // Reset flag
 				}
 				// Note: Text-only auto-continue is handled by the UI's "Continue" button
 				// Backend auto-continue only happens after tool calls complete (handled above)
 				else {
 					console.log(`[chatThreadService] Text-only response, stopping (shouldSendAnotherMessage=${shouldSendAnotherMessage})`)
+					justCompletedToolCall = false // Reset flag
 				}
 
 			} // end while (attempts)

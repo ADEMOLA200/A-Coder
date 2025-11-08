@@ -187,7 +187,6 @@ class MCPService extends Disposable implements IMCPService {
 		const allTools: InternalToolInfo[] = []
 		for (const serverName in this.state.mcpServerOfName) {
 			const server = this.state.mcpServerOfName[serverName];
-			console.log(`[getMCPTools] Server ${serverName} has ${server.tools?.length ?? 0} tools:`, server.tools?.map(t => t.name))
 			server.tools?.forEach(tool => {
 				allTools.push({
 					description: tool.description || '',
@@ -197,7 +196,6 @@ class MCPService extends Disposable implements IMCPService {
 				})
 			})
 		}
-		console.log(`[getMCPTools] Returning ${allTools.length} total tools:`, JSON.stringify(allTools.map(t => ({ name: t.name, server: t.mcpServerName }))))
 		if (allTools.length === 0) return undefined
 		return allTools
 	}

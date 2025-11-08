@@ -244,14 +244,32 @@ const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | u
 
 // convert LLM tool call to our tool format
 const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: string): RawToolCallObj | null => {
+	if (!toolParamsStr) {
+		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" has empty parameters string`)
+		return null
+	}
+	
 	let input: unknown
-	try { input = JSON.parse(toolParamsStr) }
-	catch (e) { return null }
+	try { 
+		input = JSON.parse(toolParamsStr) 
+	}
+	catch (e) { 
+		console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+		console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
+		return null 
+	}
 
-	if (input === null) return null
-	if (typeof input !== 'object') return null
+	if (input === null) {
+		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" parsed to null`)
+		return null
+	}
+	if (typeof input !== 'object') {
+		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" params is not an object, got:`, typeof input)
+		return null
+	}
 
 	const rawParams: RawToolParamsObj = input
+	console.log(`[sendLLMMessage] ✓ Successfully parsed tool call "${name}" with ${Object.keys(rawParams).length} parameters`)
 	return { id, name, rawParams, doneParams: Object.keys(rawParams), isDone: true }
 }
 
@@ -275,6 +293,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		modelName,
 		reasoningCapabilities,
 		additionalOpenAIPayload,
+		specialToolFormat,
 	} = getModelCapabilities(providerName, modelName_, overridesOfModel)
 
 	const { providerReasoningIOSettings } = getProviderCapabilities(providerName)
@@ -288,16 +307,19 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		...additionalOpenAIPayload
 	}
 
-	// tools - ALWAYS use native JSON tool calling, no more XML
+	// tools - only send if model supports native tool calling (specialToolFormat === 'openai-style')
+	// Models without specialToolFormat will use XML tool calling instead
 	const potentialTools = openAITools(chatMode, mcpTools)
-	const nativeToolsObj = potentialTools ?
+	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
 		: {}
 	
-	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}`)
-	if (potentialTools && potentialTools.length > 0) {
+	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
+	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'openai-style') {
+		console.log(`[sendLLMMessage] ✅ Sending ${potentialTools.length} tools via native API`)
 		console.log(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.function.name).join(', '))
-		console.log(`[sendLLMMessage] First tool:`, JSON.stringify(potentialTools[0], null, 2))
+	} else if (potentialTools && potentialTools.length > 0) {
+		console.log(`[sendLLMMessage] ⚠️ NOT sending tools - specialToolFormat is '${specialToolFormat}', will use XML tool calling instead`)
 	} else {
 		console.log(`[sendLLMMessage] ⚠️ NO TOOLS - chatMode: ${chatMode}, mcpTools: ${mcpTools?.length ?? 0}`)
 	}
@@ -371,13 +393,24 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		const fn = toolCall.function ?? {}
 		if (fn.name) {
 			toolName = fn.name
+			console.log(`[sendLLMMessage] Tool call detected: ${toolName}`)
 		}
 		if (typeof fn.arguments === 'string') {
 			if (isFinal) {
 				toolParamsStr = fn.arguments
+				console.log(`[sendLLMMessage] Tool arguments (final): ${toolParamsStr.substring(0, 200)}${toolParamsStr.length > 200 ? '...' : ''}`)
 			}
 			else {
 				toolParamsStr += fn.arguments
+			}
+		} else if (fn.arguments && typeof fn.arguments === 'object') {
+			// Some models might return arguments as object instead of string
+			console.log(`[sendLLMMessage] ⚠️ Tool arguments received as object, converting to JSON string`)
+			const argsStr = JSON.stringify(fn.arguments)
+			if (isFinal) {
+				toolParamsStr = argsStr
+			} else {
+				toolParamsStr += argsStr
 			}
 		}
 		if (toolCall.id) {
@@ -393,11 +426,23 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		stream: options.stream
 	}))
 	
+	// Log the actual messages being sent (first 3 for debugging)
+	if (options.messages && options.messages.length > 0) {
+		console.log(`[sendLLMMessage] First message:`, JSON.stringify(options.messages[0], null, 2).substring(0, 500))
+		if (options.messages.length > 1) {
+			console.log(`[sendLLMMessage] Last message:`, JSON.stringify(options.messages[options.messages.length - 1], null, 2).substring(0, 500))
+		}
+	}
+	
 	openai.chat.completions
 		.create(options)
 		.then(async response => {
 			console.log(`[sendLLMMessage] Request created successfully, starting to read stream`)
 			_setAborter(() => response.controller.abort())
+			
+			// Import XML stripping function for streaming
+			const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
+			
 			// when receive text
 			let chunkCount = 0
 			for await (const chunk of response) {
@@ -434,14 +479,36 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					fullReasoningSoFar += reasoningDelta
 				}
 
+				// Strip XML blocks from text during streaming if model doesn't support native tools
+				const displayText = !specialToolFormat ? stripXMLBlocks(fullTextSoFar) : fullTextSoFar
+
 				onText({
-					fullText: fullTextSoFar,
+					fullText: displayText,
 					fullReasoning: fullReasoningSoFar,
 					toolCall: !toolName ? undefined : { name: toolName, rawParams: {}, isDone: false, doneParams: [], id: toolId },
+					// Pass raw text so chatThreadService can detect XML tool calls for repetition detection
+					_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
 				})
 			}
 			// on final
 			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${fullTextSoFar}", reasoning: "${fullReasoningSoFar}", toolName: "${toolName}", toolParams: "${toolParamsStr}"`)
+			
+			// If no native tool call detected and model doesn't support native tools, check for XML tool calls
+			if (!toolName && !specialToolFormat && fullTextSoFar) {
+				const { extractXMLToolCalls, stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
+				const xmlToolCalls = extractXMLToolCalls(fullTextSoFar)
+				if (xmlToolCalls.length > 0) {
+					const firstCall = xmlToolCalls[0]
+					toolName = firstCall.toolName
+					toolParamsStr = JSON.stringify(firstCall.parameters)
+					toolId = 'xml-tool-call-1'
+					// Strip XML blocks from the text so we don't show hallucinated results
+					fullTextSoFar = stripXMLBlocks(fullTextSoFar)
+					console.log(`[sendLLMMessage] ✅ Extracted XML tool call: ${toolName}`, firstCall.parameters)
+					console.log(`[sendLLMMessage] Cleaned text (XML stripped): "${fullTextSoFar}"`)
+				}
+			}
+			
 			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
 				console.log(`[sendLLMMessage] Empty response detected. fullText: "${fullTextSoFar}", reasoning: "${fullReasoningSoFar}", toolName: "${toolName}", toolParams: "${toolParamsStr}"`)
 				onError({ message: 'Void: Response from model was empty.', fullError: null })

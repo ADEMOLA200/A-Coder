@@ -382,7 +382,18 @@ Line 200: export async function processData(input: string): Promise<Result>
 - uri: The FULL file path to edit (e.g., "/Users/username/project/src/file.ts")
 - search_replace_blocks: SEARCH/REPLACE blocks with the changes
 
-**IMPORTANT:** Always read the file with read_file first to get exact content! If this tool fails, use rewrite_file instead - it's more reliable for complex changes.`,
+**WORKFLOW:**
+1. ALWAYS read the file with read_file first to get exact content
+2. Use edit_file with precise ORIGINAL blocks that match the file exactly
+3. Include surrounding context with "// ... existing code ..." comments
+4. Verify changes worked by reading the file again or checking lint errors
+
+**ERROR RECOVERY:**
+If edit_file fails, follow these steps:
+1. **"Not found" error:** Read the file again - you may have stale content. Ensure your ORIGINAL block matches exactly, including all whitespace and indentation.
+2. **"Not unique" error:** Add more surrounding context to your ORIGINAL block to make it unique in the file.
+3. **"Has overlap" error:** Combine your SEARCH/REPLACE blocks into a single larger block.
+4. **Still failing:** Use rewrite_file instead - it's more reliable for complex changes or when you don't have exact content.`,
 		params: {
 			...uriParam('file'),
 			search_replace_blocks: { description: replaceTool_description }
@@ -493,7 +504,83 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 	return tools
 }
 
-// XML tool calling removed - all tools now use native JSON function calling format
+// ======================================================== XML Tool Calling ========================================================
+
+/**
+ * Generates XML tool descriptions for models that don't support native tool calling
+ * Based on Anthropic's XML tool calling format
+ */
+export function generateXMLToolDescriptions(tools: InternalToolInfo[]): string {
+	const toolDescriptions = tools.map(tool => {
+		const params = Object.entries(tool.params || {}).map(([name, info]) => 
+			`<parameter>
+<name>${name}</name>
+<type>string</type>
+<description>${info.description || ''}</description>
+</parameter>`
+		).join('\n');
+		
+		return `<tool_description>
+<tool_name>${tool.name}</tool_name>
+<description>${tool.description}</description>
+<parameters>
+${params}
+</parameters>
+</tool_description>`;
+	}).join('\n');
+	
+	return `<tools>
+${toolDescriptions}
+</tools>`;
+}
+
+/**
+ * System prompt explaining XML tool calling format
+ */
+export const XML_TOOL_CALLING_INSTRUCTIONS = `You have access to a set of functions you can use to answer the user's question.
+
+You can invoke one or more functions by writing a "<function_calls>" block like the following as part of your reply to the user:
+<function_calls>
+<invoke name="$FUNCTION_NAME">
+<parameter name="$PARAMETER_NAME">$PARAMETER_VALUE</parameter>
+...
+</invoke>
+<invoke name="$FUNCTION_NAME2">
+...
+</invoke>
+</function_calls>
+
+String and scalar parameters should be specified as is, while lists and objects should use JSON format.
+The output is not expected to be valid XML and is parsed with regular expressions.
+
+IMPORTANT: When passing code content (HTML, JavaScript, CSS, etc.) in parameters, use the ACTUAL code characters (< > & etc.) - do NOT escape them as HTML entities (&lt; &gt; &amp;). The parser handles raw content correctly.
+
+CRITICAL INSTRUCTIONS:
+1. Do NOT generate <function_results> blocks yourself. The system will automatically execute your function calls and provide the results in the next turn.
+2. After making function calls, STOP your response immediately - do not predict or hallucinate what the results will be.
+3. When you need to use a tool, make the function call IMMEDIATELY instead of just describing what you want to do. For example, instead of saying "Let me check for errors", just call the read_lint_errors function directly.
+4. You can include a brief explanation BEFORE the <function_calls> block, but keep it very short (1-2 sentences max).
+
+CONTEXT MARKERS FOR CODE EDITS:
+When using edit_file, always include surrounding context in your ORIGINAL blocks:
+- Add "// ... existing code ..." comments above and below your changes to show what stays unchanged
+- Include enough context (3-5 lines) to make your ORIGINAL block unique in the file
+- Match the exact indentation and whitespace from the file
+Example:
+<parameter name="search_replace_blocks">
+ORIGINAL
+// ... existing code ...
+function oldFunction() {
+  return "old";
+}
+// ... existing code ...
+UPDATED
+// ... existing code ...
+function newFunction() {
+  return "new";
+}
+// ... existing code ...
+</parameter>`;
 
 // ======================================================== chat (normal, gather, agent) ========================================================
 
@@ -532,7 +619,20 @@ ${directoryStr}
 </files_overview>`)
 
 
-	// All tools use native JSON function calling - no tool definitions needed in system message
+	// Tool calling instructions - either XML or native JSON
+	const allTools = availableTools(mode, mcpTools)
+	let toolInstructions = ''
+	
+	if (allTools && allTools.length > 0) {
+		if (!specialToolFormat) {
+			// Use XML tool calling for models without native support
+			toolInstructions = `${XML_TOOL_CALLING_INSTRUCTIONS}\n\nHere are the functions available:\n${generateXMLToolDescriptions(allTools)}`
+			console.log(`[prompts] ✅ Adding XML tool instructions for ${allTools.length} tools (specialToolFormat: ${specialToolFormat})`)
+		} else {
+			console.log(`[prompts] Native tool calling enabled (specialToolFormat: ${specialToolFormat})`)
+		}
+		// Native tool calling models get tools via API, not in system message
+	}
 
 	const details: string[] = []
 
@@ -558,8 +658,17 @@ ${directoryStr}
 	if (mode === 'agent') {
 		details.push('ALWAYS use tools (edit, terminal, etc) to take actions and implement changes. For example, if you would like to edit a file, you MUST use a tool.')
 		details.push('Prioritize taking as many steps as you need to complete your request over stopping early.')
+		
+		// Morph-inspired workflow pattern
+		details.push(`Follow this workflow pattern for code changes:
+1. 🔍 SEARCH: Use search_for_files or search_in_file to find relevant code
+2. 📖 READ: Use read_file to get exact file contents before editing
+3. ✏️ EDIT: Use edit_file with precise ORIGINAL/UPDATED blocks
+4. ✅ VERIFY: Read the file again or check lint errors to confirm changes worked`)
+		
 		details.push(`You will OFTEN need to gather context before making a change. Do not immediately make a change unless you have ALL relevant context.`)
 		details.push(`CRITICAL: Before editing ANY file, you MUST read it first with read_file to get the exact current contents. File edits require exact string matching, so you need the precise file contents including whitespace and indentation.`)
+		details.push(`When using edit_file, always include enough surrounding context in your ORIGINAL block. Use "// ... existing code ..." comments to indicate unchanged code above and below your changes.`)
 		details.push(`ALWAYS have maximal certainty in a change BEFORE you make it. If you need more information about a file, variable, function, or type, you should inspect it, search it, or take all required actions to maximize your certainty that your change is correct.`)
 		details.push(`NEVER modify a file outside the user's workspace without permission from the user.`)
 	}
@@ -596,6 +705,7 @@ ${details.map((d, i) => `${i + 1}. ${d}`).join('\n\n')}`)
 	const ansStrs: string[] = []
 	ansStrs.push(header)
 	ansStrs.push(sysInfo)
+	if (toolInstructions) ansStrs.push(toolInstructions)
 	ansStrs.push(importantDetails)
 	ansStrs.push(fsInfo)
 

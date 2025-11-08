@@ -354,7 +354,7 @@ export class ToolsService implements IToolsService {
 				const totalNumLines = model.getLineCount()
 				const fullContents = model.getValue(EndOfLinePreference.LF)
 				
-				const { extractFileOutline, formatOutline } = require('vs/workbench/contrib/void/common/helpers/fileOutline');
+				const { extractFileOutline, formatOutline } = await import('../common/helpers/fileOutline.js');
 				const fileExtension = uri.path.substring(uri.path.lastIndexOf('.'));
 				const outlineItems = extractFileOutline(fullContents, fileExtension);
 				const outline = formatOutline(outlineItems, uri.fsPath);

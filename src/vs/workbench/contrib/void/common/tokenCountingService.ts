@@ -181,7 +181,11 @@ export class TokenCountingService {
 	 * Get the context window size for a model
 	 */
 	public getContextWindowSize(modelName: string): number {
-		const lowerName = modelName.toLowerCase();
+		// Strip provider prefix if present (e.g., "ollama:minimax-m2:cloud" → "minimax-m2:cloud")
+		const cleanName = modelName.includes(':') && modelName.split(':').length > 2
+			? modelName.split(':').slice(1).join(':')
+			: modelName;
+		const lowerName = cleanName.toLowerCase();
 		
 		// Common model context windows
 		const contextWindows: Record<string, number> = {
@@ -202,6 +206,15 @@ export class TokenCountingService {
 			'gemini-pro': 32768,
 			'gemini-1.5-pro': 1000000,
 			'gemini-1.5-flash': 1000000,
+			// Ollama Cloud models
+			'deepseek-v3.1:671b-cloud': 128000,
+			'gpt-oss:20b-cloud': 128000,
+			'gpt-oss:120b-cloud': 128000,
+			'kimi-k2:1t-cloud': 128000,
+			'kimi-k2-thinking:1t-cloud': 256000, // Kimi K2 Thinking has 256k context
+			'qwen3-coder:480b-cloud': 128000,
+			'minimax-m2:cloud': 128000,
+			'glm-4.6:cloud': 128000,
 			// Ollama models (common ones)
 			'llama3': 8192,
 			'llama3.1': 128000,

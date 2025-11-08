@@ -2862,14 +2862,9 @@ const CommandBarInChat = () => {
 	const accessor = useAccessor()
 	const editCodeService = accessor.get('IEditCodeService')
 	const commandService = accessor.get('ICommandService')
-	const mcpService = accessor.get('IMCPService')
 	const chatThreadsState = useChatThreadsState()
 	const commandBarState = useCommandBarState()
 	const chatThreadsStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
-
-	const [isMCPMenuOpen, setIsMCPMenuOpen] = useState(false)
-	const mcpTools = mcpService.getMCPTools()
-	const numMCPTools = mcpTools?.length ?? 0
 
 	// (
 	// 	<IconShell1
@@ -3079,41 +3074,7 @@ const CommandBarInChat = () => {
 		</button>
 	)
 
-	const mcpMenuButton = numMCPTools > 0 ? (
-		<div className="relative">
-			<button
-				className="flex items-center gap-1 px-2 py-1 rounded text-xs text-void-fg-3 hover:brightness-125 transition-all duration-200 cursor-pointer"
-				onClick={() => setIsMCPMenuOpen(!isMCPMenuOpen)}
-				type='button'
-			>
-				<span className="text-green-500 text-xs">●</span>
-				<span>{numMCPTools} MCP</span>
-				<svg
-					className="transition-transform duration-200 size-3"
-					style={{
-						transform: isMCPMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-						transition: 'transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)'
-					}}
-					xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline>
-				</svg>
-			</button>
-			
-			{/* MCP Tools Dropdown Menu */}
-			{isMCPMenuOpen && (
-				<div className="absolute right-0 top-full mt-1 bg-void-bg-2 border border-void-border-2 rounded shadow-lg z-50 min-w-[200px]">
-					{mcpTools?.map((tool, idx) => (
-						<div
-							key={idx}
-							className="px-3 py-2 text-xs text-void-fg-3 hover:bg-void-bg-3 cursor-pointer border-b border-void-border-3 last:border-b-0"
-						>
-							<div className="font-semibold">{tool.name}</div>
-							{tool.mcpServerName && <div className="text-void-fg-4 text-xs mt-0.5">{tool.mcpServerName}</div>}
-						</div>
-					))}
-				</div>
-			)}
-		</div>
-	) : null
+	// MCP menu moved to quick action button at top of chat UI
 
 	return (
 		<>
@@ -3148,11 +3109,8 @@ const CommandBarInChat = () => {
 					{fileDetailsButton}
 				</div>
 				<div className="flex gap-2 items-center">
-					{mcpMenuButton}
-					<div className="flex gap-2 items-center">
-						{acceptRejectAllButtons}
-						{threadStatusHTML}
-					</div>
+					{acceptRejectAllButtons}
+					{threadStatusHTML}
 				</div>
 			</div>
 		</>
@@ -3173,9 +3131,10 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 
 	const uriDone = toolCallSoFar.doneParams.includes('uri')
 	
-	// Calculate diff stats from search_replace_blocks
+	// Calculate diff stats from search_replace_blocks (for edit_file)
 	let addedLines = 0;
 	let removedLines = 0;
+	const content = toolCallSoFar.rawParams.search_replace_blocks ?? toolCallSoFar.rawParams.new_content ?? '';
 	if (toolCallSoFar.rawParams.search_replace_blocks) {
 		const blocks = toolCallSoFar.rawParams.search_replace_blocks.split('<<<<<<< ORIGINAL').slice(1);
 		blocks.forEach((block: string) => {
@@ -3189,6 +3148,16 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 		});
 	}
 
+	// Determine loading message based on tool type
+	const loadingMessage = 
+		toolCallSoFar.name === 'read_file' ? 'Reading file...' :
+		toolCallSoFar.name === 'edit_file' ? 'Editing file...' :
+		toolCallSoFar.name === 'rewrite_file' ? 'Writing file...' :
+		toolCallSoFar.name === 'create_file_or_folder' ? 'Creating...' :
+		toolCallSoFar.name === 'delete_file_or_folder' ? 'Deleting...' :
+		toolCallSoFar.name === 'outline_file' ? 'Reading outline...' :
+		'Processing...';
+
 	const desc1 = <span className='flex items-center gap-1.5'>
 		{uriDone ? (
 			<>
@@ -3201,25 +3170,43 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 				)}
 			</>
 		) : (
-			<span className='text-void-accent font-medium animate-pulse'>Writing file...</span>
+			<span className='text-void-accent font-medium animate-pulse'>{loadingMessage}</span>
 		)}
 		{!uriDone && <IconLoading />}
 	</span>
 
 	const desc1OnClick = () => { uri && voidOpenFileFn(uri, accessor) }
+	
+	// Determine edit tool type based on tool name
+	const editToolType = toolCallSoFar.name === 'edit_file' ? 'diff' : 'rewrite';
 
-	// If URI has not been specified
+	// Only show the diff editor for edit_file and rewrite_file (tools with actual content)
+	const shouldShowEditor = (toolCallSoFar.name === 'edit_file' || toolCallSoFar.name === 'rewrite_file') && content;
+
+	// Add "Generating..." indicator to match the visual layout
+	const desc2 = (
+		<div className="flex items-center gap-1.5 text-xs text-void-fg-3">
+			<span>Generating</span>
+			<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
+		</div>
+	);
+
+	// Show the beautiful diff editor UI during generation for edit/rewrite tools
 	return <ToolHeaderWrapper
 		title={title}
 		desc1={desc1}
 		desc1OnClick={desc1OnClick}
+		desc2={desc2}
 	>
-		<EditToolChildren
-			uri={uri}
-			code={toolCallSoFar.rawParams.search_replace_blocks ?? toolCallSoFar.rawParams.new_content ?? ''}
-			type={'rewrite'} // as it streams, show in rewrite format, don't make a diff editor
-		/>
-		<IconLoading />
+		{shouldShowEditor && (
+			<ToolChildrenWrapper className='bg-void-bg-3'>
+				<EditToolChildren
+					uri={uri}
+					code={content}
+					type={editToolType}
+				/>
+			</ToolChildrenWrapper>
+		)}
 	</ToolHeaderWrapper>
 
 }
@@ -3249,18 +3236,25 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallSoFar, reasoningSoFar } = currThreadStreamState?.llmInfo ?? {}
+	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, _rawTextBeforeStripping } = currThreadStreamState?.llmInfo ?? {}
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone // show loading for slow tools (right now just edit)
 	
+	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
+	// Use raw text before stripping to detect the XML tags
+	const isGeneratingXMLToolCall = !toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>');
+	
 	// Debug: log tool state
-	if (toolCallSoFar) {
-		console.log('[SidebarChat] toolCallSoFar:', {
-			name: toolCallSoFar.name,
-			isDone: toolCallSoFar.isDone,
-			isGenerating: toolIsGenerating,
-			isEditTool: toolCallSoFar.name === 'edit_file' || toolCallSoFar.name === 'rewrite_file'
+	if (toolCallSoFar || isGeneratingXMLToolCall) {
+		console.log('[SidebarChat] Tool generation state:', {
+			toolCallSoFar: toolCallSoFar ? {
+				name: toolCallSoFar.name,
+				isDone: toolCallSoFar.isDone,
+				isGenerating: toolIsGenerating,
+			} : null,
+			isGeneratingXMLToolCall,
+			displayContentLength: displayContentSoFar?.length
 		});
 	}
 
@@ -3369,8 +3363,13 @@ export const SidebarChat = () => {
 	// the tool currently being generated
 	const generatingTool = toolIsGenerating ? (
 		<>
-			{/* Show EditToolSoFar for file editing tools, otherwise show generic loading indicator */}
-			{(toolCallSoFar.name === 'edit_file' || toolCallSoFar.name === 'rewrite_file') ? (
+			{/* Show EditToolSoFar for ALL file-related tools */}
+			{(toolCallSoFar.name === 'edit_file' || 
+			  toolCallSoFar.name === 'rewrite_file' ||
+			  toolCallSoFar.name === 'read_file' ||
+			  toolCallSoFar.name === 'create_file_or_folder' ||
+			  toolCallSoFar.name === 'delete_file_or_folder' ||
+			  toolCallSoFar.name === 'outline_file') ? (
 				<EditToolSoFar
 					key={'curr-streaming-tool'}
 					toolCallSoFar={toolCallSoFar}
@@ -3384,6 +3383,14 @@ export const SidebarChat = () => {
 				</ProseWrapper>
 			)}
 		</>
+	) : isGeneratingXMLToolCall ? (
+		// Show generic loading indicator for XML tool calls before parsing completes
+		<ProseWrapper>
+			<div className="flex items-center gap-2 py-2 text-void-fg-3">
+				<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
+				<span className="text-sm">Generating tool call...</span>
+			</div>
+		</ProseWrapper>
 	) : null
 
 	const messagesHTML = <ScrollToBottomContainer
