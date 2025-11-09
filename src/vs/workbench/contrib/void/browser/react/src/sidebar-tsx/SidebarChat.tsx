@@ -1335,6 +1335,20 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		chatbubbleContents = <>
 			<SelectedFiles type='past' messageIdx={messageIdx} selections={chatMessage.selections || []} />
 			<span className='px-0.5'>{chatMessage.displayContent}</span>
+			{/* Show skeleton for vision analysis instead of displaying the text */}
+			{chatMessage.visionAnalysis && chatMessage.images && chatMessage.images.length > 0 && (
+				<div className="mt-2 px-3 py-2 bg-void-bg-2 border border-void-border-1 rounded-md">
+					<div className="flex items-center gap-2 text-void-fg-3 text-xs mb-1">
+						<span>🔍</span>
+						<span className="font-medium">Image Analysis</span>
+					</div>
+					<div className="space-y-1">
+						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-full"></div>
+						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-5/6"></div>
+						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-4/6"></div>
+					</div>
+				</div>
+			)}
 		</>
 	}
 	else if (mode === 'edit') {

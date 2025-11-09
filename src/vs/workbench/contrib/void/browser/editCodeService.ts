@@ -38,6 +38,7 @@ import { Emitter } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
+import { IMorphService } from './morphService.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
@@ -366,6 +367,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		// @IFileService private readonly _fileService: IFileService,
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
+		@IMorphService private readonly _morphService: IMorphService,
 	) {
 		super();
 
@@ -1331,7 +1333,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	}
 
 
-	public instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks }: { uri: URI, searchReplaceBlocks: string }) {
+	public async instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks }: { uri: URI, searchReplaceBlocks: string }) {
 		// start diffzone
 		const res = this._startStreamingDiffZone({
 			uri,
@@ -1365,7 +1367,21 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		}
 
 		try {
-			this._instantlyApplySRBlocks(uri, searchReplaceBlocks)
+			// Try Morph Fast Apply if enabled
+			if (this._settingsService.state.globalSettings.enableMorphFastApply && 
+			    this._settingsService.state.globalSettings.morphApiKey) {
+				try {
+					await this._applyWithMorph(uri, searchReplaceBlocks);
+					console.log('[editCodeService] Successfully applied changes using Morph Fast Apply');
+				} catch (morphError) {
+					// Fall back to standard apply if Morph fails
+					console.warn('[editCodeService] Morph Fast Apply failed, falling back to standard apply:', morphError);
+					this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
+				}
+			} else {
+				// Standard apply logic
+				this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
+			}
 		}
 		catch (e) {
 			onError({ message: e + '', fullError: null })
@@ -1893,6 +1909,43 @@ ${problematicCode}
 			'wholeFileRange',
 			{ shouldRealignDiffAreas: true }
 		)
+	}
+
+	private async _applyWithMorph(uri: URI, searchReplaceBlocks: string): Promise<void> {
+		// Extract the search/replace blocks
+		const blocks = extractSearchReplaceBlocks(searchReplaceBlocks);
+		if (blocks.length === 0) {
+			throw new Error('No Search/Replace blocks were received!');
+		}
+
+		// Get the original file content
+		const { model } = this._voidModelService.getModel(uri);
+		if (!model) {
+			throw new Error('File does not exist');
+		}
+		const originalCode = model.getValue(EndOfLinePreference.LF);
+
+		// Build the instruction from the blocks
+		// Use first block's context as instruction, or generate a generic one
+		const instruction = blocks.length === 1
+			? `Apply the following code change`
+			: `Apply ${blocks.length} code changes`;
+
+		// Combine all blocks into the update format
+		const updatedCode = blocks.map(b => b.final).join('\n\n');
+
+		console.log('[editCodeService] Calling Morph Fast Apply API...');
+		
+		// Call Morph API
+		const appliedCode = await this._morphService.applyCodeChange({
+			instruction,
+			originalCode,
+			updatedCode,
+			model: 'morph-v3-large'
+		});
+
+		// Apply the result from Morph
+		this._writeURIText(uri, appliedCode, 'wholeFileRange', { shouldRealignDiffAreas: true });
 	}
 
 	private _initializeSearchAndReplaceStream(opts: StartApplyingOpts & { from: 'ClickApply' }): [DiffZone, Promise<void>] | undefined {

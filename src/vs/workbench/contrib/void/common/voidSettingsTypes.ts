@@ -456,6 +456,8 @@ export type GlobalSettings = {
 	disableSystemMessage: boolean;
 	autoAcceptLLMChanges: boolean;
 	enableVisionSupport: boolean;
+	enableMorphFastApply: boolean; // Use Morph API for intelligent code application
+	morphApiKey: string; // API key for Morph Fast Apply
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -473,6 +475,8 @@ export const defaultGlobalSettings: GlobalSettings = {
 	disableSystemMessage: false,
 	autoAcceptLLMChanges: false,
 	enableVisionSupport: false,
+	enableMorphFastApply: false,
+	morphApiKey: '',
 }
 
 export type GlobalSettingName = keyof GlobalSettings

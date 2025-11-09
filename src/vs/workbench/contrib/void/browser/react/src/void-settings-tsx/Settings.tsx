@@ -1372,6 +1372,47 @@ export const Settings = () => {
 											</div>
 										</ErrorBoundary>
 
+										{/* Morph Fast Apply Section */}
+										<ErrorBoundary>
+											<div>
+												<h4 className={`text-base`}>Morph Fast Apply</h4>
+												<div className='text-sm text-void-fg-3 mt-1'>
+													Use Morph's intelligent code application API to enhance apply functionality. Requires API key from <a href="https://morphllm.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">morphllm.com</a>.
+												</div>
+
+												<div className='my-2'>
+													{/* Enable Toggle */}
+													<div className='flex items-center gap-x-2 my-2'>
+														<VoidSwitch
+															size='xs'
+															value={settingsState.globalSettings.enableMorphFastApply}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('enableMorphFastApply', newVal)}
+														/>
+														<span className='text-void-fg-3 text-xs pointer-events-none'>
+															{settingsState.globalSettings.enableMorphFastApply ? 'Enabled' : 'Disabled'}
+														</span>
+													</div>
+
+													{/* API Key Input */}
+													{settingsState.globalSettings.enableMorphFastApply && (
+														<div className='my-2'>
+															<div className='text-xs text-void-fg-3 mb-1'>API Key:</div>
+															<input
+																type="password"
+																value={settingsState.globalSettings.morphApiKey}
+																onChange={(e) => voidSettingsService.setGlobalSetting('morphApiKey', e.target.value)}
+																placeholder="Enter your Morph API key"
+																className='w-full text-xs text-void-fg-1 bg-void-bg-1 border border-void-border-1 rounded p-1.5 px-2 focus:outline-none focus:border-void-accent'
+															/>
+															<div className='text-xs text-void-fg-4 mt-1'>
+																Get your API key from <a href="https://morphllm.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">morphllm.com/dashboard</a>
+															</div>
+														</div>
+													)}
+												</div>
+											</div>
+										</ErrorBoundary>
+
 
 										<div className='w-full'>
 											<h4 className={`text-base`}>Editor</h4>

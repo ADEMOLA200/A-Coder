@@ -338,8 +338,12 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 					readS.settingsOfProvider[providerName].headersJSON = '{}'
 				}
 			}
-		}
 
+			// Migration: Set default Vision model if it's null (for users upgrading from before Vision feature)
+			if (!readS.modelSelectionOfFeature['Vision']) {
+				readS.modelSelectionOfFeature['Vision'] = { providerName: 'ollama', modelName: 'qwen3-vl:235b-instruct-cloud' }
+			}
+		}
 		catch (e) {
 			readS = defaultState()
 		}

@@ -61,6 +61,7 @@ export type ChatMessage =
 		displayContent: string; // content displayed to user  - allowed to be '', will be ignored
 		selections: StagingSelectionItem[] | null; // the user's selection
 		images?: ImageAttachment[]; // optional images for vision models
+		visionAnalysis?: string; // vision model's analysis of images (hidden from display, shown as skeleton)
 		state: {
 			stagingSelections: StagingSelectionItem[];
 			isBeingEdited: boolean;

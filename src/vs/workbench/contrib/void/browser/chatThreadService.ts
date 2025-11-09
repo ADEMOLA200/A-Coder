@@ -1435,13 +1435,18 @@ We only need to do it for files that were edited since `from`, ie files between 
 		const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
 
 		// Process images with vision model if present and enabled
+		let visionAnalysis: string | undefined;
 		if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
 			try {
 				console.log(`[chatThreadService] Processing ${images.length} image(s) with vision model...`);
+				
+				// Process images
 				const imageDescriptions = await this._visionService.processImages(images, userMessage);
 				
-				// Append image descriptions to user message
+				// Store vision analysis separately (will be hidden from display)
 				if (imageDescriptions) {
+					visionAnalysis = imageDescriptions;
+					// Append to instructions for LLM (but not shown to user)
 					instructions = userMessage 
 						? `${userMessage}\n\n[Image Analysis]\n${imageDescriptions}`
 						: `[Image Analysis]\n${imageDescriptions}`;
@@ -1458,7 +1463,15 @@ We only need to do it for files that were edited since `from`, ie files between 
 		}
 
 		const userMessageContent = await chat_userMessageContent(instructions, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService }) // user message + names of files (NOT content)
-		const userHistoryElt: ChatMessage = { role: 'user', content: userMessageContent, displayContent: instructions, selections: currSelns, images, state: defaultMessageState }
+		const userHistoryElt: ChatMessage = { 
+			role: 'user', 
+			content: userMessageContent, 
+			displayContent: userMessage, // Show only original message, not vision analysis
+			selections: currSelns, 
+			images, 
+			visionAnalysis, // Store vision analysis separately for skeleton display
+			state: defaultMessageState 
+		}
 		this._addMessageToThread(threadId, userHistoryElt)
 
 		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
