@@ -57,6 +57,8 @@ export type BuiltinToolCallParams = {
 	'create_file_or_folder': { uri: URI, isFolder: boolean },
 	'delete_file_or_folder': { uri: URI, isRecursive: boolean, isFolder: boolean },
 	// ---
+	'run_code': { code: string, timeout: number | null },
+	// ---
 	'run_command': { command: string; cwd: string | null, terminalId: string },
 	'open_persistent_terminal': { cwd: string | null },
 	'run_persistent_command': { command: string; persistentTerminalId: string },
@@ -78,6 +80,8 @@ export type BuiltinToolResultType = {
 	'edit_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
 	'create_file_or_folder': {},
 	'delete_file_or_folder': {},
+	// ---
+	'run_code': { success: boolean, result: any, error: string | null, logs: string[] },
 	// ---
 	'run_command': { result: string; resolveReason: TerminalResolveReason; },
 	'run_persistent_command': { result: string; resolveReason: TerminalResolveReason; },

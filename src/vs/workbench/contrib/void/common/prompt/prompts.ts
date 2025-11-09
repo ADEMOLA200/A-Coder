@@ -408,6 +408,49 @@ If edit_file fails, follow these steps:
 			new_content: { description: `The complete new contents of the file. Must be a string.` }
 		},
 	},
+
+	// --- code execution ---
+	run_code: {
+		name: 'run_code',
+		description: `Execute TypeScript/JavaScript code in a sandboxed environment with access to all tools.
+
+**Why use this:** For complex workflows involving multiple tools, large data processing, or when you need to compose operations without passing data through your context. This can reduce token usage by 98% compared to calling tools directly.
+
+**What you have access to:**
+- All built-in tools available as \`tools.toolName()\` functions
+- Standard JavaScript/TypeScript features
+- Console logging for debugging
+
+**Example - Process multiple files:**
+\`\`\`typescript
+const files = await tools.searchFiles('*.ts');
+let count = 0;
+for (const file of files) {
+  const content = await tools.readFile(file);
+  if (content.includes('TODO')) count++;
+}
+return { filesWithTodos: count };
+\`\`\`
+
+**Example - Large file processing:**
+\`\`\`typescript
+const content = await tools.readFile('large-file.json');
+const data = JSON.parse(content);
+const filtered = data.filter(item => item.status === 'active');
+return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
+\`\`\`
+
+**What you'll receive:** The return value from your code, plus any console output.
+
+**When to use:** Multi-step workflows, data processing, filtering/aggregating large results, or when you need to compose multiple tool calls.
+
+**When NOT to use:** Simple single-tool operations (just call the tool directly).`,
+		params: {
+			code: { description: 'TypeScript/JavaScript code to execute. Must be valid code that can run in a Node.js environment. Use \`return\` to send results back.' },
+			timeout: { description: 'Optional. Maximum execution time in milliseconds (default: 30000). Set lower for simple operations.' },
+		},
+	},
+
 	run_command: {
 		name: 'run_command',
 		description: `Runs a terminal command and waits for it to complete.

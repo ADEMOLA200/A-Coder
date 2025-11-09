@@ -18,6 +18,7 @@ import { timeout } from '../../../../base/common/async.js'
 import { RawToolParamsObj } from '../common/sendLLMMessageTypes.js'
 import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_BG_COMMAND_TIME, MAX_TERMINAL_INACTIVE_TIME } from '../common/prompt/prompts.js'
 import { IVoidSettingsService } from '../common/voidSettingsService.js'
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
 
 
@@ -154,6 +155,7 @@ export class ToolsService implements IToolsService {
 		@IDirectoryStrService private readonly directoryStrService: IDirectoryStrService,
 		@IMarkerService private readonly markerService: IMarkerService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
+		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
 
@@ -268,6 +270,15 @@ export class ToolsService implements IToolsService {
 				const uri = validateURI(uriStr)
 				const searchReplaceBlocks = validateStr('searchReplaceBlocks', searchReplaceBlocksUnknown)
 				return { uri, searchReplaceBlocks }
+			},
+
+			// ---
+
+			run_code: (params: RawToolParamsObj) => {
+				const { code: codeUnknown, timeout: timeoutUnknown } = params
+				const code = validateStr('code', codeUnknown)
+				const timeout = validateNumber(timeoutUnknown, { default: null })
+				return { code, timeout }
 			},
 
 			// ---
@@ -487,6 +498,27 @@ export class ToolsService implements IToolsService {
 				return { result: lintErrorsPromise }
 			},
 			// ---
+			run_code: async ({ code, timeout }) => {
+				// Get IPC channel to electron-main
+				const channel = this.getCodeExecutionChannel();
+				
+				// Listen for tool call requests from sandbox
+				const toolCallListener = channel.listen('onToolCall');
+				const disposable = toolCallListener((request: { requestId: string; toolName: string; params: any }) => {
+					// Sandbox is calling a tool - execute it and send response back
+					this.handleToolCallFromSandbox(channel, request).catch(err => {
+						console.error('[run_code] Failed to handle tool call:', err);
+					});
+				});
+				
+				try {
+					// Execute code in sandbox
+					const result = await channel.call('executeCode', { code, options: { timeout } });
+					return { result };
+				} finally {
+					disposable.dispose();
+				}
+			},
 			run_command: async ({ command, cwd, terminalId }) => {
 				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId })
 				return { result: resPromise, interruptTool: interrupt }
@@ -630,6 +662,14 @@ export class ToolsService implements IToolsService {
 			kill_persistent_terminal: (params, _result) => {
 				return `Successfully closed terminal "${params.persistentTerminalId}".`;
 			},
+			run_code: (params, result) => {
+				if (!result.success) {
+					return `Code execution failed:\n${result.error}\n\nLogs:\n${result.logs.join('\n')}`;
+				}
+				const resultStr = typeof result.result === 'object' ? JSON.stringify(result.result, null, 2) : String(result.result);
+				const logsStr = result.logs.length > 0 ? `\n\nConsole output:\n${result.logs.join('\n')}` : '';
+				return `Code executed successfully.\n\nResult:\n${resultStr}${logsStr}`;
+			},
 		}
 
 
@@ -651,6 +691,42 @@ export class ToolsService implements IToolsService {
 
 		if (!lintErrors.length) return { lintErrors: null }
 		return { lintErrors, }
+	}
+
+	/**
+	 * Get IPC channel for code execution
+	 */
+	private getCodeExecutionChannel(): any {
+		return this.mainProcessService.getChannel('void-channel-code-execution');
+	}
+
+	/**
+	 * Handle tool call request from sandbox via IPC
+	 */
+	private async handleToolCallFromSandbox(
+		channel: any,
+		request: { requestId: string; toolName: string; params: any }
+	): Promise<void> {
+		const { requestId, toolName, params } = request;
+		
+		try {
+			// Execute the actual tool
+			const toolResult = await (this.callTool as any)[toolName](params);
+			
+			// Send success response back to electron-main
+			await channel.call('respondToToolCall', {
+				requestId,
+				success: true,
+				result: toolResult
+			});
+		} catch (error) {
+			// Send error response back to electron-main
+			await channel.call('respondToToolCall', {
+				requestId,
+				success: false,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
 
