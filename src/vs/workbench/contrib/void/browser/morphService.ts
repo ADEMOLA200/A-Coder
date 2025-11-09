@@ -6,6 +6,7 @@
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 
 export const IMorphService = createDecorator<IMorphService>('MorphService');
 
@@ -33,6 +34,7 @@ export class MorphService implements IMorphService {
 
 	constructor(
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
+		@IMainProcessService private readonly _mainProcessService: IMainProcessService,
 	) { }
 
 	async applyCodeChange(params: {
@@ -41,7 +43,7 @@ export class MorphService implements IMorphService {
 		updatedCode: string;
 		model?: 'morph-v3-fast' | 'morph-v3-large' | 'auto';
 	}): Promise<string> {
-		const { instruction, originalCode, updatedCode, model = 'morph-v3-large' } = params;
+		const { instruction, originalCode, updatedCode } = params;
 		
 		console.log('[MorphService] Starting applyCodeChange...');
 		console.log('[MorphService] Instruction:', instruction);
@@ -55,51 +57,27 @@ export class MorphService implements IMorphService {
 			throw new Error('Morph API key not configured. Please add your API key in Settings.');
 		}
 
-		// Format the content according to Morph's required format
-		// IMPORTANT: No spaces/newlines between tags per Morph API spec
-		const content = `<instruction>${instruction}</instruction><code>${originalCode}</code><update>${updatedCode}</update>`;
-		console.log('[MorphService] Formatted content length:', content.length);
-
-		// Make API request to Morph
-		console.log('[MorphService] Making API request to Morph...');
-		const response = await fetch('https://morphllm.com/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${apiKey}`,
-			},
-			body: JSON.stringify({
-				model,
-				messages: [
-					{
-						role: 'user',
-						content,
-					}
-				],
-				stream: false,
-			}),
-		});
-
-		console.log('[MorphService] Response status:', response.status, response.statusText);
+		// Get IPC channel to electron-main
+		const channel = this._mainProcessService.getChannel('void-channel-morph');
 		
-		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-			console.error('[MorphService] API error:', errorData);
-			throw new Error(`Morph API error: ${errorData.error?.message || response.statusText}`);
-		}
-
-		const data = await response.json();
-		console.log('[MorphService] Response received, parsing...');
+		console.log('[MorphService] Calling Morph SDK via IPC channel...');
 		
-		// Extract the applied code from the response
-		const appliedCode = data.choices?.[0]?.message?.content;
-		if (!appliedCode) {
-			console.error('[MorphService] No content in response:', data);
-			throw new Error('Morph API returned no content');
-		}
+		try {
+			// Call the main process to use Morph SDK
+			const appliedCode = await channel.call('applyCodeChange', {
+				instruction,
+				originalCode,
+				updatedCode,
+				filePath: 'temp.ts', // Temp file name, actual path created in main process
+				apiKey
+			}) as string;
 
-		console.log('[MorphService] Successfully received applied code, length:', appliedCode.length);
-		return appliedCode;
+			console.log('[MorphService] Successfully received applied code, length:', appliedCode.length);
+			return appliedCode;
+		} catch (error) {
+			console.error('[MorphService] IPC call failed:', error);
+			throw error;
+		}
 	}
 }
 

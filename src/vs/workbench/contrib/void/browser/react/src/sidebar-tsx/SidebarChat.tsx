@@ -3354,17 +3354,6 @@ export const SidebarChat = () => {
 	// Detect ANY tool call activity (native or XML) - ensure boolean
 	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
 	
-	// Debug: log loading indicator state
-	console.log('[SidebarChat] Loading indicator state:', {
-		isRunning,
-		isAnyToolActivity,
-		hasToolName,
-		toolIsGenerating,
-		isGeneratingXMLToolCall,
-		shouldShowTyping: isRunning === 'LLM' && !isAnyToolActivity,
-		shouldShowTool: isRunning === 'tool' || isAnyToolActivity
-	});
-	
 	// Debug: log tool state
 	if (toolCallSoFar || isGeneratingXMLToolCall) {
 		console.log('[SidebarChat] Tool generation state:', {

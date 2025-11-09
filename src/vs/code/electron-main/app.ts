@@ -134,6 +134,7 @@ import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidS
 import { IVoidSCMService } from '../../workbench/contrib/void/common/voidSCMTypes.js';
 import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChannel.js';
 import { CodeExecutionChannel } from '../../workbench/contrib/void/electron-main/codeExecutionChannel.js';
+import { MorphChannel } from '../../workbench/contrib/void/electron-main/morphChannel.js';
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -1258,6 +1259,10 @@ export class CodeApplication extends Disposable {
 		// Void - Code Execution with isolated-vm
 		const codeExecutionChannel = new CodeExecutionChannel();
 		mainProcessElectronServer.registerChannel('void-channel-code-execution', codeExecutionChannel);
+
+		// Void - Morph Fast Apply API
+		const morphChannel = new MorphChannel();
+		mainProcessElectronServer.registerChannel('void-channel-morph', morphChannel);
 
 		// Extension Host Debug Broadcasting
 		const electronExtensionHostDebugBroadcastChannel = new ElectronExtensionHostDebugBroadcastChannel(accessor.get(IWindowsMainService));
