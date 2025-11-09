@@ -117,6 +117,7 @@ export const modelFilterOfFeatureName: {
 	'Ctrl+K': { filter: o => true, emptyMessage: null, },
 	'Apply': { filter: o => true, emptyMessage: null, },
 	'SCM': { filter: o => true, emptyMessage: null, },
+	'Vision': { filter: o => true, emptyMessage: null, }, // All models can be used for vision processing
 }
 
 
@@ -214,9 +215,9 @@ const _validatedModelState = (state: Omit<VoidSettingsState, '_modelOptions'>): 
 const defaultState = () => {
 	const d: VoidSettingsState = {
 		settingsOfProvider: deepClone(defaultSettingsOfProvider),
-		modelSelectionOfFeature: { 'Chat': null, 'Ctrl+K': null, 'Autocomplete': null, 'Apply': null, 'SCM': null },
+		modelSelectionOfFeature: { 'Chat': null, 'Ctrl+K': null, 'Autocomplete': null, 'Apply': null, 'SCM': null, 'Vision': null },
 		globalSettings: deepClone(defaultGlobalSettings),
-		optionsOfModelSelection: { 'Chat': {}, 'Ctrl+K': {}, 'Autocomplete': {}, 'Apply': {}, 'SCM': {} },
+		optionsOfModelSelection: { 'Chat': {}, 'Ctrl+K': {}, 'Autocomplete': {}, 'Apply': {}, 'SCM': {}, 'Vision': {} },
 		overridesOfModel: deepClone(defaultOverridesOfModel),
 		_modelOptions: [], // computed later
 		mcpUserStateOfName: {},
