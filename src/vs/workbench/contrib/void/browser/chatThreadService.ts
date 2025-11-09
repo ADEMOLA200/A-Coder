@@ -20,7 +20,7 @@ import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, T
 import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
-import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage } from '../common/chatThreadServiceTypes.js';
+import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { shorten } from '../../../../base/common/labels.js';
@@ -31,6 +31,7 @@ import { VoidFileSnapshot } from '../common/editCodeServiceTypes.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { truncate } from '../../../../base/common/strings.js';
 import { THREAD_STORAGE_KEY } from '../common/storageKeys.js';
+import { IVisionService } from './visionService.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { timeout } from '../../../../base/common/async.js';
 import { deepClone } from '../../../../base/common/objects.js';
@@ -327,7 +328,7 @@ export interface IChatThreadService {
 	editUserMessageAndStreamResponse({ userMessage, messageIdx, threadId }: { userMessage: string, messageIdx: number, threadId: string }): Promise<void>;
 
 	// call to add a message
-	addUserMessageAndStreamResponse({ userMessage, threadId }: { userMessage: string, threadId: string }): Promise<void>;
+	addUserMessageAndStreamResponse({ userMessage, threadId, images }: { userMessage: string, threadId: string, images?: ImageAttachment[] }): Promise<void>;
 
 	// approve/reject
 	approveLatestToolRequest(threadId: string): void;
@@ -335,6 +336,10 @@ export interface IChatThreadService {
 
 	// jump to history
 	jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void;
+
+	// message queue
+	getQueuedMessagesCount(threadId: string): number;
+	clearMessageQueue(threadId: string): void;
 
 	focusCurrentChat: () => Promise<void>
 	blurCurrentChat: () => Promise<void>
@@ -353,6 +358,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
+	
+	// Message queue: stores pending messages per thread
+	private readonly messageQueue: { [threadId: string]: Array<{ userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }> } = {}
 
 	// used in checkpointing
 	// private readonly _userModifiedFilesToCheckInCheckpoints = new LRUCache<string, null>(50)
@@ -374,6 +382,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IDirectoryStrService private readonly _directoryStringService: IDirectoryStrService,
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
+		@IVisionService private readonly _visionService: IVisionService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -1021,14 +1030,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
 				}
 				// If we just completed a tool call and model returned empty/short response,
-				// automatically send "continue" to prompt the model to actually respond
+				// automatically continue to prompt the model to actually respond
 				// We use 200 chars as threshold because models often say "let me check..." but then stop
 				// This applies to BOTH XML and native tool calling models
+				// NOTE: This is SILENT - no "continue" message is added to chat history
 				else if (justCompletedToolCall && info.fullText.trim().length < 200) {
-					console.log(`[chatThreadService] Model returned short response (${info.fullText.trim().length} chars) after tool call, auto-continuing...`)
-					// Add a "continue" user message to prompt the model
-					const defaultMessageState = { stagingSelections: [], isBeingEdited: false }
-					this._addMessageToThread(threadId, { role: 'user', content: 'continue', displayContent: 'continue', selections: null, state: defaultMessageState })
+					console.log(`[chatThreadService] Model returned short response (${info.fullText.trim().length} chars) after tool call, silently auto-continuing...`)
+					// Don't add visible "continue" message - just continue the loop
 					shouldSendAnotherMessage = true
 					justCompletedToolCall = false // Reset flag
 				}
@@ -1037,6 +1045,35 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				else {
 					console.log(`[chatThreadService] Text-only response, stopping (shouldSendAnotherMessage=${shouldSendAnotherMessage})`)
 					justCompletedToolCall = false // Reset flag
+					
+					// Check for "About to Act" pattern - LLM announcing it will use a tool
+					// If detected, auto-continue to prompt it to actually execute the action
+					const detectAboutToAct = (text: string): boolean => {
+						const trimmed = text.trim();
+						if (!trimmed.endsWith(':')) return false;
+						
+						const lastPart = trimmed.split(/[.!]/).pop()?.toLowerCase() || '';
+						
+						// Detect action announcements with various phrase patterns
+						// Supports: "Let me", "Let me also", "I'll", "I'll also", "I will", "Additionally", "Next", "Now", "First"
+						const actionVerbs = '(edit|modify|update|change|fix|read|check|look at|examine|view|create|add|make|delete|remove|run|execute)';
+						const patterns = [
+							new RegExp(`(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*${actionVerbs}`)
+						];
+						
+						return patterns.some(pattern => lastPart.match(pattern));
+					};
+					
+					if (detectAboutToAct(info.fullText)) {
+						console.log(`[chatThreadService] Detected 'About to Act' pattern, auto-continuing...`)
+						// Don't add visible "continue" message - just continue the loop
+						shouldSendAnotherMessage = true
+					}
+					// Check if there are queued messages to process
+					else if (this._hasQueuedMessages(threadId)) {
+						console.log(`[chatThreadService] Found queued messages, will process next`)
+						shouldSendAnotherMessage = true
+					}
 				}
 
 			} // end while (attempts)
@@ -1050,6 +1087,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// capture number of messages sent
 		this._metricsService.capture('Agent Loop Done', { nMessagesSent, chatMode })
+		
+		// Process next queued message if any
+		if (!isRunningWhenEnd) {
+			await this._processNextQueuedMessage(threadId)
+		}
 	}
 
 
@@ -1373,7 +1415,7 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 
 
-	private async _addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], threadId: string }) {
+	private async _addUserMessageAndStreamResponse({ userMessage, _chatSelections, images, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], images?: ImageAttachment[], threadId: string }) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
@@ -1389,11 +1431,34 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 
 		// add user's message to chat history
-		const instructions = userMessage
+		let instructions = userMessage
 		const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
 
+		// Process images with vision model if present and enabled
+		if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
+			try {
+				console.log(`[chatThreadService] Processing ${images.length} image(s) with vision model...`);
+				const imageDescriptions = await this._visionService.processImages(images, userMessage);
+				
+				// Append image descriptions to user message
+				if (imageDescriptions) {
+					instructions = userMessage 
+						? `${userMessage}\n\n[Image Analysis]\n${imageDescriptions}`
+						: `[Image Analysis]\n${imageDescriptions}`;
+					console.log('[chatThreadService] Image processing complete, descriptions added to message');
+				}
+			} catch (error) {
+				console.error('[chatThreadService] Error processing images:', error);
+				// Show error to user but continue with message
+				this._notificationService.notify({
+					severity: Severity.Warning,
+					message: `Failed to process images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+				});
+			}
+		}
+
 		const userMessageContent = await chat_userMessageContent(instructions, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService }) // user message + names of files (NOT content)
-		const userHistoryElt: ChatMessage = { role: 'user', content: userMessageContent, displayContent: instructions, selections: currSelns, state: defaultMessageState }
+		const userHistoryElt: ChatMessage = { role: 'user', content: userMessageContent, displayContent: instructions, selections: currSelns, images, state: defaultMessageState }
 		this._addMessageToThread(threadId, userHistoryElt)
 
 		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
@@ -1410,31 +1475,22 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 
 
-	async addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], threadId: string }) {
+	async addUserMessageAndStreamResponse({ userMessage, _chatSelections, images, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], images?: ImageAttachment[], threadId: string }) {
 		const thread = this.state.allThreads[threadId];
 		if (!thread) return
 
-		// if there's a current checkpoint, delete all messages after it
-		if (thread.state.currCheckpointIdx !== null) {
-			const checkpointIdx = thread.state.currCheckpointIdx;
-			const newMessages = thread.messages.slice(0, checkpointIdx + 1);
+		// Check if the thread is currently running
+		const isRunning = this.streamState[threadId]?.isRunning;
 
-			// Update the thread with truncated messages
-			const newThreads = {
-				...this.state.allThreads,
-				[threadId]: {
-					...thread,
-					lastModified: new Date().toISOString(),
-					messages: newMessages,
-				}
-			};
-			this._storeAllThreads(newThreads);
-			this._setState({ allThreads: newThreads });
+		// If the thread is running, queue the message instead of aborting
+		if (isRunning) {
+			console.log(`[chatThreadService] Thread ${threadId} is currently running. Queueing message.`);
+			this._queueMessage(threadId, { userMessage, selections: _chatSelections, images });
+			return;
 		}
 
 		// Now call the original method to add the user message and stream the response
-		await this._addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId });
-
+		await this._addUserMessageAndStreamResponse({ userMessage, _chatSelections, images, threadId });
 	}
 
 	editUserMessageAndStreamResponse: IChatThreadService['editUserMessageAndStreamResponse'] = async ({ userMessage, messageIdx, threadId }) => {
@@ -1465,6 +1521,56 @@ We only need to do it for files that were edited since `from`, ie files between 
 		this._addUserMessageAndStreamResponse({ userMessage, _chatSelections: currSelns, threadId })
 	}
 
+	// ---------- Message Queue Methods ----------
+	
+	private _queueMessage(threadId: string, message: { userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }) {
+		if (!this.messageQueue[threadId]) {
+			this.messageQueue[threadId] = [];
+		}
+		this.messageQueue[threadId].push(message);
+		console.log(`[chatThreadService] Queued message for thread ${threadId}. Queue length: ${this.messageQueue[threadId].length}`);
+		// Fire event to update UI
+		this._onDidChangeCurrentThread.fire();
+	}
+	
+	private _hasQueuedMessages(threadId: string): boolean {
+		return !!(this.messageQueue[threadId] && this.messageQueue[threadId].length > 0);
+	}
+	
+	private async _processNextQueuedMessage(threadId: string) {
+		if (!this._hasQueuedMessages(threadId)) return;
+		
+		const nextMessage = this.messageQueue[threadId].shift();
+		if (!nextMessage) return;
+		
+		console.log(`[chatThreadService] Processing queued message. Remaining in queue: ${this.messageQueue[threadId].length}`);
+		// Fire event to update UI
+		this._onDidChangeCurrentThread.fire();
+		
+		// Small delay to ensure UI updates
+		await timeout(100);
+		
+		// Process the queued message
+		await this._addUserMessageAndStreamResponse({ 
+			userMessage: nextMessage.userMessage, 
+			_chatSelections: nextMessage.selections, 
+			images: nextMessage.images,
+			threadId 
+		});
+	}
+	
+	getQueuedMessagesCount(threadId: string): number {
+		return this.messageQueue[threadId]?.length || 0;
+	}
+	
+	clearMessageQueue(threadId: string) {
+		if (this.messageQueue[threadId]) {
+			this.messageQueue[threadId] = [];
+			console.log(`[chatThreadService] Cleared message queue for thread ${threadId}`);
+			this._onDidChangeCurrentThread.fire();
+		}
+	}
+	
 	// ---------- the rest ----------
 
 	private _getAllSeenFileURIs(threadId: string) {

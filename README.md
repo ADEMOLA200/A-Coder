@@ -22,7 +22,56 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 - ⚠️ [Ollama Cloud Tool Calling Bug](./OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
 
 
-## Recent Fixes
+## Recent Features & Fixes
+
+### 🖼️ Vision Support (NEW!)
+**Feature:** Upload images to chat via drag & drop or copy/paste. Images are processed by a dedicated vision model to generate descriptions that work with ANY LLM.
+
+**Architecture:**
+- Vision is a separate feature with its own model selection
+- Images processed by vision model (GPT-4V, Claude 3, Gemini, etc.)
+- Descriptions appended to user message
+- Main chat LLM receives text-only message (works with non-vision models!)
+
+**Benefits:**
+- ✅ Works with ANY chat model (GPT-3.5, Llama, Mistral, etc.)
+- ✅ User controls which vision model processes images
+- ✅ Cost optimization (use cheaper vision models)
+- ✅ Universal compatibility
+
+**Usage:**
+1. Enable "Vision Support" in Settings → Feature Options
+2. Select your preferred vision model
+3. Drag & drop or paste images into chat
+4. Images are analyzed and descriptions added to your message
+
+**Details:** See [VISION_SUPPORT_IMPLEMENTATION.md](./VISION_SUPPORT_IMPLEMENTATION.md)
+
+---
+
+### 📬 Message Queue Visual Indicator (NEW!)
+**Feature:** Clear visual feedback when messages are queued while LLM is running.
+
+**UI Improvements:**
+- Shows banner: "X message(s) queued"
+- Displays hint: "Enter to send queued message (⏎)"
+- Updates input placeholder dynamically
+- Real-time count updates
+
+**User Experience:**
+- Before: Silent queuing, user confusion
+- After: Clear visual feedback, user knows exactly what's happening
+
+---
+
+### 🚫 Empty Message Filter (FIXED)
+**Issue:** LLMs sometimes returned empty responses showing as "(empty message)" in chat.
+
+**Fix:** Filter out empty assistant messages before rendering in UI.
+
+**Result:** Clean chat history without "(empty message)" clutter.
+
+---
 
 ### ✅ Ollama Cloud Tool Calling (FIXED)
 **Issue:** Ollama Cloud models were returning `500 unmarshal` errors when using native tool calling.

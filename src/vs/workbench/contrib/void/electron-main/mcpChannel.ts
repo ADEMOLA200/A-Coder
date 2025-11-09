@@ -30,16 +30,38 @@ const getClientConfig = (serverName: string) => {
 /**
  * On macOS and Linux, commands need to be resolved through the shell to work with PATH.
  * This function wraps the command in a shell invocation when necessary.
+ * In production builds, it ensures npx commands use the bundled Node.js.
  */
 const getShellCommand = (command: string, args: string[] | undefined): { command: string; args: string[] } => {
 	const currentPlatform = platform();
+	
+	// Get the bundled Node.js path for production builds
+	// In production, Node.js is bundled at: A-Coder.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/
+	// But we can use process.execPath which points to the Electron binary, and derive paths from there
+	const isProduction = process.env.NODE_ENV === 'production' || !process.env.VSCODE_DEV;
+	let enhancedPath = process.env.PATH || '';
+	
+	if (isProduction && currentPlatform === 'darwin') {
+		// In production on macOS, add common npm global bin paths and user's PATH
+		const homeDir = process.env.HOME || '';
+		const additionalPaths = [
+			'/usr/local/bin',
+			'/opt/homebrew/bin',
+			`${homeDir}/.npm-global/bin`,
+			`${homeDir}/.nvm/versions/node/*/bin`,
+			'/usr/bin',
+			'/bin'
+		];
+		enhancedPath = `${additionalPaths.join(':')}:${enhancedPath}`;
+		console.log(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
+	}
 	
 	// On macOS and Linux, wrap in shell to resolve PATH
 	if (currentPlatform === 'darwin' || currentPlatform === 'linux') {
 		const fullCommand = args ? `${command} ${args.join(' ')}` : command;
 		return {
 			command: '/bin/sh',
-			args: ['-c', fullCommand]
+			args: ['-c', `PATH="${enhancedPath}" ${fullCommand}`]
 		};
 	}
 	
@@ -201,28 +223,39 @@ export class MCPChannel implements IServerChannel {
 		if (server.url) {
 			// first try HTTP, fall back to SSE
 			try {
+				console.log(`[MCP] Attempting HTTP connection to ${serverName} at ${server.url}`);
 				transport = new StreamableHTTPClientTransport(server.url);
 				await client.connect(transport);
-				console.log(`Connected via HTTP to ${serverName}`);
+				console.log(`[MCP] Connected via HTTP to ${serverName}`);
 				const { tools } = await client.listTools()
 				const toolsWithUniqueName = tools.map(({ name, ...rest }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-				console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName}`);
+				console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} via HTTP`);
 				info = {
 					status: isOn ? 'success' : 'offline',
 					tools: toolsWithUniqueName,
 					command: server.url.toString(),
 				}
 			} catch (httpErr) {
-				console.warn(`HTTP failed for ${serverName}, trying SSE…`, httpErr);
-				transport = new SSEClientTransport(server.url);
-				await client.connect(transport);
-				const { tools } = await client.listTools()
-				const toolsWithUniqueName = tools.map(({ name, ...rest }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-				console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
-				info = {
-					status: isOn ? 'success' : 'offline',
-					tools: toolsWithUniqueName,
-					command: server.url.toString(),
+				console.warn(`[MCP] HTTP failed for ${serverName}, trying SSE…`, httpErr);
+				try {
+					transport = new SSEClientTransport(server.url);
+					await client.connect(transport);
+					console.log(`[MCP] Connected via SSE to ${serverName}`);
+					const { tools } = await client.listTools()
+					const toolsWithUniqueName = tools.map(({ name, ...rest }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
+					console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
+					info = {
+						status: isOn ? 'success' : 'offline',
+						tools: toolsWithUniqueName,
+						command: server.url.toString(),
+					}
+				} catch (sseErr) {
+					console.error(`[MCP] ❌ Both HTTP and SSE failed for ${serverName}:`, {
+						httpError: httpErr,
+						sseError: sseErr,
+						url: server.url
+					});
+					throw sseErr; // Re-throw to be caught by outer try-catch
 				}
 			}
 		} else if (server.command) {

@@ -1340,6 +1340,37 @@ export const Settings = () => {
 											</div>
 										</div>
 
+										{/* Vision Support Section */}
+										<ErrorBoundary>
+											<div>
+												<h4 className={`text-base`}>Vision Support</h4>
+												<div className='text-sm text-void-fg-3 mt-1'>
+													Enable image uploads in chat. Images are processed by a vision model to generate descriptions that work with any LLM.
+												</div>
+
+												<div className='my-2'>
+													{/* Enable Switch */}
+													<div className='flex items-center gap-x-2 my-2'>
+														<VoidSwitch
+															size='xs'
+															value={settingsState.globalSettings.enableVisionSupport}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('enableVisionSupport', newVal)}
+														/>
+														<span className='text-void-fg-3 text-xs pointer-events-none'>
+															{settingsState.globalSettings.enableVisionSupport ? 'Enabled' : 'Disabled'}
+														</span>
+													</div>
+
+													{/* Model Dropdown */}
+													{settingsState.globalSettings.enableVisionSupport && (
+														<div className='my-2'>
+															<div className='text-xs text-void-fg-3 mb-1'>Vision Model:</div>
+															<ModelDropdown featureName={'Vision'} className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1' />
+														</div>
+													)}
+												</div>
+											</div>
+										</ErrorBoundary>
 
 
 										<div className='w-full'>

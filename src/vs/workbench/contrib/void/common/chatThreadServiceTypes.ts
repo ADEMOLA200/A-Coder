@@ -46,6 +46,13 @@ export type CheckpointEntry = {
 }
 
 
+// Image attachment for vision-capable models
+export type ImageAttachment = {
+	base64: string; // base64 encoded image data (without data:image/... prefix)
+	mimeType: string; // e.g., 'image/png', 'image/jpeg'
+	name?: string; // optional filename
+}
+
 // WARNING: changing this format is a big deal!!!!!! need to migrate old format to new format on users' computers so people don't get errors.
 export type ChatMessage =
 	| {
@@ -53,6 +60,7 @@ export type ChatMessage =
 		content: string; // content displayed to the LLM on future calls - allowed to be '', will be replaced with (empty)
 		displayContent: string; // content displayed to user  - allowed to be '', will be ignored
 		selections: StagingSelectionItem[] | null; // the user's selection
+		images?: ImageAttachment[]; // optional images for vision models
 		state: {
 			stagingSelections: StagingSelectionItem[];
 			isBeingEdited: boolean;
