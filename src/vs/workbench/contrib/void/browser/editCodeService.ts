@@ -1334,6 +1334,10 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 
 	public async instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks }: { uri: URI, searchReplaceBlocks: string }) {
+		console.log('[editCodeService] instantlyApplySearchReplaceBlocks called');
+		console.log('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
+		console.log('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
+		
 		// start diffzone
 		const res = this._startStreamingDiffZone({
 			uri,
@@ -1370,6 +1374,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			// Try Morph Fast Apply if enabled
 			if (this._settingsService.state.globalSettings.enableMorphFastApply && 
 			    this._settingsService.state.globalSettings.morphApiKey) {
+				console.log('[editCodeService] Attempting to use Morph Fast Apply...');
 				try {
 					await this._applyWithMorph(uri, searchReplaceBlocks);
 					console.log('[editCodeService] Successfully applied changes using Morph Fast Apply');
@@ -1379,6 +1384,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 					this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
 				}
 			} else {
+				console.log('[editCodeService] Using standard apply (Morph disabled or no API key)');
 				// Standard apply logic
 				this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
 			}
