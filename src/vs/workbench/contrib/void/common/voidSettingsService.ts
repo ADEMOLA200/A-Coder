@@ -186,9 +186,9 @@ const _validatedModelState = (state: Omit<VoidSettingsState, '_modelOptions'>): 
 		const modelOptionsForThisFeature = newModelOptions.filter((o) => filter(o.selection, filterOpts))
 
 		const modelSelectionAtFeature = newModelSelectionOfFeature[featureName]
-		const selnIdx = modelSelectionAtFeature === null ? -1 : modelOptionsForThisFeature.findIndex(m => modelSelectionsEqual(m.selection, modelSelectionAtFeature))
+		const selnIdx = modelSelectionAtFeature === null ? -1 : modelOptionsForThisFeature.findIndex(m => modelSelectionsEqual(m.selection, modelSelectionAtFeature!))
 
-		if (selnIdx !== -1) continue // no longer in list, so update to 1st in list or null
+		if (selnIdx !== -1) continue // still in list, no need to update
 
 		newModelSelectionOfFeature = {
 			...newModelSelectionOfFeature,
@@ -215,7 +215,14 @@ const _validatedModelState = (state: Omit<VoidSettingsState, '_modelOptions'>): 
 const defaultState = () => {
 	const d: VoidSettingsState = {
 		settingsOfProvider: deepClone(defaultSettingsOfProvider),
-		modelSelectionOfFeature: { 'Chat': null, 'Ctrl+K': null, 'Autocomplete': null, 'Apply': null, 'SCM': null, 'Vision': null },
+		modelSelectionOfFeature: { 
+			'Chat': null, 
+			'Ctrl+K': null, 
+			'Autocomplete': null, 
+			'Apply': null, 
+			'SCM': null, 
+			'Vision': { providerName: 'ollama', modelName: 'qwen3-vl:235b-instruct-cloud' } // Default vision model
+		},
 		globalSettings: deepClone(defaultGlobalSettings),
 		optionsOfModelSelection: { 'Chat': {}, 'Ctrl+K': {}, 'Autocomplete': {}, 'Apply': {}, 'SCM': {}, 'Vision': {} },
 		overridesOfModel: deepClone(defaultOverridesOfModel),
