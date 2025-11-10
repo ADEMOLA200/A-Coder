@@ -1435,10 +1435,10 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 	return <div
 		// align chatbubble accoridng to role
-		className={`
-			${mode === 'edit' ? 'w-full max-w-full'
-				: mode === 'display' ? `self-end w-fit max-w-full whitespace-pre-wrap` : '' // user words should be pre
-			}
+	className={`
+		${mode === 'edit' ? 'w-full max-w-full'
+			: mode === 'display' ? 'self-end w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
+		}
 
         ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-50' : ''}
     `}
