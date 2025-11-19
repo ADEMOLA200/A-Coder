@@ -1412,7 +1412,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		// align chatbubble accoridng to role
 	className={`
 		${mode === 'edit' ? 'w-full max-w-full'
-			: mode === 'display' ? 'w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
+			: mode === 'display' ? 'self-end w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
 		}
 
         ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-50' : ''}
@@ -3487,7 +3487,7 @@ export const SidebarChat = () => {
 				return true;
 			})
 			.map((message, i) => {
-				return <div key={i} className={`mb-4 flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+				return <div key={i} className="mb-4">
 					<ChatBubble
 						currCheckpointIdx={currCheckpointIdx}
 						chatMessage={message}
