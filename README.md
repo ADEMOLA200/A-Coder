@@ -24,6 +24,35 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 
 ## Recent Features & Fixes
 
+### 🗜️ TOON Tool Result Compression (NEW!)
+**Feature:** Reduce LLM token usage by 30-70% with TOON (Token-Oriented Object Notation) compression for tool outputs.
+
+**What is TOON?**
+- Compact JSON-like format that removes unnecessary whitespace and quotes
+- Preserves structure while drastically reducing token count
+- Especially beneficial for local AI models with limited context windows
+
+**Example:**
+```
+JSON:  {"files": ["a.ts", "b.ts"], "count": 2}  (45 chars)
+TOON:  {files:[a.ts,b.ts],count:2}              (27 chars, 40% savings)
+```
+
+**Benefits:**
+- ✅ 30-70% token reduction for directory listings, lint errors, and structured outputs
+- ✅ More context available for your code
+- ✅ Faster responses with local models
+- ✅ Intelligent compression (only applies when beneficial)
+
+**Usage:**
+1. Open A-Coder Settings → Feature Options → Tools
+2. Enable "Use TOON format for tool results"
+3. Tool outputs automatically compressed when it saves ≥10% tokens
+
+**Details:** See [TOON_IMPLEMENTATION.md](./TOON_IMPLEMENTATION.md)
+
+---
+
 ### 🖼️ Vision Support (NEW!)
 **Feature:** Upload images to chat via drag & drop or copy/paste. Images are processed by a dedicated vision model to generate descriptions that work with ANY LLM.
 

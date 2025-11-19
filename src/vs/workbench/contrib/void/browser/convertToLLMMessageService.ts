@@ -473,7 +473,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		@IMCPService private readonly mcpService: IMCPService,
 	) {
 		super();
-		
+
 		// Initialize token counting and compression services
 		this.tokenCountingService = new TokenCountingService();
 		this.compressionService = new ContextCompressionService(this.tokenCountingService);
@@ -577,7 +577,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			contextWindow,
 			supportsSystemMessage,
 		} = getModelCapabilities(providerName, modelName, overridesOfModel)
-		
+
 		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
 		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
 
@@ -613,7 +613,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			contextWindow,
 			supportsSystemMessage,
 		} = getModelCapabilities(providerName, modelName, overridesOfModel)
-		
+
 		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
 		// The actual tool calling will be handled via XML by the provider
 		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
@@ -645,17 +645,17 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 		// Apply context window compression if needed
 		const fullModelName = `${providerName}:${modelName}`;
-		const tokenCount = this.tokenCountingService.countMessagesTokens(messages, fullModelName);
+		let tokenCount = this.tokenCountingService.countMessagesTokens(messages, fullModelName);
 		// Use the actual context window from model capabilities, not the hardcoded lookup
 		const contextWindowSize = contextWindow;
-		const usage = tokenCount / contextWindowSize;
+		let usage = tokenCount / contextWindowSize;
 
 		console.log(`[ConvertToLLMMessageService] Token usage: ${tokenCount}/${contextWindowSize} (${(usage * 100).toFixed(1)}%)`);
 
 		// Compress if using more than 80% of context window
 		if (this.compressionService.needsCompression(messages, fullModelName, 0.8)) {
 			console.log(`[ConvertToLLMMessageService] Context window usage high (${(usage * 100).toFixed(1)}%), applying compression...`);
-			
+
 			const { compressedMessages, stats } = this.compressionService.compressMessages(
 				messages,
 				fullModelName,
@@ -668,13 +668,15 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			);
 
 			console.log(`[ConvertToLLMMessageService] Compression complete: ${stats.originalMessageCount} → ${stats.finalMessageCount} messages, ${stats.originalTokens} → ${stats.finalTokens} tokens (${Math.round(stats.finalTokens / stats.originalTokens * 100)}%)`);
-			
+
 			messages = compressedMessages;
+			tokenCount = stats.finalTokens;
+			usage = tokenCount / contextWindowSize;
 		}
 
 		// Return messages with token usage info
-		return { 
-			messages, 
+		return {
+			messages,
 			separateSystemMessage,
 			tokenUsage: {
 				used: tokenCount,

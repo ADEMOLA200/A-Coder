@@ -19,6 +19,7 @@ import { Event, Emitter } from '../../../../base/common/event.js';
 import { InternalToolInfo } from './prompt/prompts.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { MCPUserStateOfName } from './voidSettingsTypes.js';
+import { ToonService } from './toonService.js';
 
 
 type MCPServiceState = {
@@ -61,6 +62,7 @@ class MCPService extends Disposable implements IMCPService {
 
 
 	private readonly channel: IChannel // MCPChannel
+	private readonly toonService: ToonService;
 
 	// list of MCP servers pulled from mcpChannel
 	state: MCPServiceState = {
@@ -84,7 +86,8 @@ class MCPService extends Disposable implements IMCPService {
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 	) {
 		super();
-		this.channel = this.mainProcessService.getChannel('void-channel-mcp')
+		this.channel = this.mainProcessService.getChannel('void-channel-mcp');
+		this.toonService = new ToonService();
 
 
 		const onEvent = (e: MCPServerEventResponse) => {
@@ -310,7 +313,33 @@ class MCPService extends Disposable implements IMCPService {
 		} else {
 			toolResultStr = JSON.stringify(result)
 		}
-		return toolResultStr
+
+		// Try TOON encoding for structured MCP results
+		return this._maybeEncodeToon(result, toolResultStr);
+	}
+
+	private _maybeEncodeToon(data: any, fallbackStr: string): string {
+		const enableToon = this.voidSettingsService.state.globalSettings.enableToolResultTOON;
+
+		if (!enableToon) {
+			return fallbackStr;
+		}
+
+		// Check if TOON would be beneficial
+		if (this.toonService.shouldUseToon(data)) {
+			try {
+				const toonEncoded = this.toonService.encode(data);
+				// Only use TOON if it actually saves space
+				if (toonEncoded.length < fallbackStr.length * 0.9) {
+					return `[TOON]\n${toonEncoded}`;
+				}
+			} catch (e) {
+				// Fall back to regular format if encoding fails
+				console.warn('[MCPService] TOON encoding failed:', e);
+			}
+		}
+
+		return fallbackStr;
 	}
 
 	// toggle MCP server and update isOn in void settings

@@ -21,6 +21,7 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IMorphService } from './morphService.js'
+import { ToonService } from '../common/toonService.js'
 
 
 // tool use for AI
@@ -144,6 +145,8 @@ export class ToolsService implements IToolsService {
 	public callTool: CallBuiltinTool;
 	public stringOfResult: BuiltinToolResultToString;
 
+	private readonly toonService: ToonService;
+
 	constructor(
 		@IFileService fileService: IFileService,
 		@IWorkspaceContextService workspaceContextService: IWorkspaceContextService,
@@ -160,6 +163,7 @@ export class ToolsService implements IToolsService {
 		@IMorphService private readonly morphService: IMorphService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
+		this.toonService = new ToonService();
 
 		this.validateParams = {
 			read_file: (params: RawToolParamsObj) => {
@@ -326,7 +330,7 @@ export class ToolsService implements IToolsService {
 				// Helper to add line numbers to content
 				const addLineNumbers = (content: string, startLineNum: number): string => {
 					const lines = content.split('\n')
-					return lines.map((line, idx) => 
+					return lines.map((line, idx) =>
 						`${startLineNum + idx} | ${line}`
 					).join('\n')
 				}
@@ -335,11 +339,11 @@ export class ToolsService implements IToolsService {
 				if (startLine !== null || endLine !== null) {
 					const startLineNumber = startLine === null ? 1 : startLine
 					const endLineNumber = endLine === null ? totalNumLines : endLine
-					const rawContents = model.getValueInRange({ 
-						startLineNumber, 
-						startColumn: 1, 
-						endLineNumber, 
-						endColumn: Number.MAX_SAFE_INTEGER 
+					const rawContents = model.getValueInRange({
+						startLineNumber,
+						startColumn: 1,
+						endLineNumber,
+						endColumn: Number.MAX_SAFE_INTEGER
 					}, EndOfLinePreference.LF)
 					const fileContents = addLineNumbers(rawContents, startLineNumber)
 					return { result: { fileContents, totalFileLen, hasNextPage: false, totalNumLines } }
@@ -349,11 +353,11 @@ export class ToolsService implements IToolsService {
 				const fromIdx = MAX_FILE_CHARS_PAGE * (pageNumber - 1)
 				const toIdx = Math.min(MAX_FILE_CHARS_PAGE * pageNumber, totalFileLen)
 				const rawContents = fullContents.slice(fromIdx, toIdx)
-				
+
 				// Calculate line number for the start of this page
 				const linesBeforePage = fullContents.slice(0, fromIdx).split('\n').length
 				const fileContents = addLineNumbers(rawContents, linesBeforePage)
-				
+
 				const hasNextPage = toIdx < totalFileLen
 
 				return { result: { fileContents, totalFileLen, hasNextPage, totalNumLines } }
@@ -366,12 +370,12 @@ export class ToolsService implements IToolsService {
 
 				const totalNumLines = model.getLineCount()
 				const fullContents = model.getValue(EndOfLinePreference.LF)
-				
+
 				const { extractFileOutline, formatOutline } = await import('../common/helpers/fileOutline.js');
 				const fileExtension = uri.path.substring(uri.path.lastIndexOf('.'));
 				const outlineItems = extractFileOutline(fullContents, fileExtension);
 				const outline = formatOutline(outlineItems, uri.fsPath);
-				
+
 				return { result: { outline, totalNumLines } }
 			},
 
@@ -472,13 +476,13 @@ export class ToolsService implements IToolsService {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
 				}
 				await editCodeService.callBeforeApplyOrEdit(uri)
-				
+
 				// Check if Morph Fast Apply is enabled for Chat feature
 				const chatModelSelection = this.voidSettingsService.state.modelSelectionOfFeature['Chat'];
-				const useMorph = chatModelSelection 
+				const useMorph = chatModelSelection
 					? this.voidSettingsService.state.optionsOfModelSelection['Chat'][chatModelSelection.providerName]?.[chatModelSelection.modelName]?.morphFastApply
 					: false;
-				
+
 				if (useMorph) {
 					// Use Morph Fast Apply
 					const fileContent = await fileService.readFile(uri);
@@ -493,7 +497,7 @@ export class ToolsService implements IToolsService {
 					// Use standard rewrite
 					editCodeService.instantlyRewriteFile({ uri, newContent });
 				}
-				
+
 				// at end, get lint errors
 				const lintErrorsPromise = Promise.resolve().then(async () => {
 					await timeout(2000)
@@ -509,13 +513,13 @@ export class ToolsService implements IToolsService {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
 				}
 				await editCodeService.callBeforeApplyOrEdit(uri)
-				
+
 				// Check if Morph Fast Apply is enabled for Chat feature
 				const chatModelSelection = this.voidSettingsService.state.modelSelectionOfFeature['Chat'];
-				const useMorph = chatModelSelection 
+				const useMorph = chatModelSelection
 					? this.voidSettingsService.state.optionsOfModelSelection['Chat'][chatModelSelection.providerName]?.[chatModelSelection.modelName]?.morphFastApply
 					: false;
-				
+
 				if (useMorph) {
 					// Use Morph Fast Apply - convert search/replace blocks to Morph format
 					const fileContent = await fileService.readFile(uri);
@@ -544,7 +548,7 @@ export class ToolsService implements IToolsService {
 			run_code: async ({ code, timeout }) => {
 				// Get IPC channel to electron-main
 				const channel = this.getCodeExecutionChannel();
-				
+
 				// Listen for tool call requests from sandbox
 				const toolCallListener = channel.listen('onToolCall');
 				const disposable = toolCallListener((request: { requestId: string; toolName: string; params: any }) => {
@@ -553,7 +557,7 @@ export class ToolsService implements IToolsService {
 						console.error('[run_code] Failed to handle tool call:', err);
 					});
 				});
-				
+
 				try {
 					// Execute code in sandbox
 					const result = await channel.call('executeCode', { code, options: { timeout } });
@@ -596,7 +600,7 @@ export class ToolsService implements IToolsService {
 			read_file: (params, result) => {
 				// Build context header showing what was read
 				let contextHeader = `File: ${params.uri.fsPath}\n`
-				
+
 				// Show what was read
 				if (params.startLine !== null || params.endLine !== null) {
 					const start = params.startLine ?? 1
@@ -605,15 +609,15 @@ export class ToolsService implements IToolsService {
 				} else {
 					contextHeader += `Total lines: ${result.totalNumLines}\n`
 				}
-				
+
 				// Note: Content already has line numbers prefixed
 				contextHeader += `(Line numbers are prefixed to each line as "N | content")\n`
-				
+
 				// Add truncation warning if needed
-				const truncationWarning = result.hasNextPage 
+				const truncationWarning = result.hasNextPage
 					? `\n\n⚠️ FILE TRUNCATED - This file has ${result.totalNumLines} total lines (${result.totalFileLen} characters). You are viewing page ${params.pageNumber}. To read more, call read_file again with page_number=${params.pageNumber + 1}.`
 					: ''
-				
+
 				return `${contextHeader}\`\`\`\n${result.fileContents}\n\`\`\`${truncationWarning}`
 			},
 			outline_file: (params, result) => {
@@ -621,7 +625,8 @@ export class ToolsService implements IToolsService {
 			},
 			ls_dir: (params, result) => {
 				const dirTreeStr = stringifyDirectoryTree1Deep(params, result)
-				return dirTreeStr // + nextPageStr(result.hasNextPage) // already handles num results remaining
+				// Try TOON encoding for structured directory data
+				return this._maybeEncodeToon(result, dirTreeStr)
 			},
 			get_dir_tree: (params, result) => {
 				return result.str
@@ -642,9 +647,12 @@ export class ToolsService implements IToolsService {
 				return lines;
 			},
 			read_lint_errors: (params, result) => {
-				return result.lintErrors ?
-					stringifyLintErrors(result.lintErrors)
-					: 'No lint errors found.'
+				if (!result.lintErrors) {
+					return 'No lint errors found.';
+				}
+				const lintErrorsStr = stringifyLintErrors(result.lintErrors);
+				// Try TOON encoding for structured lint error data
+				return this._maybeEncodeToon(result.lintErrors, lintErrorsStr);
 			},
 			// ---
 			create_file_or_folder: (params, result) => {
@@ -720,6 +728,33 @@ export class ToolsService implements IToolsService {
 	}
 
 
+	/**
+	 * Wrap structured data with TOON encoding if enabled and beneficial
+	 */
+	private _maybeEncodeToon(data: any, fallbackStr: string): string {
+		const enableToon = this.voidSettingsService.state.globalSettings.enableToolResultTOON;
+
+		if (!enableToon) {
+			return fallbackStr;
+		}
+
+		// Check if TOON would be beneficial
+		if (this.toonService.shouldUseToon(data)) {
+			try {
+				const toonEncoded = this.toonService.encode(data);
+				// Only use TOON if it actually saves space
+				if (toonEncoded.length < fallbackStr.length * 0.9) {
+					return `[TOON]\n${toonEncoded}`;
+				}
+			} catch (e) {
+				// Fall back to regular format if encoding fails
+				console.warn('[ToolsService] TOON encoding failed:', e);
+			}
+		}
+
+		return fallbackStr;
+	}
+
 	private _getLintErrors(uri: URI): { lintErrors: LintErrorItem[] | null } {
 		const lintErrors = this.markerService
 			.read({ resource: uri })
@@ -751,11 +786,11 @@ export class ToolsService implements IToolsService {
 		request: { requestId: string; toolName: string; params: any }
 	): Promise<void> {
 		const { requestId, toolName, params } = request;
-		
+
 		try {
 			// Execute the actual tool
 			const toolResult = await (this.callTool as any)[toolName](params);
-			
+
 			// Send success response back to electron-main
 			await channel.call('respondToToolCall', {
 				requestId,

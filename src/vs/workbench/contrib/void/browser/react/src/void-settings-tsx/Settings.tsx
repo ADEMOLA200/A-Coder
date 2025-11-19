@@ -1311,23 +1311,6 @@ export const Settings = () => {
 														</div>
 													})}
 
-												</ErrorBoundary>
-
-												{/* Tool Lint Errors Switch */}
-												<ErrorBoundary>
-
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.includeToolLintErrors}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)}
-														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.includeToolLintErrors ? 'Fix lint errors' : `Fix lint errors`}</span>
-													</div>
-												</ErrorBoundary>
-
-												{/* Auto Accept LLM Changes Switch */}
-												<ErrorBoundary>
 													<div className='flex items-center gap-x-2 my-2'>
 														<VoidSwitch
 															size='xs'
@@ -1335,6 +1318,18 @@ export const Settings = () => {
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)}
 														/>
 														<span className='text-void-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
+													</div>
+
+													<div className='flex items-center gap-x-2 my-2'>
+														<VoidSwitch
+															size='xs'
+															value={settingsState.globalSettings.enableToolResultTOON}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('enableToolResultTOON', newVal)}
+														/>
+														<div className='text-void-fg-3 text-xs pointer-events-none flex flex-col'>
+															<span>Use TOON format for tool results</span>
+															<span className='text-void-fg-4'>Compress structured tool output to reduce LLM tokens.</span>
+														</div>
 													</div>
 												</ErrorBoundary>
 											</div>
@@ -1409,7 +1404,7 @@ export const Settings = () => {
 																	Get your API key from <a href="https://morphllm.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">morphllm.com/dashboard</a>
 																</div>
 															</div>
-															
+
 															{/* Model Selection */}
 															<div>
 																<div className='text-xs text-void-fg-3 mb-1'>Model:</div>

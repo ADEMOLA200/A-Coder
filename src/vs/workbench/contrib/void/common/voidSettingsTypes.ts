@@ -459,6 +459,7 @@ export type GlobalSettings = {
 	enableMorphFastApply: boolean; // Use Morph API for intelligent code application
 	morphApiKey: string; // API key for Morph Fast Apply
 	morphModel: 'morph-v3-fast' | 'morph-v3-large' | 'auto'; // Morph model to use
+	enableToolResultTOON: boolean;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -479,6 +480,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	enableMorphFastApply: false,
 	morphApiKey: '',
 	morphModel: 'auto',
+	enableToolResultTOON: false,
 }
 
 export type GlobalSettingName = keyof GlobalSettings

@@ -1251,8 +1251,16 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		// specialToolFormat: 'openai-style', // Disabled: Ollama Cloud API has bug with native tools (500 unmarshal error)
-		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			}
+		},
 	},
 	// Ollama Cloud models - https://docs.ollama.com/cloud
 	'deepseek-v3.1:671b-cloud': {
@@ -1283,7 +1291,16 @@ const ollamaModelOptions = {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
-		reasoningCapabilities: false,
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			}
+		},
 	},
 	'kimi-k2:1t-cloud': {
 		contextWindow: 128_000,
@@ -1337,7 +1354,16 @@ const ollamaModelOptions = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
 		defaultTemperature: 1.0, // Recommended by MiniMax AI
-		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] }, // ⚠️ Do NOT remove <think> tags - critical for performance
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			}
+		},
 	},
 
 } as const satisfies Record<string, VoidStaticModelInfo>

@@ -32,7 +32,7 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { truncate } from '../../../../base/common/strings.js';
 import { THREAD_STORAGE_KEY } from '../common/storageKeys.js';
 import { IVisionService } from './visionService.js';
-import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
+import { EMPTY_MESSAGE, IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { timeout } from '../../../../base/common/async.js';
 import { deepClone } from '../../../../base/common/objects.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
@@ -45,7 +45,21 @@ import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 // related to retrying when LLM message has error
 const CHAT_RETRIES = 5 // Increased from 3 to handle Ollama errors better
 const RETRY_DELAY = 3000 // Increased from 2500ms to give Ollama more time to recover
+export const AUTO_CONTINUE_CHAR_THRESHOLD = 200;
 
+const isEffectivelyEmptyAssistantResponse = (text: string): boolean => {
+	const trimmed = (text ?? '').trim()
+	return trimmed.length === 0 || trimmed === EMPTY_MESSAGE
+}
+
+const getNormalizedAssistantResponseLength = (text: string): number => {
+	if (isEffectivelyEmptyAssistantResponse(text)) {
+		return 0
+	}
+	return text.trim().length
+}
+
+type AutoContinueReason = 'post_tool_short' | 'about_to_act' | 'queued_message'
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -182,6 +196,7 @@ export type ThreadType = {
 		}
 
 
+		autoContinueEnabled: boolean;
 	};
 }
 
@@ -265,6 +280,7 @@ const newThreadObject = () => {
 			stagingSelections: [],
 			focusedMessageIdx: undefined,
 			linksOfMessageIdx: {},
+			autoContinueEnabled: true, // Enable by default for silent auto-continue on "About to Act" pattern
 		},
 		filesWithUserChanges: new Set()
 	} satisfies ThreadType
@@ -343,6 +359,9 @@ export interface IChatThreadService {
 
 	focusCurrentChat: () => Promise<void>
 	blurCurrentChat: () => Promise<void>
+
+	getAutoContinuePreference(threadId: string): boolean;
+	setAutoContinuePreference(threadId: string, enabled: boolean): void;
 }
 
 export const IChatThreadService = createDecorator<IChatThreadService>('voidChatThreadService');
@@ -358,7 +377,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
-	
+
 	// Message queue: stores pending messages per thread
 	private readonly messageQueue: { [threadId: string]: Array<{ userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }> } = {}
 
@@ -389,7 +408,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		const readThreads = this._readAllThreads() || {}
 
-		const allThreads = readThreads
+		const allThreads = this._ensureThreadStateDefaults(readThreads)
 		this.state = {
 			allThreads: allThreads,
 			currentThreadId: null as unknown as string, // gets set in startNewThread()
@@ -469,13 +488,32 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 	private _storeAllThreads(threads: ChatThreads) {
-		const serializedThreads = JSON.stringify(threads);
+		const normalizedThreads = this._ensureThreadStateDefaults(threads)
+		const serializedThreads = JSON.stringify(normalizedThreads);
 		this._storageService.store(
 			THREAD_STORAGE_KEY,
 			serializedThreads,
 			StorageScope.APPLICATION,
 			StorageTarget.USER
 		);
+	}
+
+	private _ensureThreadStateDefaults(threads: ChatThreads): ChatThreads {
+		const nextThreads: ChatThreads = {}
+		for (const [threadId, thread] of Object.entries(threads)) {
+			if (!thread) {
+				nextThreads[threadId] = thread
+				continue
+			}
+			nextThreads[threadId] = {
+				...thread,
+				state: {
+					...thread.state,
+					autoContinueEnabled: thread.state?.autoContinueEnabled ?? true, // Default to enabled
+				},
+			}
+		}
+		return nextThreads
 	}
 
 
@@ -882,60 +920,60 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				const REPETITION_THRESHOLD = 5; // If same chunk appears 5 times, it's looping
 
 				const llmCancelToken = this._llmMessageService.sendLLMMessage({
-				messagesType: 'chatMessages',
-				chatMode,
-				messages: messages,
-				modelSelection,
-				modelSelectionOptions,
-				overridesOfModel,
-				logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
-				separateSystemMessage: separateSystemMessage,
-				onText: ({ fullText, fullReasoning, toolCall, _rawTextBeforeStripping }) => {
-					const parsed = partitionReasoningContent(fullText, fullReasoning)
-					
-					// Detect repetition: ONLY check text content, NOT tool calls
-					// Tool calls can legitimately repeat (e.g., reading same file multiple times)
-					// Also skip if XML tool call is in progress (detected in raw text before stripping)
-					const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
-					if (!toolCall && !hasXMLToolCallInProgress) {
-						const recentText = parsed.displayText.slice(-50);
-						if (recentText.length > 10) {
-							lastChunks.push(recentText);
-							if (lastChunks.length > MAX_CHUNKS_TO_TRACK) {
-								lastChunks.shift();
-							}
-							
-							// Count how many times this chunk appears
-							const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
-							if (repetitionCount >= REPETITION_THRESHOLD) {
-								console.warn('[chatThreadService] Text repetition detected, aborting LLM...');
-								if (llmCancelToken) {
-									this._llmMessageService.abort(llmCancelToken);
+					messagesType: 'chatMessages',
+					chatMode,
+					messages: messages,
+					modelSelection,
+					modelSelectionOptions,
+					overridesOfModel,
+					logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
+					separateSystemMessage: separateSystemMessage,
+					onText: ({ fullText, fullReasoning, toolCall, _rawTextBeforeStripping }) => {
+						const parsed = partitionReasoningContent(fullText, fullReasoning)
+
+						// Detect repetition: ONLY check text content, NOT tool calls
+						// Tool calls can legitimately repeat (e.g., reading same file multiple times)
+						// Also skip if XML tool call is in progress (detected in raw text before stripping)
+						const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
+						if (!toolCall && !hasXMLToolCallInProgress) {
+							const recentText = parsed.displayText.slice(-50);
+							if (recentText.length > 10) {
+								lastChunks.push(recentText);
+								if (lastChunks.length > MAX_CHUNKS_TO_TRACK) {
+									lastChunks.shift();
 								}
-								return;
+
+								// Count how many times this chunk appears
+								const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
+								if (repetitionCount >= REPETITION_THRESHOLD) {
+									console.warn('[chatThreadService] Text repetition detected, aborting LLM...');
+									if (llmCancelToken) {
+										this._llmMessageService.abort(llmCancelToken);
+									}
+									return;
+								}
 							}
+						} else {
+							// Clear repetition tracking when tool call starts
+							lastChunks = [];
 						}
-					} else {
-						// Clear repetition tracking when tool call starts
-						lastChunks = [];
-					}
-					
-					this._setStreamState(threadId, {
-						isRunning: 'LLM',
-						llmInfo: {
-							displayContentSoFar: parsed.displayText,
-							reasoningSoFar: parsed.reasoningText,
-							toolCallSoFar: toolCall ?? null,
-							_rawTextBeforeStripping, // For XML tool call detection in UI
-						},
-						interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }),
-						tokenUsage, // Preserve token usage during streaming
-					})
-				},
-				onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, }) => {
-					const parsed = partitionReasoningContent(fullText, fullReasoning)
-					resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning } }) // resolve with tool calls
-				},
+
+						this._setStreamState(threadId, {
+							isRunning: 'LLM',
+							llmInfo: {
+								displayContentSoFar: parsed.displayText,
+								reasoningSoFar: parsed.reasoningText,
+								toolCallSoFar: toolCall ?? null,
+								_rawTextBeforeStripping, // For XML tool call detection in UI
+							},
+							interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }),
+							tokenUsage, // Preserve token usage during streaming
+						})
+					},
+					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, }) => {
+						const parsed = partitionReasoningContent(fullText, fullReasoning)
+						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning } }) // resolve with tool calls
+					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })
 					},
@@ -973,7 +1011,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						shouldRetryLLM = true
 						console.log(`[chatThreadService] LLM error, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
 						// Show retry message briefly
-						this._setStreamState(threadId, { 
+						this._setStreamState(threadId, {
 							isRunning: undefined,
 							error: { message: `Retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
 						})
@@ -1004,11 +1042,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// llm res success
 				const { toolCall, info } = llmRes
 
-				console.log(`[chatThreadService] LLM response:`, JSON.stringify({ 
-					hasToolCall: !!toolCall, 
+				console.log(`[chatThreadService] LLM response:`, JSON.stringify({
+					hasToolCall: !!toolCall,
 					toolName: toolCall?.name,
 					fullText: info.fullText,
-					reasoning: info.fullReasoning 
+					reasoning: info.fullReasoning
 				}))
 
 				this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
@@ -1030,7 +1068,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						return
 					}
 					if (awaitingUserApproval) { isRunningWhenEnd = 'awaiting_user' }
-					else { 
+					else {
 						shouldSendAnotherMessage = true
 						justCompletedToolCall = true // Mark that we just completed a tool call
 					}
@@ -1042,45 +1080,50 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// We use 200 chars as threshold because models often say "let me check..." but then stop
 				// This applies to BOTH XML and native tool calling models
 				// NOTE: This is SILENT - no "continue" message is added to chat history
-				else if (justCompletedToolCall && info.fullText.trim().length < 200) {
-					console.log(`[chatThreadService] Model returned short response (${info.fullText.trim().length} chars) after tool call, silently auto-continuing...`)
-					// Don't add visible "continue" message - just continue the loop
+				const normalizedResponseLength = getNormalizedAssistantResponseLength(info.fullText)
+				const isShortAssistantResponse = normalizedResponseLength < AUTO_CONTINUE_CHAR_THRESHOLD
+
+				if (justCompletedToolCall && isShortAssistantResponse && this._shouldAutoContinue(threadId, 'post_tool_short')) {
+					console.log(`[chatThreadService] Model returned short response (${normalizedResponseLength} chars) after tool call, auto-continuing...`)
 					shouldSendAnotherMessage = true
-					justCompletedToolCall = false // Reset flag
+					justCompletedToolCall = false
 				}
 				// Note: Text-only auto-continue is handled by the UI's "Continue" button
 				// Backend auto-continue only happens after tool calls complete (handled above)
 				else {
 					console.log(`[chatThreadService] Text-only response, stopping (shouldSendAnotherMessage=${shouldSendAnotherMessage})`)
 					justCompletedToolCall = false // Reset flag
-					
+
 					// Check for "About to Act" pattern - LLM announcing it will use a tool
 					// If detected, auto-continue to prompt it to actually execute the action
 					const detectAboutToAct = (text: string): boolean => {
 						const trimmed = text.trim();
 						if (!trimmed.endsWith(':')) return false;
-						
+
 						const lastPart = trimmed.split(/[.!]/).pop()?.toLowerCase() || '';
-						
+
 						// Detect action announcements with various phrase patterns
 						// Supports: "Let me", "Let me also", "I'll", "I'll also", "I will", "Additionally", "Next", "Now", "First"
 						const actionVerbs = '(edit|modify|update|change|fix|read|check|look at|examine|view|create|add|make|delete|remove|run|execute)';
 						const patterns = [
 							new RegExp(`(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*${actionVerbs}`)
 						];
-						
+
 						return patterns.some(pattern => lastPart.match(pattern));
 					};
-					
-					if (detectAboutToAct(info.fullText)) {
+
+					if (detectAboutToAct(info.fullText) && isShortAssistantResponse && this._shouldAutoContinue(threadId, 'about_to_act')) {
 						console.log(`[chatThreadService] Detected 'About to Act' pattern, auto-continuing...`)
 						// Don't add visible "continue" message - just continue the loop
 						shouldSendAnotherMessage = true
 					}
 					// Check if there are queued messages to process
-					else if (this._hasQueuedMessages(threadId)) {
+					else if (this._hasQueuedMessagesAvailable(threadId) && this._shouldAutoContinue(threadId, 'queued_message')) {
 						console.log(`[chatThreadService] Found queued messages, will process next`)
 						shouldSendAnotherMessage = true
+					}
+					else {
+						console.log(`[chatThreadService] Assistant response length ${normalizedResponseLength} >= threshold, not auto-continuing.`)
 					}
 				}
 
@@ -1095,7 +1138,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// capture number of messages sent
 		this._metricsService.capture('Agent Loop Done', { nMessagesSent, chatMode })
-		
+
 		// Process next queued message if any
 		if (!isRunningWhenEnd) {
 			await this._processNextQueuedMessage(threadId)
@@ -1439,51 +1482,51 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 
 		// add user's message to chat history
-	const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
+		const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
 
-	// Process images FIRST if present (before adding message)
-	let visionAnalysis: string | undefined;
-	if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
-		// Show typing indicator while processing images
-		this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' });
-		
-		try {
-			visionAnalysis = await this._visionService.processImages(images, userMessage);
-		} catch (error) {
-			console.error(`[chatThreadService] Error processing images:`, error);
-			this._notificationService.notify({
-				severity: Severity.Warning,
-				message: `Failed to process images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-			});
-		} finally {
-			// Clear stream state after processing
-			this._setStreamState(threadId, undefined);
+		// Process images FIRST if present (before adding message)
+		let visionAnalysis: string | undefined;
+		if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
+			// Show typing indicator while processing images
+			this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' });
+
+			try {
+				visionAnalysis = await this._visionService.processImages(images, userMessage);
+			} catch (error) {
+				console.error(`[chatThreadService] Error processing images:`, error);
+				this._notificationService.notify({
+					severity: Severity.Warning,
+					message: `Failed to process images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+				});
+			} finally {
+				// Clear stream state after processing
+				this._setStreamState(threadId, undefined);
+			}
 		}
-	}
 
-	// Build message content with vision analysis if available
-	const messageContent = visionAnalysis 
-		? (userMessage ? `${userMessage}\n\n[Image Analysis]\n${visionAnalysis}` : `[Image Analysis]\n${visionAnalysis}`)
-		: userMessage;
-	
-	let finalContent = await chat_userMessageContent(messageContent, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService })
-	const userHistoryElt: ChatMessage = { 
-		role: 'user', 
-		content: finalContent, 
-		displayContent: userMessage,
-		selections: currSelns, 
-		images, 
-		visionAnalysis, 
-		state: defaultMessageState 
-	}
-	this._addMessageToThread(threadId, userHistoryElt)
+		// Build message content with vision analysis if available
+		const messageContent = visionAnalysis
+			? (userMessage ? `${userMessage}\n\n[Image Analysis]\n${visionAnalysis}` : `[Image Analysis]\n${visionAnalysis}`)
+			: userMessage;
 
-	this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
+		let finalContent = await chat_userMessageContent(messageContent, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService })
+		const userHistoryElt: ChatMessage = {
+			role: 'user',
+			content: finalContent,
+			displayContent: userMessage,
+			selections: currSelns,
+			images,
+			visionAnalysis,
+			state: defaultMessageState
+		}
+		this._addMessageToThread(threadId, userHistoryElt)
 
-	this._wrapRunAgentToNotify(
-		this._runChatAgent({ threadId, ...this._currentModelSelectionProps(), }),
-		threadId,
-	)
+		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
+
+		this._wrapRunAgentToNotify(
+			this._runChatAgent({ threadId, ...this._currentModelSelectionProps(), }),
+			threadId,
+		)
 
 		// scroll to bottom
 		this.state.allThreads[threadId]?.state.mountedInfo?.whenMounted.then(m => {
@@ -1539,7 +1582,7 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 
 	// ---------- Message Queue Methods ----------
-	
+
 	private _queueMessage(threadId: string, message: { userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }) {
 		if (!this.messageQueue[threadId]) {
 			this.messageQueue[threadId] = [];
@@ -1548,38 +1591,53 @@ We only need to do it for files that were edited since `from`, ie files between 
 		console.log(`[chatThreadService] Queued message for thread ${threadId}. Queue length: ${this.messageQueue[threadId].length}`);
 		// Fire event to update UI
 		this._onDidChangeCurrentThread.fire();
+		// Trigger processing logic if we're idle
+		if (!this.streamState[threadId]?.isRunning) {
+			this._processNextQueuedMessage(threadId)
+		}
 	}
-	
+
 	private _hasQueuedMessages(threadId: string): boolean {
 		return !!(this.messageQueue[threadId] && this.messageQueue[threadId].length > 0);
 	}
-	
+
+	private _hasQueuedMessagesAvailable(threadId: string): boolean {
+		return this._hasQueuedMessages(threadId)
+	}
+
 	private async _processNextQueuedMessage(threadId: string) {
-		if (!this._hasQueuedMessages(threadId)) return;
-		
+		if (!this._hasQueuedMessages(threadId)) {
+			// ensure UI updates if queue emptied
+			this._onDidChangeCurrentThread.fire();
+			return;
+		}
+		if (this.streamState[threadId]?.isRunning) {
+			return;
+		}
+
 		const nextMessage = this.messageQueue[threadId].shift();
 		if (!nextMessage) return;
-		
+
 		console.log(`[chatThreadService] Processing queued message. Remaining in queue: ${this.messageQueue[threadId].length}`);
 		// Fire event to update UI
 		this._onDidChangeCurrentThread.fire();
-		
+
 		// Small delay to ensure UI updates
 		await timeout(100);
-		
+
 		// Process the queued message
-		await this._addUserMessageAndStreamResponse({ 
-			userMessage: nextMessage.userMessage, 
-			_chatSelections: nextMessage.selections, 
+		await this._addUserMessageAndStreamResponse({
+			userMessage: nextMessage.userMessage,
+			_chatSelections: nextMessage.selections,
 			images: nextMessage.images,
-			threadId 
+			threadId
 		});
 	}
-	
+
 	getQueuedMessagesCount(threadId: string): number {
 		return this.messageQueue[threadId]?.length || 0;
 	}
-	
+
 	clearMessageQueue(threadId: string) {
 		if (this.messageQueue[threadId]) {
 			this.messageQueue[threadId] = [];
@@ -1587,7 +1645,7 @@ We only need to do it for files that were edited since `from`, ie files between 
 			this._onDidChangeCurrentThread.fire();
 		}
 	}
-	
+
 	// ---------- the rest ----------
 
 	private _getAllSeenFileURIs(threadId: string) {
@@ -1960,30 +2018,30 @@ We only need to do it for files that were edited since `from`, ie files between 
 		}
 		this._storeAllThreads(newThreads)
 		this._setState({ allThreads: newThreads }) // the current thread just changed (it had a message added to it)
-		
+
 		// Recalculate token usage after adding message
 		this._updateTokenUsage(threadId)
 	}
-	
+
 	/**
 	 * Recalculate and update token usage for the current thread
 	 */
 	private async _updateTokenUsage(threadId: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return
-		
+
 		const modelSelection = this._settingsService.state.modelSelectionOfFeature['Chat']
 		if (!modelSelection) return
-		
+
 		const { chatMode } = this._settingsService.state.globalSettings
-		
+
 		try {
 			const { tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 				chatMessages: thread.messages,
 				modelSelection,
 				chatMode
 			})
-			
+
 			// Update stream state with new token usage
 			const currentState = this.streamState[threadId]
 			if (currentState) {
@@ -2133,6 +2191,27 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 	}
 
+	private _updateThreadStateAndStore(threadId: string, state: Partial<ThreadType['state']>): void {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+
+		const updatedThread: ThreadType = {
+			...thread,
+			state: {
+				...thread.state,
+				...state
+			}
+		}
+
+		const newThreads = {
+			...this.state.allThreads,
+			[threadId]: updatedThread
+		}
+
+		this._storeAllThreads(newThreads)
+		this._setState({ allThreads: newThreads })
+	}
+
 
 	// closeCurrentStagingSelectionsInThread = () => {
 	// 	const currThread = this.getCurrentThreadState()
@@ -2168,6 +2247,21 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 	setCurrentThreadState = (newState: Partial<ThreadType['state']>) => {
 		this._setThreadState(this.state.currentThreadId, newState)
+	}
+
+	getAutoContinuePreference(threadId: string): boolean {
+		return this.state.allThreads[threadId]?.state.autoContinueEnabled ?? true // Default to enabled
+	}
+
+	setAutoContinuePreference(threadId: string, enabled: boolean): void {
+		this._updateThreadStateAndStore(threadId, { autoContinueEnabled: enabled })
+	}
+
+	private _shouldAutoContinue(threadId: string, reason: AutoContinueReason): boolean {
+		if (reason === 'queued_message') {
+			return true
+		}
+		return this.getAutoContinuePreference(threadId)
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

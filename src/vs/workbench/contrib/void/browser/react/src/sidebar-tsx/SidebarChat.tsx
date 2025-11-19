@@ -26,7 +26,7 @@ import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Pencil, U
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
-import { IsRunningType } from '../../../chatThreadService.js';
+import { AUTO_CONTINUE_CHAR_THRESHOLD, IsRunningType } from '../../../chatThreadService.js';
 import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg, rejectBg, rejectBorder } from '../../../../common/helpers/colors.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_INACTIVE_TIME } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
@@ -40,7 +40,7 @@ import { FadeIn, SlideInRight, TypingIndicator, ToolLoadingIndicator } from './C
 // Image Preview Component
 const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemove: (index: number) => void }) => {
 	if (images.length === 0) return null;
-	
+
 	return (
 		<div className="flex flex-wrap gap-2 mb-2 p-2 bg-void-bg-2 rounded-md border border-void-border-3">
 			{images.map((image, index) => (
@@ -80,11 +80,11 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 			</div>
 		);
 	}
-	
+
 	const { used, total, percentage } = tokenUsage;
 	const isHigh = percentage >= 80;
 	const isMedium = percentage >= 50 && percentage < 80;
-	
+
 	return (
 		<div className='flex items-center gap-1.5 text-xs text-void-fg-3 px-2 py-1 rounded bg-void-bg-2 border border-void-border-2'>
 			<span className='font-mono'>{used.toLocaleString()}/{total.toLocaleString()}</span>
@@ -459,7 +459,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					{isStreaming && loadingIcon}
 
 					{isStreaming && <ButtonStop onClick={onAbort} />}
-					
+
 					<ButtonSubmit
 						onClick={onSubmit}
 						disabled={isDisabled && !isStreaming}
@@ -510,45 +510,21 @@ export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLBut
 }
 
 // Continue button component
-const ContinueButton = ({ threadId, onContinue, lastResponseLength }: { threadId: string, onContinue: () => void, lastResponseLength: number }) => {
+const ContinueButton = ({
+	threadId,
+	onContinue,
+	lastResponseLength,
+	autoContinueEnabled,
+	onToggleAutoContinue,
+}: {
+	threadId: string,
+	onContinue: () => void,
+	lastResponseLength: number,
+	autoContinueEnabled: boolean,
+	onToggleAutoContinue: (value: boolean) => void,
+}) => {
 	const [showMenu, setShowMenu] = useState(false)
 	const menuRef = useRef<HTMLDivElement>(null)
-	
-	// Store auto-continue state per thread in localStorage
-	const storageKey = `autoContinue_${threadId}`;
-	const [autoContinue, setAutoContinueState] = useState(() => {
-		try {
-			const stored = localStorage.getItem(storageKey);
-			return stored === 'true';
-		} catch {
-			return false;
-		}
-	});
-
-	const setAutoContinue = (value: boolean) => {
-		setAutoContinueState(value);
-		try {
-			localStorage.setItem(storageKey, String(value));
-		} catch (e) {
-			console.error('Failed to save auto-continue state:', e);
-		}
-	};
-
-	// Listen for storage changes (e.g., when user stops manually)
-	useEffect(() => {
-		const handleStorageChange = () => {
-			try {
-				const stored = localStorage.getItem(storageKey);
-				setAutoContinueState(stored === 'true');
-			} catch (e) {
-				console.error('Failed to read auto-continue state:', e);
-			}
-		};
-		
-		// Poll for changes (since localStorage events don't fire in same window)
-		const interval = setInterval(handleStorageChange, 200);
-		return () => clearInterval(interval);
-	}, [storageKey]);
 
 	// Close menu when clicking outside
 	useEffect(() => {
@@ -566,31 +542,30 @@ const ContinueButton = ({ threadId, onContinue, lastResponseLength }: { threadId
 	// Auto-continue: automatically send "continue" when enabled
 	// Only auto-continue if response is short (< 200 chars), matching silent auto-continue behavior
 	const hasAutoTriggeredRef = useRef(false);
-	const prevAutoContinueRef = useRef(autoContinue);
-	
+	const prevAutoContinueRef = useRef(autoContinueEnabled);
+
 	useEffect(() => {
-		// Reset flag when auto-continue is toggled on (false -> true)
-		if (autoContinue && !prevAutoContinueRef.current) {
+		if (autoContinueEnabled && !prevAutoContinueRef.current) {
 			hasAutoTriggeredRef.current = false;
 			console.log(`[ContinueButton] Auto-continue enabled, resetting trigger flag`);
 		}
-		prevAutoContinueRef.current = autoContinue;
-		
-		if (autoContinue && !hasAutoTriggeredRef.current && lastResponseLength < 200) {
+		prevAutoContinueRef.current = autoContinueEnabled;
+
+		if (autoContinueEnabled && !hasAutoTriggeredRef.current && lastResponseLength < AUTO_CONTINUE_CHAR_THRESHOLD) {
 			hasAutoTriggeredRef.current = true;
 			console.log(`[ContinueButton] Auto-continuing (response length: ${lastResponseLength} chars)`);
 			// Small delay to ensure UI is ready
 			setTimeout(() => {
 				onContinue();
 			}, 100);
-		} else if (autoContinue && lastResponseLength >= 200) {
-			console.log(`[ContinueButton] Skipping auto-continue (response length: ${lastResponseLength} chars >= 200)`);
+		} else if (autoContinueEnabled && lastResponseLength >= AUTO_CONTINUE_CHAR_THRESHOLD) {
+			console.log(`[ContinueButton] Skipping auto-continue (response length: ${lastResponseLength} chars >= ${AUTO_CONTINUE_CHAR_THRESHOLD})`);
 		}
 		// Reset the flag when button unmounts (LLM starts running again)
 		return () => {
 			hasAutoTriggeredRef.current = false;
 		};
-	}, [autoContinue, onContinue, lastResponseLength]);
+	}, [autoContinueEnabled, lastResponseLength, onContinue, threadId]);
 
 	return (
 		<div className="flex items-center gap-2 relative">
@@ -610,9 +585,9 @@ const ContinueButton = ({ threadId, onContinue, lastResponseLength }: { threadId
 			<div className="relative" ref={menuRef}>
 				<button
 					onClick={() => setShowMenu(!showMenu)}
-					className={`p-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 hover:border-void-border-1 transition-all duration-150 ${autoContinue ? 'text-void-accent' : 'text-void-fg-3'}`}
+					className={`p-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 hover:border-void-border-1 transition-all duration-150 ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
 					data-tooltip-id='void-tooltip'
-					data-tooltip-content={autoContinue ? 'Auto-continue enabled' : 'Auto-continue settings'}
+					data-tooltip-content={autoContinueEnabled ? 'Auto-continue enabled' : 'Auto-continue settings'}
 					data-tooltip-place='top'
 				>
 					<Settings size={14} />
@@ -624,15 +599,15 @@ const ContinueButton = ({ threadId, onContinue, lastResponseLength }: { threadId
 						<div
 							className="flex items-center justify-between px-3 py-2 hover:bg-void-bg-2 cursor-pointer"
 							onClick={() => {
-								setAutoContinue(!autoContinue)
+								onToggleAutoContinue(!autoContinueEnabled)
 								setShowMenu(false)
 							}}
 						>
 							<span className="text-sm text-void-fg-2">Auto-continue</span>
 							<VoidSwitch
 								size='xxs'
-								value={autoContinue}
-								onChange={(val) => setAutoContinue(val)}
+								value={autoContinueEnabled}
+								onChange={(val) => onToggleAutoContinue(val)}
 							/>
 						</div>
 					</div>
@@ -1110,7 +1085,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 
 	const { rawParams, params, name } = toolMessage
 	const desc1OnClick = () => voidOpenFileFn(params.uri, accessor)
-	
+
 	// Calculate diff stats for edit_file when running
 	let diffStatsElement: React.ReactNode = null;
 	if (toolMessage.type === 'running_now' && toolMessage.name === 'edit_file' && content) {
@@ -1126,7 +1101,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 				addedLines += updated ? updated.split('\n').length : 0;
 			}
 		});
-		
+
 		if (addedLines > 0 || removedLines > 0) {
 			diffStatsElement = (
 				<span className='flex items-center gap-1 text-xs ml-1.5'>
@@ -1136,20 +1111,20 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 			);
 		}
 	}
-	
-	const componentParams: ToolHeaderParams = { 
-		title, 
+
+	const componentParams: ToolHeaderParams = {
+		title,
 		desc1: diffStatsElement ? (
 			<span className='flex items-center'>
 				{desc1}
 				{diffStatsElement}
 			</span>
-		) : desc1, 
-		desc1OnClick, 
-		desc1Info, 
-		isError, 
-		icon, 
-		isRejected, 
+		) : desc1,
+		desc1OnClick,
+		desc1Info,
+		isError,
+		icon,
+		isRejected,
 	}
 
 
@@ -1164,7 +1139,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 				</div>
 			);
 		}
-		
+
 		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
 			<EditToolChildren
 				uri={params.uri}
@@ -1690,7 +1665,7 @@ const titleOfBuiltinToolName = {
 
 	'read_lint_errors': { done: `Read lint errors`, proposed: 'Read lint errors', running: loadingTitleWrapper('Reading lint errors') },
 	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: loadingTitleWrapper('Searching in file') },
-	
+
 	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
@@ -1740,7 +1715,7 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 		'read_file': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['read_file']
 			const basename = getBasename(toolParams.uri.fsPath)
-			
+
 			// Show what's being read: line range or page number
 			let readingInfo = ''
 			if (toolParams.startLine !== null || toolParams.endLine !== null) {
@@ -1750,7 +1725,7 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			} else if (toolParams.pageNumber > 1) {
 				readingInfo = ` (page ${toolParams.pageNumber})`
 			}
-			
+
 			return {
 				desc1: basename + readingInfo,
 				desc1Info: getRelative(toolParams.uri, accessor),
@@ -3235,7 +3210,7 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 	const title = titleOfBuiltinToolName[toolCallSoFar.name].proposed
 
 	const uriDone = toolCallSoFar.doneParams.includes('uri')
-	
+
 	// Calculate diff stats from search_replace_blocks (for edit_file)
 	let addedLines = 0;
 	let removedLines = 0;
@@ -3254,7 +3229,7 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 	}
 
 	// Determine loading message based on tool type
-	const loadingMessage = 
+	const loadingMessage =
 		toolCallSoFar.name === 'read_file' ? 'Reading file...' :
 		toolCallSoFar.name === 'edit_file' ? 'Editing file...' :
 		toolCallSoFar.name === 'rewrite_file' ? 'Writing file...' :
@@ -3281,7 +3256,7 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 	</span>
 
 	const desc1OnClick = () => { uri && voidOpenFileFn(uri, accessor) }
-	
+
 	// Determine edit tool type based on tool name
 	const editToolType = toolCallSoFar.name === 'edit_file' ? 'diff' : 'rewrite';
 
@@ -3345,17 +3320,17 @@ export const SidebarChat = () => {
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = !!(toolCallSoFar && !toolCallSoFar.isDone) // show loading for slow tools (right now just edit)
-	
+
 	// Also detect if tool name exists (even if params aren't done yet)
 	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name)
-	
+
 	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
 	// Use raw text before stripping to detect the XML tags
 	const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
-	
+
 	// Detect ANY tool call activity (native or XML) - ensure boolean
 	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
-	
+
 	// Debug: log tool state
 	if (toolCallSoFar || isGeneratingXMLToolCall) {
 		console.log('[SidebarChat] Tool generation state:', {
@@ -3374,16 +3349,16 @@ export const SidebarChat = () => {
 	// state of current message
 	const initVal = ''
 	const [instructionsAreEmpty, setInstructionsAreEmpty] = useState(!initVal)
-	
+
 	// Image upload state
 	const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
 	const [isDraggingOver, setIsDraggingOver] = useState(false)
-	
+
 	// Image upload helpers
 	const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
 	const MAX_IMAGES = 10;
 	const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
-	
+
 	const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string; name: string }> => {
 		return new Promise((resolve, reject) => {
 			const reader = new FileReader();
@@ -3397,28 +3372,28 @@ export const SidebarChat = () => {
 			reader.readAsDataURL(file);
 		});
 	};
-	
+
 	const handleImageFiles = async (files: FileList | File[]) => {
 		if (!settingsState.globalSettings.enableVisionSupport) return;
-		
+
 		const fileArray = Array.from(files);
 		const imageFiles = fileArray.filter(file => SUPPORTED_IMAGE_TYPES.includes(file.type));
-		
+
 		if (imageFiles.length === 0) return;
-		
+
 		// Check limits
 		if (attachedImages.length + imageFiles.length > MAX_IMAGES) {
 			console.warn(`Maximum ${MAX_IMAGES} images allowed`);
 			return;
 		}
-		
+
 		// Check file sizes
 		const oversizedFiles = imageFiles.filter(file => file.size > MAX_IMAGE_SIZE);
 		if (oversizedFiles.length > 0) {
 			console.warn(`Some images exceed ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`);
 			return;
 		}
-		
+
 		// Convert to base64
 		try {
 			const newImages = await Promise.all(imageFiles.map(fileToBase64));
@@ -3435,7 +3410,6 @@ export const SidebarChat = () => {
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
 
 		if (isDisabled && !_forceSubmit) return
-		if (isRunning) return
 
 		const threadId = chatThreadsService.state.currentThreadId
 
@@ -3450,8 +3424,8 @@ export const SidebarChat = () => {
 		textAreaRef.current?.focus() // focus input after submit
 
 		try {
-			await chatThreadsService.addUserMessageAndStreamResponse({ 
-				userMessage, 
+			await chatThreadsService.addUserMessageAndStreamResponse({
+				userMessage,
 				threadId,
 				images: imagesToSend
 			})
@@ -3463,12 +3437,7 @@ export const SidebarChat = () => {
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
-		// Disable auto-continue when user manually stops
-		try {
-			localStorage.setItem(`autoContinue_${threadId}`, 'false');
-		} catch (e) {
-			console.error('Failed to disable auto-continue:', e);
-		}
+		handleAutoContinueToggle(false)
 		await chatThreadsService.abortRunning(threadId)
 	}
 
@@ -3476,6 +3445,16 @@ export const SidebarChat = () => {
 
 	const threadId = currentThread.id
 	const currCheckpointIdx = chatThreadsState.allThreads[threadId]?.state?.currCheckpointIdx ?? undefined  // if not exist, treat like checkpoint is last message (infinity)
+
+	const [autoContinueEnabled, setAutoContinueEnabled] = useState(() => chatThreadsService.getAutoContinuePreference(threadId))
+	useEffect(() => {
+		setAutoContinueEnabled(chatThreadsService.getAutoContinuePreference(threadId))
+	}, [chatThreadsService, threadId, chatThreadsState.allThreads[threadId]?.state.autoContinueEnabled])
+
+	const handleAutoContinueToggle = useCallback((value: boolean) => {
+		setAutoContinueEnabled(value)
+		chatThreadsService.setAutoContinuePreference(threadId, value)
+	}, [chatThreadsService, threadId])
 
 
 
@@ -3545,14 +3524,14 @@ export const SidebarChat = () => {
 	// Detect "About to Act" pattern - LLM announcing it will use a tool
 	const detectAboutToActTool = (text: string | undefined): { toolName: string; intent: string } | null => {
 		if (!text) return null;
-		
+
 		const trimmed = text.trim();
 		// Check if ends with colon (common pattern: "Let me edit the file:")
 		if (!trimmed.endsWith(':')) return null;
-		
+
 		// Get last sentence/phrase before the colon
 		const lastPart = trimmed.split(/[.!]/).pop()?.toLowerCase() || '';
-		
+
 		// Detect tool intentions with various phrase patterns
 		// Supports: "Let me", "Let me also", "I'll", "I'll also", "I will", "Additionally", "Next", "Now", "First"
 		const editPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(edit|modify|update|change|fix)/;
@@ -3560,26 +3539,26 @@ export const SidebarChat = () => {
 		const createPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(create|add|make)/;
 		const deletePatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(delete|remove)/;
 		const runPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(run|execute)/;
-		
+
 		if (lastPart.match(editPatterns)) return { toolName: 'edit_file', intent: 'editing' };
 		if (lastPart.match(readPatterns)) return { toolName: 'read_file', intent: 'reading' };
 		if (lastPart.match(createPatterns)) return { toolName: 'create_file_or_folder', intent: 'creating' };
 		if (lastPart.match(deletePatterns)) return { toolName: 'delete_file_or_folder', intent: 'deleting' };
 		if (lastPart.match(runPatterns)) return { toolName: 'run_command', intent: 'running' };
-		
+
 		return null;
 	};
-	
+
 	const aboutToActTool = detectAboutToActTool(displayContentSoFar);
-	
+
 	// Determine which tool to show UI for
 	// Priority: 1) toolCallSoFar (streaming), 2) toolInfo (executing), 3) About to act pattern, 4) XML generating
 	const activeToolName = toolCallSoFar?.name || currThreadStreamState?.toolInfo?.toolName || aboutToActTool?.toolName;
 	const activeToolParams = toolCallSoFar?.rawParams || currThreadStreamState?.toolInfo?.rawParams;
-	
+
 	// Helper to check if tool should show EditToolSoFar component
 	const isFileRelatedTool = (name: string | undefined) => {
-		return name === 'edit_file' || 
+		return name === 'edit_file' ||
 		       name === 'rewrite_file' ||
 		       name === 'read_file' ||
 		       name === 'create_file_or_folder' ||
@@ -3590,13 +3569,13 @@ export const SidebarChat = () => {
 	// Check if last message is already a tool message (to avoid showing duplicate)
 	const lastMessage = previousMessages[previousMessages.length - 1];
 	const lastMessageIsTool = lastMessage?.role === 'tool';
-	
+
 	// Show tool UI when:
 	// 1. Tool is being generated (toolIsGenerating) AND not already in messages
 	// 2. Tool is executing (isRunning === 'tool') AND not already in messages
 	// Note: aboutToActTool is handled separately below with simpler UI
 	const shouldShowToolUI = (toolIsGenerating || isRunning === 'tool') && !lastMessageIsTool;
-	
+
 	const generatingTool = shouldShowToolUI && activeToolName ? (
 		<>
 			{/* Show EditToolSoFar for ALL file-related tools */}
@@ -3668,16 +3647,18 @@ export const SidebarChat = () => {
 			const lastNonCheckpointMessage = currentThread?.messages?.slice().reverse().find(msg => msg.role !== 'checkpoint');
 			const shouldShow = !isRunning && !toolIsGenerating && currentThread?.messages && currentThread.messages.length > 0 && lastNonCheckpointMessage?.role === 'assistant';
 			// Calculate response length for auto-continue threshold
-			const lastResponseLength = lastNonCheckpointMessage?.role === 'assistant' 
+			const lastResponseLength = lastNonCheckpointMessage?.role === 'assistant'
 				? (lastNonCheckpointMessage.displayContent?.trim().length || 0)
 				: 0;
 			return shouldShow ? (
 				<ProseWrapper>
 					<div className="flex justify-end">
-						<ContinueButton 
+						<ContinueButton
 							threadId={threadId}
 							onContinue={() => onSubmit('continue')}
 							lastResponseLength={lastResponseLength}
+							autoContinueEnabled={autoContinueEnabled}
+							onToggleAutoContinue={handleAutoContinueToggle}
 						/>
 					</div>
 				</ProseWrapper>
@@ -3703,22 +3684,22 @@ export const SidebarChat = () => {
 	const onChangeText = useCallback((newStr: string) => {
 		setInstructionsAreEmpty(!newStr)
 	}, [setInstructionsAreEmpty])
-	
+
 	// Track last Enter press for double-tap detection
 	const lastEnterPressRef = useRef<number>(0);
 	const DOUBLE_TAP_THRESHOLD = 500; // ms
-	
+
 	const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
 		if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
 			const now = Date.now();
 			const timeSinceLastEnter = now - lastEnterPressRef.current;
-			
+
 			// Double-tap Enter: Force send and abort current operation
 			if (timeSinceLastEnter < DOUBLE_TAP_THRESHOLD && isRunning) {
 				console.log('[SidebarChat] Double-tap Enter detected - forcing send and aborting current operation');
 				e.preventDefault();
 				lastEnterPressRef.current = 0; // Reset
-				
+
 				// Abort current operation first
 				onAbort().then(() => {
 					// Small delay to ensure abort completes
@@ -3735,7 +3716,7 @@ export const SidebarChat = () => {
 			onAbort();
 		}
 	}, [onSubmit, onAbort, isRunning])
-	
+
 	// Drag & drop handlers
 	const handleDragOver = useCallback((e: React.DragEvent) => {
 		if (!settingsState.globalSettings.enableVisionSupport) return;
@@ -3743,40 +3724,40 @@ export const SidebarChat = () => {
 		e.stopPropagation();
 		setIsDraggingOver(true);
 	}, [settingsState.globalSettings.enableVisionSupport]);
-	
+
 	const handleDragLeave = useCallback((e: React.DragEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
 	}, []);
-	
+
 	const handleDrop = useCallback(async (e: React.DragEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDraggingOver(false);
-		
+
 		if (!settingsState.globalSettings.enableVisionSupport) return;
-		
+
 		const files = e.dataTransfer.files;
 		if (files.length > 0) {
 			await handleImageFiles(files);
 		}
 	}, [settingsState.globalSettings.enableVisionSupport, handleImageFiles]);
-	
+
 	// Paste handler
 	const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
 		if (!settingsState.globalSettings.enableVisionSupport) return;
-		
+
 		const items = e.clipboardData.items;
 		const imageItems: File[] = [];
-		
+
 		for (let i = 0; i < items.length; i++) {
 			if (items[i].type.indexOf('image') !== -1) {
 				const file = items[i].getAsFile();
 				if (file) imageItems.push(file);
 			}
 		}
-		
+
 		if (imageItems.length > 0) {
 			e.preventDefault();
 			await handleImageFiles(imageItems);
@@ -3811,7 +3792,7 @@ export const SidebarChat = () => {
 				</div>
 			</div>
 		)}
-		
+
 		<VoidChatArea
 			featureName='Chat'
 			onSubmit={() => onSubmit()}
@@ -3828,7 +3809,7 @@ export const SidebarChat = () => {
 			{settingsState.globalSettings.enableVisionSupport && attachedImages.length > 0 && (
 				<ImagePreview images={attachedImages} onRemove={removeImage} />
 			)}
-			
+
 			<VoidInputBox2
 				enableAtToMention
 				className={`min-h-[81px] px-0.5 py-0.5`}
@@ -3897,12 +3878,12 @@ export const SidebarChat = () => {
 			<ErrorBoundary>
 				{/* Logo */}
 				<div className='@@void-void-icon mb-6' style={{ width: '80px', height: '80px', opacity: 0.8 }} />
-				
+
 				{/* Title with mode */}
 				<h1 className='text-void-fg-1 text-2xl font-semibold mb-2'>
 					A-Coder <span className='text-void-fg-3 font-normal'>· {chatModeName}</span>
 				</h1>
-				
+
 				{/* Tagline */}
 				<p className='text-void-fg-3 text-sm text-center mb-8'>
 					Kick off a new project. Make changes<br />across your entire codebase.
