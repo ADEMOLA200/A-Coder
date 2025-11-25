@@ -20,6 +20,7 @@ import { ToolName } from '../common/toolsServiceTypes.js';
 import { IMCPService } from '../common/mcpService.js';
 import { TokenCountingService } from '../common/tokenCountingService.js';
 import { ContextCompressionService } from '../common/contextCompressionService.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 
 export const EMPTY_MESSAGE = '(empty message)'
 
@@ -471,11 +472,12 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IVoidModelService private readonly voidModelService: IVoidModelService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IMainProcessService mainProcessService: IMainProcessService,
 	) {
 		super();
 
 		// Initialize token counting and compression services
-		this.tokenCountingService = new TokenCountingService();
+		this.tokenCountingService = new TokenCountingService(mainProcessService);
 		this.compressionService = new ContextCompressionService(this.tokenCountingService);
 	}
 
@@ -643,9 +645,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			providerName,
 		})
 
-		// Apply context window compression if needed
+		// Apply context window compression if needed (use async for accuracy)
 		const fullModelName = `${providerName}:${modelName}`;
-		let tokenCount = this.tokenCountingService.countMessagesTokens(messages, fullModelName);
+		let tokenCount = await this.tokenCountingService.countMessagesTokensAsync(messages, fullModelName);
 		// Use the actual context window from model capabilities, not the hardcoded lookup
 		const contextWindowSize = contextWindow;
 		let usage = tokenCount / contextWindowSize;
@@ -653,10 +655,10 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		console.log(`[ConvertToLLMMessageService] Token usage: ${tokenCount}/${contextWindowSize} (${(usage * 100).toFixed(1)}%)`);
 
 		// Compress if using more than 80% of context window
-		if (this.compressionService.needsCompression(messages, fullModelName, 0.8)) {
+		if (await this.compressionService.needsCompression(messages, fullModelName, 0.8)) {
 			console.log(`[ConvertToLLMMessageService] Context window usage high (${(usage * 100).toFixed(1)}%), applying compression...`);
 
-			const { compressedMessages, stats } = this.compressionService.compressMessages(
+			const { compressedMessages, stats } = await this.compressionService.compressMessages(
 				messages,
 				fullModelName,
 				{

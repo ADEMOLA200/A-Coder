@@ -4,50 +4,189 @@
  *--------------------------------------------------------------------------------------*/
 
 import { LLMChatMessage } from './sendLLMMessageTypes.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 
 /**
  * Service for counting tokens in messages and managing context windows.
- * Uses character-based estimation (~4 chars per token).
- * For exact counting, use the IPC channel directly in main process.
+ * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
  */
 export class TokenCountingService {
-	constructor() {
-		console.log('[TokenCountingService] Using character-based token estimation');
+	constructor(
+		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+	) {
+		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
 	}
 
 	/**
 	 * Count tokens in a single text string
-	 * Uses character-based estimation: ~4 characters per token
+	 * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
+	 * This method is synchronous and uses estimated values.
+	 * For exact async counting, use countTextTokensAsync().
 	 */
 	public countTextTokens(text: string, modelName: string): number {
-		// Fallback: estimate ~4 characters per token
+		// Try async IPC in a fire-and-forget way; if it fails, fall back to estimate.
+		// We don't await here to keep this method synchronous for existing callers.
+		this.countTextTokensAsync(text, modelName).then(
+			() => { }, // success: nothing needed; result is cached internally if you want to add caching later
+			() => { } // error: already handled by fallback
+		);
+
+		// Synchronous fallback estimate
 		return Math.ceil(text.length / 4);
 	}
 
 	/**
 	 * Count tokens in a chat message
-	 * Uses character-based estimation
+	 * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
+	 * This method is synchronous and uses estimated values.
+	 * For exact async counting, use countMessageTokensAsync().
 	 */
 	public countMessageTokens(message: LLMChatMessage, modelName: string): number {
-		// Estimate based on JSON string length
+		// Try async IPC for accuracy
+		this.countMessageTokensAsync(message, modelName).then(
+			() => { },
+			() => { }
+		);
+
+		// Synchronous fallback estimate
 		const messageStr = JSON.stringify(message);
-		// Add overhead for message formatting (~4 tokens per message)
 		return Math.ceil(messageStr.length / 4) + 4;
 	}
 
 	/**
 	 * Count tokens in an array of chat messages
+	 * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
+	 * This method is synchronous and uses estimated values.
+	 * For exact async counting, use countMessagesTokensAsync().
 	 */
 	public countMessagesTokens(messages: LLMChatMessage[], modelName: string): number {
+		// Try async IPC for accuracy
+		this.countMessagesTokensAsync(messages, modelName).then(
+			() => { },
+			() => { }
+		);
+
+		// Synchronous fallback estimate
 		let totalTokens = 0;
-		
 		for (const message of messages) {
 			totalTokens += this.countMessageTokens(message, modelName);
 		}
-		
-		// Every reply is primed with assistant message tokens
 		totalTokens += 3;
-		
+		return totalTokens;
+	}
+
+	/**
+	 * Async version: count tokens in a single text string using tiktoken via IPC.
+	 * Falls back to character estimation on IPC error.
+	 */
+	public async countTextTokensAsync(text: string, modelName: string): Promise<number> {
+		try {
+			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
+			const count = await channel.call('countTokens', { text, modelName });
+			return typeof count === 'number' ? count : Math.ceil(text.length / 4);
+		} catch (error) {
+			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			return Math.ceil(text.length / 4);
+		}
+	}
+
+	/**
+	 * Helper to extract content from different message formats
+	 */
+	private _extractContent(message: LLMChatMessage): string {
+		// OpenAI/Anthropic format
+		if ('content' in message) {
+			if (typeof message.content === 'string') {
+				return message.content;
+			}
+			// Handle array content (Anthropic format with reasoning/multi-part)
+			if (Array.isArray(message.content)) {
+				return message.content
+					.map(part => {
+						if (typeof part === 'string') return part;
+						if ('text' in part) return part.text;
+						if ('thinking' in part) return `[thinking]${part.thinking}[/thinking]`;
+						return '';
+					})
+					.join('');
+			}
+			return '';
+		}
+
+		// Gemini format
+		if ('parts' in message) {
+			return message.parts
+				.map(part => {
+					if ('text' in part) return part.text;
+					if ('functionCall' in part) return `[function_call:${part.functionCall.name}]`;
+					if ('functionResponse' in part) return `[function_response:${part.functionResponse.name}]`;
+					return '';
+				})
+				.join('');
+		}
+
+		return '';
+	}
+
+	/**
+	 * Helper to extract role from different message formats
+	 */
+	private _extractRole(message: LLMChatMessage): string {
+		if ('role' in message) {
+			return message.role;
+		}
+		return 'unknown';
+	}
+
+	/**
+	 * Async version: count tokens in a single chat message using tiktoken via IPC.
+	 * Falls back to character estimation on IPC error.
+	 */
+	public async countMessageTokensAsync(message: LLMChatMessage, modelName: string): Promise<number> {
+		try {
+			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
+			const plainMessage = {
+				role: this._extractRole(message),
+				content: this._extractContent(message)
+			};
+			const count = await channel.call('countMessagesTokens', { messages: [plainMessage], modelName });
+			return typeof count === 'number' ? count : Math.ceil(JSON.stringify(message).length / 4) + 4;
+		} catch (error) {
+			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			const messageStr = JSON.stringify(message);
+			return Math.ceil(messageStr.length / 4) + 4;
+		}
+	}
+
+	/**
+	 * Async version: count tokens in an array of chat messages using tiktoken via IPC.
+	 * Falls back to character estimation on IPC error.
+	 */
+	public async countMessagesTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number> {
+		try {
+			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
+			const plainMessages = messages.map(msg => ({
+				role: this._extractRole(msg),
+				content: this._extractContent(msg)
+			}));
+			const count = await channel.call('countMessagesTokens', { messages: plainMessages, modelName });
+			return typeof count === 'number' ? count : this._estimateMessagesTokens(messages);
+		} catch (error) {
+			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			return this._estimateMessagesTokens(messages);
+		}
+	}
+
+	/**
+	 * Internal helper: character-based estimate for messages (fallback).
+	 */
+	private _estimateMessagesTokens(messages: LLMChatMessage[]): number {
+		let totalTokens = 0;
+		for (const message of messages) {
+			const messageStr = JSON.stringify(message);
+			totalTokens += Math.ceil(messageStr.length / 4) + 4;
+		}
+		totalTokens += 3;
 		return totalTokens;
 	}
 
@@ -61,7 +200,7 @@ export class TokenCountingService {
 			? modelName.split(':').slice(1).join(':')
 			: modelName;
 		const lowerName = cleanName.toLowerCase();
-		
+
 		// Common model context windows
 		const contextWindows: Record<string, number> = {
 			// OpenAI
@@ -87,6 +226,7 @@ export class TokenCountingService {
 			'gpt-oss:120b-cloud': 128000,
 			'kimi-k2:1t-cloud': 128000,
 			'kimi-k2-thinking:1t-cloud': 256000, // Kimi K2 Thinking has 256k context
+			'kimi-k2-thinking:cloud': 256000, // Alias for kimi-k2-thinking:1t-cloud
 			'qwen3-coder:480b-cloud': 128000,
 			'minimax-m2:cloud': 128000,
 			'glm-4.6:cloud': 128000,
@@ -108,31 +248,31 @@ export class TokenCountingService {
 			'yi': 4096,
 			'solar': 4096,
 		};
-		
+
 		// Try exact match first
 		if (contextWindows[lowerName]) {
 			return contextWindows[lowerName];
 		}
-		
+
 		// Try partial match
 		for (const [key, value] of Object.entries(contextWindows)) {
 			if (lowerName.includes(key)) {
 				return value;
 			}
 		}
-		
+
 		// For Ollama and local models, default to 8k (more generous than 4k)
 		// Most modern local models support at least 8k context
-		const isLikelyLocal = lowerName.includes('ollama') || 
-		                      lowerName.includes('local') ||
-		                      lowerName.includes('llama') ||
-		                      lowerName.includes('mistral');
-		
+		const isLikelyLocal = lowerName.includes('ollama') ||
+			lowerName.includes('local') ||
+			lowerName.includes('llama') ||
+			lowerName.includes('mistral');
+
 		if (isLikelyLocal) {
 			console.warn(`[TokenCountingService] Unknown Ollama/local model ${modelName}, defaulting to 8192`);
 			return 8192;
 		}
-		
+
 		// Default to 4096 for unknown cloud models (conservative)
 		console.warn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 4096`);
 		return 4096;

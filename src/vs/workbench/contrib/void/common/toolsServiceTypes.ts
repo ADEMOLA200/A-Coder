@@ -63,6 +63,11 @@ export type BuiltinToolCallParams = {
 	'open_persistent_terminal': { cwd: string | null },
 	'run_persistent_command': { command: string; persistentTerminalId: string },
 	'kill_persistent_terminal': { persistentTerminalId: string },
+	// ---
+	'create_plan': { goal: string, tasks: Array<{ id: string; description: string; dependencies: string[] }> },
+	'update_task_status': { taskId: string, status: string, notes: string | null },
+	'get_plan_status': {},
+	'add_tasks_to_plan': { tasks: Array<{ id: string; description: string; dependencies: string[] }> },
 }
 
 // RESULT OF TOOL CALL
@@ -87,6 +92,11 @@ export type BuiltinToolResultType = {
 	'run_persistent_command': { result: string; resolveReason: TerminalResolveReason; },
 	'open_persistent_terminal': { persistentTerminalId: string },
 	'kill_persistent_terminal': {},
+	// ---
+	'create_plan': { planId: string, summary: string },
+	'update_task_status': { taskId: string, newStatus: string, summary: string },
+	'get_plan_status': { planExists: boolean, summary: string | null },
+	'add_tasks_to_plan': { summary: string },
 }
 
 

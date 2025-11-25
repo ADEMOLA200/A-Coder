@@ -11,7 +11,7 @@ import { IDisposable } from '../../../../../../../base/common/lifecycle.js';
 import { Checkbox } from '../../../../../../../base/browser/ui/toggle/toggle.js';
 
 import { CodeEditorWidget } from '../../../../../../../editor/browser/widget/codeEditor/codeEditorWidget.js'
-import { useAccessor } from './services.js';
+import { useAccessor, useIsDark } from './services.js';
 import { ITextModel } from '../../../../../../../editor/common/model.js';
 import { asCssVariable } from '../../../../../../../platform/theme/common/colorUtils.js';
 import { inputBackground, inputForeground } from '../../../../../../../platform/theme/common/colorRegistry.js';
@@ -753,12 +753,11 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 
 			disabled={!isEnabled}
 
-			className={`w-full resize-none max-h-[500px] overflow-y-auto text-void-fg-1 placeholder:text-void-fg-3 ${className}`}
+			className={`w-full resize-none max-h-[500px] overflow-y-auto text-void-fg-1 placeholder:text-void-fg-3 bg-transparent ${className}`}
 			style={{
-				// defaultInputBoxStyles
-				background: asCssVariable(inputBackground),
-				color: asCssVariable(inputForeground)
-				// inputBorder: asCssVariable(inputBorder),
+				// Keep text color aligned with theme, but let background come from parent
+				background: 'transparent',
+				color: asCssVariable(inputForeground),
 			}}
 
 			onInput={useCallback((event: React.FormEvent<HTMLTextAreaElement>) => {
@@ -1280,6 +1279,7 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const measureRef = useRef<HTMLDivElement>(null);
+	const isDark = useIsDark();
 
 	// Replace manual positioning with floating-ui
 	const {
@@ -1416,7 +1416,10 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 			{isOpen && (
 				<div
 					ref={refs.setFloating}
-					className="z-[100] bg-void-bg-1 border-void-border-3 border rounded shadow-lg"
+					className={`z-[300] rounded-xl backdrop-blur-md shadow-lg
+						${isDark
+							? 'border border-white/10 bg-black/70 shadow-black/40'
+							: 'border border-black/10 bg-white/90 shadow-black/10'}`}
 					style={{
 						position: strategy,
 						top: y ?? 0,
@@ -1429,8 +1432,8 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 							))
 					}}
 					onWheel={(e) => e.stopPropagation()}
-				><div className='overflow-auto max-h-80'>
-
+				>
+					<div className='overflow-auto max-h-80 py-1'>
 						{options.map((option) => {
 							const thisOptionIsSelected = getOptionsEqual(option, selectedOption);
 							const optionName = getOptionDropdownName(option);
@@ -1439,9 +1442,11 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 							return (
 								<div
 									key={optionName}
-									className={`flex items-center px-2 py-1 pr-4 cursor-pointer whitespace-nowrap
-									transition-all duration-100
-									${thisOptionIsSelected ? 'bg-blue-500 text-white/80' : 'hover:bg-blue-500 hover:text-white/80'}
+									className={`flex items-center px-2.5 py-1.5 pr-4 cursor-pointer whitespace-nowrap
+									transition-colors duration-100 rounded-md
+									${thisOptionIsSelected
+											? 'bg-blue-500/80 text-white'
+											: `text-void-fg-2 ${isDark ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-black/5 hover:text-black'}`}
 								`}
 									onClick={() => {
 										onChangeOption(option);

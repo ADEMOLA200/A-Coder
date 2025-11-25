@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
+ *  Copyright 2025 The A-Tech Corporation PTY LTD. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
@@ -88,7 +88,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		@IApplicationStorageMainService private readonly _appStorage: IApplicationStorageMainService,
 	) {
 		super()
-		this.client = new PostHog('phc_UanIdujHiLp55BkUTjB1AuBXcasVkdqRwgnwRlWESH2', {
+		this.client = new PostHog('phc_2JUflk80xdIy6wphTpa1TYtjJupiIpartdetzQo0l8p', {
 			host: 'https://us.i.posthog.com',
 		})
 

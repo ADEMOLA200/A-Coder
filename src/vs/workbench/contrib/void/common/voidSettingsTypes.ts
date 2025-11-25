@@ -460,6 +460,11 @@ export type GlobalSettings = {
 	morphApiKey: string; // API key for Morph Fast Apply
 	morphModel: 'morph-v3-fast' | 'morph-v3-large' | 'auto'; // Morph model to use
 	enableToolResultTOON: boolean;
+	// Mobile API settings
+	apiEnabled: boolean; // Enable/disable the Mobile API server
+	apiPort: number; // Port for the API server (default: 3737)
+	apiTokens: string[]; // List of valid API tokens for authentication
+	apiTunnelUrl?: string; // Optional Cloudflare Tunnel URL for secure remote access
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -481,6 +486,11 @@ export const defaultGlobalSettings: GlobalSettings = {
 	morphApiKey: '',
 	morphModel: 'auto',
 	enableToolResultTOON: false,
+	// Mobile API defaults
+	apiEnabled: false, // Disabled by default for security
+	apiPort: 3737, // Default port
+	apiTokens: [], // No tokens by default
+	apiTunnelUrl: undefined, // No tunnel URL by default
 }
 
 export type GlobalSettingName = keyof GlobalSettings

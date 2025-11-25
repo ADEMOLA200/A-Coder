@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
+ *  Copyright 2025 The A-Tech Corporation PTY LTD. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
@@ -22,7 +22,7 @@ import { VOID_CTRL_L_ACTION_ID } from './actionIDs.js';
 import { localize2 } from '../../../../nls.js';
 import { IChatThreadService } from './chatThreadService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
-import { IMCPModalService } from './mcpModalService.js';
+import { ILiteModeService } from './liteMode.contribution.js';
 
 // ---------- Register commands and keybindings ----------
 
@@ -235,24 +235,23 @@ registerAction2(class extends Action2 {
 	}
 })
 
-
-// MCP Server quick access
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'void.mcpServerAction',
-			title: 'MCP Servers',
-			icon: { id: 'server' },
-			menu: [{ id: MenuId.ViewTitle, group: 'navigation', when: ContextKeyExpr.equals('view', VOID_VIEW_ID), }]
-		});
-	}
-	async run(accessor: ServicesAccessor): Promise<void> {
-		const mcpModalService = accessor.get(IMCPModalService);
-
-		// Open the React modal
-		mcpModalService.openModal();
-	}
-})
+// MCP servers menu - moved to SidebarChat UI CommandBar
+// registerAction2(class extends Action2 {
+// 	constructor() {
+// 		super({
+// 			id: 'void.mcpServerAction',
+// 			title: 'MCP Servers',
+// 			icon: { id: 'server' },
+// 			menu: [{ id: MenuId.ViewTitle, group: 'navigation', when: ContextKeyExpr.equals('view', VOID_VIEW_ID), }]
+// 		});
+// 	}
+// 	async run(accessor: ServicesAccessor): Promise<void> {
+// 		const mcpModalService = accessor.get(IMCPModalService);
+//
+// 		// Open the React modal
+// 		mcpModalService.openModal();
+// 	}
+// })
 
 // Settings gear
 registerAction2(class extends Action2 {
@@ -270,8 +269,32 @@ registerAction2(class extends Action2 {
 	}
 })
 
+// Lite Mode action
+const VOID_OPEN_LITE_MODE_ACTION_ID = 'void.liteMode.open'
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: VOID_OPEN_LITE_MODE_ACTION_ID,
+			title: localize2('voidOpenLiteMode', 'Open Lite Mode'),
+			icon: { id: 'layout' },
+			menu: [{
+				id: MenuId.ViewTitle,
+				group: 'navigation',
+				when: ContextKeyExpr.equals('view', VOID_VIEW_ID),
+				order: 1000 // Put it at the end of the navigation group
+			}]
+		});
+	}
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const liteModeService = accessor.get(ILiteModeService)
 
-
+		try {
+			await liteModeService.openLiteMode()
+		} catch (error) {
+			console.error('Failed to open Lite Mode:', error)
+		}
+	}
+})
 
 // export class TabSwitchListener extends Disposable {
 

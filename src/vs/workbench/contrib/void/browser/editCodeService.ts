@@ -128,65 +128,86 @@ const normalizePreservingIndentation = (str: string): { normalized: string, inde
 	return { normalized, indentMap };
 }
 
-// Calculate Levenshtein distance for fuzzy matching
-const levenshteinDistance = (str1: string, str2: string): number => {
+// Fast similarity score using a more efficient algorithm
+const fastSimilarityScore = (str1: string, str2: string): number => {
+	// Quick exact match check
+	if (str1 === str2) return 1.0;
+
+	// Quick length difference check - if lengths differ too much, score is low
 	const len1 = str1.length;
 	const len2 = str2.length;
-	const matrix: number[][] = [];
+	const maxLen = Math.max(len1, len2);
+	const minLen = Math.min(len1, len2);
 
-	for (let i = 0; i <= len1; i++) {
-		matrix[i] = [i];
-	}
-	for (let j = 0; j <= len2; j++) {
-		matrix[0][j] = j;
-	}
+	if (maxLen === 0) return 1.0;
 
-	for (let i = 1; i <= len1; i++) {
-		for (let j = 1; j <= len2; j++) {
-			const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-			matrix[i][j] = Math.min(
-				matrix[i - 1][j] + 1,
-				matrix[i][j - 1] + 1,
-				matrix[i - 1][j - 1] + cost
-			);
+	// If length difference is more than 50%, return low score
+	if (minLen / maxLen < 0.5) return 0.3;
+
+	// Use a faster n-gram based similarity for quick filtering
+	const ngramSize = Math.min(3, Math.floor(minLen / 4));
+	if (ngramSize <= 0) return 0.5;
+
+	const getNgrams = (str: string, size: number): Set<string> => {
+		const ngrams = new Set<string>();
+		for (let i = 0; i <= str.length - size; i++) {
+			ngrams.add(str.substr(i, size));
 		}
-	}
-	return matrix[len1][len2];
+		return ngrams;
+	};
+
+	const ngrams1 = getNgrams(str1, ngramSize);
+	const ngrams2 = getNgrams(str2, ngramSize);
+
+	// Calculate Jaccard similarity
+	const intersection = new Set([...ngrams1].filter(x => ngrams2.has(x)));
+	const union = new Set([...ngrams1, ...ngrams2]);
+
+	const jaccardSimilarity = union.size > 0 ? intersection.size / union.size : 0;
+
+	// Adjust for length difference
+	const lengthFactor = 1 - Math.abs(len1 - len2) / maxLen;
+
+	return jaccardSimilarity * 0.7 + lengthFactor * 0.3;
 }
 
-// Find best fuzzy match using middle-out search
+// Find best fuzzy match using optimized middle-out search
 const findBestFuzzyMatch = (searchText: string, fileContents: string, startLine?: number): { idx: number, score: number } | null => {
 	const searchNorm = normalizeWhitespace(searchText);
 	const fileLines = fileContents.split('\n');
 	const searchLines = searchText.split('\n');
 	const searchLen = searchLines.length;
-	
+
 	if (searchLen === 0 || fileLines.length < searchLen) return null;
-	
+
 	const startIdx = startLine ? Math.max(0, startLine - 1) : Math.floor(fileLines.length / 2);
 	let bestMatch: { idx: number, score: number } | null = null;
 	const threshold = 0.8; // 80% similarity required
-	
-	// Middle-out search
-	for (let offset = 0; offset < fileLines.length; offset++) {
+
+	// Limit search radius to prevent performance issues on large files
+	const maxSearchRadius = Math.min(1000, Math.floor(fileLines.length / 2));
+
+	// Middle-out search with limited radius
+	for (let offset = 0; offset < maxSearchRadius; offset++) {
 		const indices = offset === 0 ? [startIdx] : [startIdx + offset, startIdx - offset].filter(i => i >= 0 && i + searchLen <= fileLines.length);
-		
+
 		for (const i of indices) {
 			const candidate = fileLines.slice(i, i + searchLen).join('\n');
 			const candidateNorm = normalizeWhitespace(candidate);
-			
-			const distance = levenshteinDistance(searchNorm, candidateNorm);
-			const maxLen = Math.max(searchNorm.length, candidateNorm.length);
-			const similarity = maxLen > 0 ? 1 - (distance / maxLen) : 0;
-			
+
+			const similarity = fastSimilarityScore(searchNorm, candidateNorm);
+
 			if (similarity >= threshold && (!bestMatch || similarity > bestMatch.score)) {
 				const charIdx = fileLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
 				bestMatch = { idx: charIdx, score: similarity };
 				if (similarity > 0.95) return bestMatch; // Early exit for very good matches
 			}
 		}
+
+		// Early exit if we found a good match
+		if (bestMatch && bestMatch.score > 0.9) break;
 	}
-	
+
 	return bestMatch;
 }
 
@@ -196,20 +217,23 @@ const findSimilarBlocks = (searchText: string, fileContents: string, maxResults:
 	const fileLines = fileContents.split('\n');
 	const searchLen = searchLines.length;
 	const results: { text: string, score: number }[] = [];
-	
-	for (let i = 0; i <= fileLines.length - searchLen; i++) {
+
+	// Limit search to prevent performance issues
+	const maxCandidates = Math.min(500, fileLines.length - searchLen);
+	const step = Math.max(1, Math.floor((fileLines.length - searchLen) / maxCandidates));
+
+	for (let i = 0; i <= fileLines.length - searchLen; i += step) {
 		const candidate = fileLines.slice(i, i + searchLen).join('\n');
-		const distance = levenshteinDistance(
+		const similarity = fastSimilarityScore(
 			normalizeWhitespace(searchText),
 			normalizeWhitespace(candidate)
 		);
-		const similarity = 1 - (distance / Math.max(searchText.length, candidate.length));
-		
+
 		if (similarity > 0.5) { // Show blocks with >50% similarity
 			results.push({ text: candidate, score: similarity });
 		}
 	}
-	
+
 	return results
 		.sort((a, b) => b.score - a.score)
 		.slice(0, maxResults)
@@ -250,19 +274,19 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	const textSoftNorm = normalizeWhitespaceSoft(text)
 	const fileContentsSoftNorm = normalizeWhitespaceSoft(fileContents)
 	idx = fileContentsSoftNorm.indexOf(textSoftNorm, startingAtLineIdx(fileContentsSoftNorm))
-	
+
 	if (idx !== -1) {
 		// Verify uniqueness
 		const lastIdx = fileContentsSoftNorm.lastIndexOf(textSoftNorm)
 		if (lastIdx !== idx) {
 			return 'Not unique' as const
 		}
-		
+
 		// Map back to original file position
 		const linesBeforeMatch = fileContentsSoftNorm.substring(0, idx).split('\n').length - 1
 		const originalLines = fileContents.split('\n')
 		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
-		
+
 		return returnAns(fileContents, reconstructedIdx, text)
 	}
 
@@ -270,19 +294,19 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	const textNormalized = normalizeWhitespace(text)
 	const fileContentsNormalized = normalizeWhitespace(fileContents)
 	idx = fileContentsNormalized.indexOf(textNormalized, startingAtLineIdx(fileContentsNormalized))
-	
+
 	if (idx !== -1) {
 		// CRITICAL: Verify uniqueness in BOTH normalized and original
 		const lastIdx = fileContentsNormalized.lastIndexOf(textNormalized)
 		if (lastIdx !== idx) {
 			return 'Not unique' as const
 		}
-		
+
 		// Map back to original file position
 		const linesBeforeMatch = fileContentsNormalized.substring(0, idx).split('\n').length - 1
 		const originalLines = fileContents.split('\n')
 		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
-		
+
 		return returnAns(fileContents, reconstructedIdx, text)
 	}
 
@@ -290,16 +314,16 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	const { normalized: textIndentNorm, indentMap: textIndents } = normalizePreservingIndentation(text);
 	const fileLines = fileContents.split('\n');
 	const textLines = text.split('\n');
-	
+
 	for (let i = 0; i <= fileLines.length - textLines.length; i++) {
 		const candidateLines = fileLines.slice(i, i + textLines.length);
 		const { normalized: candidateNorm, indentMap: candidateIndents } = normalizePreservingIndentation(candidateLines.join('\n'));
-		
+
 		// Check if normalized content matches and relative indentation is similar
 		if (textIndentNorm === candidateNorm) {
 			const indentDiff = textIndents.map((indent, idx) => Math.abs(indent - candidateIndents[idx]));
 			const avgDiff = indentDiff.reduce((a, b) => a + b, 0) / indentDiff.length;
-			
+
 			// Allow if average indentation difference is small (< 2 spaces per line)
 			if (avgDiff < 2) {
 				const charIdx = fileLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
@@ -1337,7 +1361,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		console.log('[editCodeService] instantlyApplySearchReplaceBlocks called');
 		console.log('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
 		console.log('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
-		
+
 		// start diffzone
 		const res = this._startStreamingDiffZone({
 			uri,
@@ -1372,8 +1396,8 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 		try {
 			// Try Morph Fast Apply if enabled
-			if (this._settingsService.state.globalSettings.enableMorphFastApply && 
-			    this._settingsService.state.globalSettings.morphApiKey) {
+			if (this._settingsService.state.globalSettings.enableMorphFastApply &&
+				this._settingsService.state.globalSettings.morphApiKey) {
 				console.log('[editCodeService] Attempting to use Morph Fast Apply...');
 				try {
 					await this._applyWithMorph(uri, searchReplaceBlocks);
@@ -1793,10 +1817,10 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			case 'Not found':
 				// Find similar blocks to help the LLM correct its mistake
 				const similarBlocks = fileContext ? findSimilarBlocks(blockOrig, fileContext, 3) : [];
-				const similarBlocksStr = similarBlocks.length > 0 
+				const similarBlocksStr = similarBlocks.length > 0
 					? `\n\n🔎 Did you mean one of these similar blocks from the file?\n\n${similarBlocks.map((block, i) => `Option ${i + 1}:\n${tripleTick[0]}\n${block}\n${tripleTick[1]}`).join('\n\n')}\n`
 					: '';
-				
+
 				descStr = `❌ EDIT FAILED: The ORIGINAL code block was not found in the file.
 
 🔍 You tried to find:
@@ -1941,7 +1965,7 @@ ${problematicCode}
 		const updatedCode = blocks.map(b => b.final).join('\n\n');
 
 		console.log('[editCodeService] Calling Morph Fast Apply API...');
-		
+
 		// Call Morph API
 		const appliedCode = await this._morphService.applyCodeChange({
 			instruction,

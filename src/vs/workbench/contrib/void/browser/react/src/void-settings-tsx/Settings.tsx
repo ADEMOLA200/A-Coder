@@ -25,13 +25,7 @@ import { OPT_OUT_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 
 type Tab =
-	| 'models'
-	| 'localProviders'
-	| 'providers'
-	| 'featureOptions'
-	| 'mcp'
-	| 'general'
-	| 'all';
+	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'general' | 'mcp' | 'mobileApi' | 'about' | 'all';
 
 
 const ButtonLeftTextRightOption = ({ text, leftButton }: { text: string, leftButton?: React.ReactNode }) => {
@@ -205,168 +199,6 @@ const ConfirmButton = ({ children, onConfirm, className }: { children: React.Rea
 
 
 // This new dialog replaces the verbose UI with a single JSON override box.
-const SimpleModelSettingsDialog = ({
-	isOpen,
-	onClose,
-	modelInfo,
-}: {
-	isOpen: boolean;
-	onClose: () => void;
-	modelInfo: { modelName: string; providerName: ProviderName; type: 'autodetected' | 'custom' | 'default' } | null;
-}) => {
-	if (!isOpen || !modelInfo) return null;
-
-	const { modelName, providerName, type } = modelInfo;
-	const accessor = useAccessor()
-	const settingsState = useSettingsState()
-	const mouseDownInsideModal = useRef(false); // Ref to track mousedown origin
-	const settingsStateService = accessor.get('IVoidSettingsService')
-
-	// current overrides and defaults
-	const defaultModelCapabilities = getModelCapabilities(providerName, modelName, undefined);
-	const currentOverrides = settingsState.overridesOfModel?.[providerName]?.[modelName] ?? undefined;
-	const { recognizedModelName, isUnrecognizedModel } = defaultModelCapabilities
-
-	// Create the placeholder with the default values for allowed keys
-	const partialDefaults: Partial<ModelOverrides> = {};
-	for (const k of modelOverrideKeys) { if (defaultModelCapabilities[k]) partialDefaults[k] = defaultModelCapabilities[k] as any; }
-	const placeholder = JSON.stringify(partialDefaults, null, 2);
-
-	const [overrideEnabled, setOverrideEnabled] = useState<boolean>(() => !!currentOverrides);
-
-	const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-	const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
-
-	// reset when dialog toggles
-	useEffect(() => {
-		if (!isOpen) return;
-		const cur = settingsState.overridesOfModel?.[providerName]?.[modelName];
-		setOverrideEnabled(!!cur);
-		setErrorMsg(null);
-	}, [isOpen, providerName, modelName, settingsState.overridesOfModel, placeholder]);
-
-	const onSave = async () => {
-		// if disabled override, reset overrides
-		if (!overrideEnabled) {
-			await settingsStateService.setOverridesOfModel(providerName, modelName, undefined);
-			onClose();
-			return;
-		}
-
-		// enabled overrides
-		// parse json
-		let parsedInput: Record<string, unknown>
-
-		if (textAreaRef.current?.value) {
-			try {
-				parsedInput = JSON.parse(textAreaRef.current.value);
-			} catch (e) {
-				setErrorMsg('Invalid JSON');
-				return;
-			}
-		} else {
-			setErrorMsg('Invalid JSON');
-			return;
-		}
-
-		// only keep allowed keys
-		const cleaned: Partial<ModelOverrides> = {};
-		for (const k of modelOverrideKeys) {
-			if (!(k in parsedInput)) continue
-			const isEmpty = parsedInput[k] === '' || parsedInput[k] === null || parsedInput[k] === undefined;
-			if (!isEmpty) {
-				cleaned[k] = parsedInput[k] as any;
-			}
-		}
-		await settingsStateService.setOverridesOfModel(providerName, modelName, cleaned);
-		onClose();
-	};
-
-	const sourcecodeOverridesLink = `https://github.com/voideditor/void/blob/2e5ecb291d33afbe4565921664fb7e183189c1c5/src/vs/workbench/contrib/void/common/modelCapabilities.ts#L146-L172`
-
-	return (
-		<div // Backdrop
-			className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999999]"
-			onMouseDown={() => {
-				mouseDownInsideModal.current = false;
-			}}
-			onMouseUp={() => {
-				if (!mouseDownInsideModal.current) {
-					onClose();
-				}
-				mouseDownInsideModal.current = false;
-			}}
-		>
-			{/* MODAL */}
-			<div
-				className="bg-void-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh]"
-				onClick={(e) => e.stopPropagation()} // Keep stopping propagation for normal clicks inside
-				onMouseDown={(e) => {
-					mouseDownInsideModal.current = true;
-					e.stopPropagation();
-				}}
-			>
-				<div className="flex justify-between items-center mb-4">
-					<h3 className="text-lg font-medium">
-						Change Defaults for {modelName} ({displayInfoOfProviderName(providerName).title})
-					</h3>
-					<button
-						onClick={onClose}
-						className="text-void-fg-3 hover:text-void-fg-1"
-					>
-						<X className="size-5" />
-					</button>
-				</div>
-
-				{/* Display model recognition status */}
-				<div className="text-sm text-void-fg-3 mb-4">
-					{type === 'default' ? `${modelName} comes packaged with A-Coder, so you shouldn't need to change these settings.`
-						: isUnrecognizedModel
-							? `Model not recognized by A-Coder.`
-							: `A-Coder recognizes ${modelName} ("${recognizedModelName}").`}
-				</div>
-
-
-				{/* override toggle */}
-				<div className="flex items-center gap-2 mb-4">
-					<VoidSwitch size='xs' value={overrideEnabled} onChange={setOverrideEnabled} />
-					<span className="text-void-fg-3 text-sm">Override model defaults</span>
-				</div>
-
-				{/* Informational link */}
-				{overrideEnabled && <div className="text-sm text-void-fg-3 mb-4">
-					<ChatMarkdownRender string={`See the [sourcecode](${sourcecodeOverridesLink}) for a reference on how to set this JSON (advanced).`} chatMessageLocation={undefined} />
-				</div>}
-
-				<textarea
-					key={overrideEnabled + ''}
-					ref={textAreaRef}
-					className={`w-full min-h-[200px] p-2 rounded-sm border border-void-border-2 bg-void-bg-2 resize-none font-mono text-sm ${!overrideEnabled ? 'text-void-fg-3' : ''}`}
-					defaultValue={overrideEnabled && currentOverrides ? JSON.stringify(currentOverrides, null, 2) : placeholder}
-					placeholder={placeholder}
-					readOnly={!overrideEnabled}
-				/>
-				{errorMsg && (
-					<div className="text-red-500 mt-2 text-sm">{errorMsg}</div>
-				)}
-
-
-				<div className="flex justify-end gap-2 mt-4">
-					<VoidButtonBgDarken onClick={onClose} className="px-3 py-1">
-						Cancel
-					</VoidButtonBgDarken>
-					<VoidButtonBgDarken
-						onClick={onSave}
-						className="px-3 py-1 bg-[#0e70c0] text-white"
-					>
-						Save
-					</VoidButtonBgDarken>
-				</div>
-			</div>
-		</div>
-	);
-};
 
 
 
@@ -382,6 +214,9 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		providerName: ProviderName,
 		type: 'autodetected' | 'custom' | 'default'
 	} | null>(null);
+
+	// Track where the user clicked the "+" button so we can anchor the dialog near that point
+	const [settingsDialogAnchor, setSettingsDialogAnchor] = useState<{ x: number; y: number } | null>(null);
 
 	// States for add model functionality
 	const [isAddModelOpen, setIsAddModelOpen] = useState(false);
@@ -435,6 +270,173 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		setErrorString('');
 	};
 
+	// Simple Model Settings Dialog component
+	const SimpleModelSettingsDialog = ({
+		isOpen,
+		onClose,
+		modelInfo,
+		anchor,
+	}: {
+		isOpen: boolean;
+		onClose: () => void;
+		modelInfo: { modelName: string; providerName: ProviderName; type: 'autodetected' | 'custom' | 'default' } | null;
+		anchor: { x: number; y: number } | null;
+	}) => {
+		if (!isOpen || !modelInfo) return null;
+
+		const { modelName, providerName, type } = modelInfo;
+		const mouseDownInsideModal = useRef(false); // Ref to track mousedown origin
+
+		// current overrides and defaults
+		const defaultModelCapabilities = getModelCapabilities(providerName, modelName, undefined);
+		const currentOverrides = settingsState.overridesOfModel?.[providerName]?.[modelName] ?? undefined;
+		const { recognizedModelName, isUnrecognizedModel } = defaultModelCapabilities
+
+		// Create the placeholder with the default values for allowed keys
+		const partialDefaults: Partial<ModelOverrides> = {};
+		for (const k of modelOverrideKeys) { if (defaultModelCapabilities[k]) partialDefaults[k] = defaultModelCapabilities[k] as any; }
+		const placeholder = JSON.stringify(partialDefaults, null, 2);
+
+		const [overrideEnabled, setOverrideEnabled] = useState<boolean>(() => !!currentOverrides);
+		const [errorMsg, setErrorMsg] = useState<string | null>(null);
+		const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
+
+		// reset when dialog toggles
+		useEffect(() => {
+			if (!isOpen) return;
+			const cur = settingsState.overridesOfModel?.[providerName]?.[modelName];
+			setOverrideEnabled(!!cur);
+			setErrorMsg(null);
+		}, [isOpen, providerName, modelName, settingsState.overridesOfModel, placeholder]);
+
+		const onSave = async () => {
+			// if disabled override, reset overrides
+			if (!overrideEnabled) {
+				await settingsStateService.setOverridesOfModel(providerName, modelName, undefined);
+				onClose();
+				return;
+			}
+
+			// enabled overrides
+			// parse json
+			let parsedInput: Record<string, unknown>
+
+			if (textAreaRef.current?.value) {
+				try {
+					parsedInput = JSON.parse(textAreaRef.current.value);
+				} catch (e) {
+					setErrorMsg('Invalid JSON');
+					return;
+				}
+			} else {
+				setErrorMsg('Invalid JSON');
+				return;
+			}
+
+			// only keep allowed keys
+			const cleaned: Partial<ModelOverrides> = {};
+			for (const k of modelOverrideKeys) {
+				if (!(k in parsedInput)) continue
+				const isEmpty = parsedInput[k] === '' || parsedInput[k] === null || parsedInput[k] === undefined;
+				if (!isEmpty) {
+					cleaned[k] = parsedInput[k] as any;
+				}
+			}
+			await settingsStateService.setOverridesOfModel(providerName, modelName, cleaned);
+			onClose();
+		};
+
+		const sourcecodeOverridesLink = `https://github.com/voideditor/void/blob/2e5ecb291d33afbe4565921664fb7e183189c1c5/src/vs/workbench/contrib/void/common/modelCapabilities.ts#L146-L172`
+
+		return (
+			<div // Backdrop
+				className="fixed inset-0 bg-black/50 z-[9999999]"
+				onMouseDown={() => {
+					mouseDownInsideModal.current = false;
+				}}
+				onMouseUp={() => {
+					if (!mouseDownInsideModal.current) {
+						onClose();
+					}
+					mouseDownInsideModal.current = false;
+				}}
+			>
+				{/* MODAL */}
+				<div
+					className="bg-void-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh] fixed z-[10000000]"
+					style={anchor ? {
+						top: Math.max(16, anchor.y + 10),
+						left: Math.max(16, Math.min(window.innerWidth - 576 - 16, anchor.x - 288)),
+					} : {
+						top: '50%',
+						left: '50%',
+						transform: 'translate(-50%, -50%)',
+					}}
+					onClick={(e) => e.stopPropagation()} // Keep stopping propagation for normal clicks inside
+					onMouseDown={(e) => {
+						mouseDownInsideModal.current = true;
+						e.stopPropagation();
+					}}
+				>
+					<div className="flex justify-between items-center mb-4">
+						<h3 className="text-lg font-medium">
+							Change Defaults for {modelName} ({displayInfoOfProviderName(providerName).title})
+						</h3>
+						<button
+							onClick={onClose}
+							className="text-void-fg-3 hover:text-void-fg-1"
+						>
+							<X className="size-5" />
+						</button>
+					</div>
+
+					{/* Display model recognition status */}
+					<div className="text-sm text-void-fg-3 mb-4">
+						{type === 'default' ? `${modelName} comes packaged with A-Coder, so you shouldn't need to change these settings.`
+							: isUnrecognizedModel
+								? `Model not recognized by A-Coder.`
+								: `A-Coder recognizes ${modelName} ("${recognizedModelName}").`}
+					</div>
+
+					{/* override toggle */}
+					<div className="flex items-center gap-2 mb-4">
+						<VoidSwitch size='xs' value={overrideEnabled} onChange={setOverrideEnabled} />
+						<span className="text-void-fg-3 text-sm">Override model defaults</span>
+					</div>
+
+					{/* Informational link */}
+					{overrideEnabled && <div className="text-sm text-void-fg-3 mb-4">
+						<ChatMarkdownRender string={`See the [sourcecode](${sourcecodeOverridesLink}) for a reference on how to set this JSON (advanced).`} chatMessageLocation={undefined} />
+					</div>}
+
+					<textarea
+						key={overrideEnabled + ''}
+						ref={textAreaRef}
+						className={`w-full min-h-[200px] p-2 rounded-sm border border-void-border-2 bg-void-bg-2 resize-none font-mono text-sm ${!overrideEnabled ? 'text-void-fg-3' : ''}`}
+						defaultValue={overrideEnabled && currentOverrides ? JSON.stringify(currentOverrides, null, 2) : placeholder}
+						placeholder={placeholder}
+						readOnly={!overrideEnabled}
+					/>
+					{errorMsg && (
+						<div className="text-red-500 mt-2 text-sm">{errorMsg}</div>
+					)}
+
+					<div className="flex justify-end gap-2 mt-4">
+						<VoidButtonBgDarken onClick={onClose} className="px-3 py-1">
+							Cancel
+						</VoidButtonBgDarken>
+						<VoidButtonBgDarken
+							onClick={onSave}
+							className="px-3 py-1 bg-[#0e70c0] text-white"
+						>
+							Save
+						</VoidButtonBgDarken>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
 	return <div className=''>
 		{modelDump.map((m, i) => {
 			const { isHidden, type, modelName, providerName, providerEnabled } = m
@@ -476,17 +478,24 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 
 					{/* Advanced Settings button (gear). Hide entirely when provider/model disabled. */}
 					{disabled ? null : (
-						<div className="w-5 flex items-center justify-center">
-							<button
-								onClick={() => { setOpenSettingsModel({ modelName, providerName, type }) }}
-								data-tooltip-id='void-tooltip'
-								data-tooltip-place='right'
-								data-tooltip-content='Advanced Settings'
-								className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
-							>
-								<Plus size={12} className="text-void-fg-3 opacity-50" />
-							</button>
-						</div>
+						<button
+							onClick={(e) => {
+								const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+								const anchor = {
+									x: rect.left + rect.width / 2,
+									y: rect.top + rect.height / 2,
+								};
+								console.log('Modal anchor coordinates:', JSON.stringify(anchor), 'Window size:', window.innerWidth, 'x', window.innerHeight);
+								setSettingsDialogAnchor(anchor);
+								setOpenSettingsModel({ modelName, providerName, type });
+							}}
+							data-tooltip-id='void-tooltip'
+							data-tooltip-place='right'
+							data-tooltip-content='Advanced Settings'
+							className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
+						>
+							<Plus size={12} className="text-void-fg-3 opacity-50" />
+						</button>
 					)}
 
 					{/* Blue star */}
@@ -600,13 +609,12 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		{/* Model Settings Dialog */}
 		<SimpleModelSettingsDialog
 			isOpen={openSettingsModel !== null}
-			onClose={() => setOpenSettingsModel(null)}
+			onClose={() => { setOpenSettingsModel(null); setSettingsDialogAnchor(null); }}
 			modelInfo={openSettingsModel}
+			anchor={settingsDialogAnchor}
 		/>
 	</div>
 }
-
-
 
 // providers
 
@@ -1043,6 +1051,8 @@ export const Settings = () => {
 		{ tab: 'featureOptions', label: 'Feature Options' },
 		{ tab: 'general', label: 'General' },
 		{ tab: 'mcp', label: 'MCP' },
+		{ tab: 'mobileApi', label: 'Mobile API' },
+		{ tab: 'about', label: 'About' },
 		{ tab: 'all', label: 'All Settings' },
 	];
 	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
@@ -1128,9 +1138,19 @@ export const Settings = () => {
 			<div className="flex flex-col md:flex-row w-full gap-6 max-w-[900px] mx-auto mb-32" style={{ minHeight: '80vh' }}>
 				{/* ──────────────  SIDEBAR  ────────────── */}
 
-				<aside className="md:w-1/4 w-full p-6 shrink-0">
+				<aside
+					className={`md:w-1/4 w-full p-4 shrink-0 rounded-2xl backdrop-blur-md shadow-lg
+						${isDark
+							? 'border border-white/10 bg-black/60 shadow-black/40'
+							: 'border border-black/10 bg-white/80 shadow-black/10'}`}
+				>
+					{/* Logo */}
+					<div className="flex flex-col items-center gap-2 mt-4 mb-6 select-none">
+						<div className="void-void-icon w-10 h-10 rounded-full opacity-90" />
+						<div className="text-xs font-medium text-void-fg-3">A-Coder</div>
+					</div>
 					{/* vertical tab list */}
-					<div className="flex flex-col gap-2 mt-12">
+					<div className="flex flex-col gap-2 mt-4">
 						{navItems.map(({ tab, label }) => (
 							<button
 								key={tab}
@@ -1143,11 +1163,19 @@ export const Settings = () => {
 									}
 								}}
 								className={`
-          py-2 px-4 rounded-md text-left transition-all duration-200
-          ${selectedSection === tab
-										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-										: 'bg-void-bg-2 hover:bg-void-bg-2/80 text-void-fg-1'}
-        `}
+		  py-2 px-4 rounded-lg text-left transition-all duration-200 border
+		  ${selectedSection === tab
+										? (
+											isDark
+												? 'bg-white/10 text-white font-medium border-white/30 shadow-sm'
+												: 'bg-black/5 text-black font-medium border-black/20 shadow-sm'
+										)
+										: (
+											isDark
+												? 'text-void-fg-3 border-transparent hover:bg-white/5 hover:text-white'
+												: 'text-black/70 border-transparent hover:bg-black/5 hover:text-black'
+										)
+									}`}
 							>
 								{label}
 							</button>
@@ -1160,7 +1188,12 @@ export const Settings = () => {
 
 
 
-					<div className='max-w-3xl'>
+					<div
+						className={`max-w-3xl rounded-2xl px-6 py-5 backdrop-blur-md shadow-lg
+							${isDark
+								? 'border border-white/10 bg-black/70 shadow-black/40'
+								: 'border border-black/10 bg-white/80 shadow-black/10'}`}
+					>
 
 						<h1 className='text-2xl w-full'>{`A-Coder Settings`}</h1>
 
@@ -1250,7 +1283,7 @@ export const Settings = () => {
 													{/* Model Dropdown */}
 													<ErrorBoundary>
 														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
-															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1' />
+															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg px-2 py-1 shadow-sm' />
 														</div>
 													</ErrorBoundary>
 
@@ -1477,6 +1510,24 @@ export const Settings = () => {
 								</ErrorBoundary>
 							</div>
 
+							{/* About section */}
+							<div className={shouldShowTab('about') ? `` : 'hidden'}>
+								<ErrorBoundary>
+									<h2 className={`text-3xl mb-2`}>About A-Coder</h2>
+									<div className='text-sm text-void-fg-3 space-y-3 mt-2 select-text'>
+										<p>
+											A-Coder is an open-source, AI-powered code editor built on the foundations of Void. It lets you run powerful AI agents directly on your codebase, checkpoint and visualize changes, and connect to models you host yourself or via your own providers.
+										</p>
+										<p>
+											This project is maintained and managed by <span className='font-medium'>The A-Tech Corporation</span> via its subsidiary <span className='font-medium'>A-Tech Dev Studio</span> (<a className='underline hover:brightness-110' href='https://atechds.com' target='_blank' rel='noreferrer'>atechds.com</a>).
+										</p>
+										<p>
+											You can find more details, onboarding instructions, and development docs in the main README and documentation inside this repository.
+										</p>
+									</div>
+								</ErrorBoundary>
+							</div>
+
 							{/* General section */}
 							<div className={`${shouldShowTab('general') ? `` : 'hidden'} flex flex-col gap-12`}>
 								{/* One-Click Switch section */}
@@ -1635,6 +1686,91 @@ Use Model Context Protocol to provide Agent mode with more tools.
 									</ErrorBoundary>
 								</ErrorBoundary>
 							</div>
+{/* Mobile API section */ }
+<div className={shouldShowTab('mobileApi') ? `` : 'hidden'}>
+	<ErrorBoundary>
+		<h2 className='text-3xl mb-2'>Mobile API</h2>
+		<h4 className='text-void-fg-3 mb-4'>
+			Enable the Mobile API to access A-Coder from a companion mobile app. Provides secure access to chat threads, workspace files, and planning features. API binds to localhost only.
+		</h4>
+
+		{/* Enable API */}
+		<div className='my-4'>
+			<ErrorBoundary>
+				<div className='flex items-center gap-x-2'>
+					<VoidSwitch
+						size='xs'
+						value={!!settingsState.globalSettings.apiEnabled}
+						onChange={(newValue) => voidSettingsService.setGlobalSetting('apiEnabled', newValue)}
+					/>
+					<span className='text-void-fg-3 text-xs'>Enable Mobile API</span>
+				</div>
+			</ErrorBoundary>
+		</div>
+
+		{/* API Port */}
+		<div className='my-4'>
+			<label className='text-void-fg-3 text-xs block mb-1'>API Port</label>
+			<input
+				type='number'
+				className='bg-void-bg-2 text-void-fg-1 px-3 py-1.5 rounded text-sm w-32'
+				value={settingsState.globalSettings.apiPort}
+				onChange={(e) => {
+					const port = parseInt(e.target.value);
+					if (port >= 1024 && port <= 65535) voidSettingsService.setGlobalSetting('apiPort', port);
+				}}
+				min={1024}
+				max={65535}
+			/>
+		</div>
+
+		{/* Cloudflare Tunnel URL */}
+		<div className='my-4'>
+			<label className='text-void-fg-3 text-xs block mb-1'>Cloudflare Tunnel URL (Optional)</label>
+			<input
+				type='text'
+				className='bg-void-bg-2 text-void-fg-1 px-3 py-1.5 rounded text-sm w-full max-w-md'
+				value={settingsState.globalSettings.apiTunnelUrl || ''}
+				onChange={(e) => voidSettingsService.setGlobalSetting('apiTunnelUrl', e.target.value || undefined)}
+				placeholder='https://acoder-api.example.com'
+			/>
+		</div>
+
+		{/* API Tokens */}
+		<div className='my-4'>
+			<label className='text-void-fg-3 text-xs block mb-2'>API Tokens</label>
+			<div className='space-y-2'>
+				{settingsState.globalSettings.apiTokens.length === 0 ? (
+					<div className='text-void-fg-3 text-xs italic'>No tokens yet</div>
+				) : (
+					settingsState.globalSettings.apiTokens.map((token, idx) => (
+						<div key={idx} className='flex items-center gap-2 bg-void-bg-2 px-3 py-2 rounded'>
+							<code className='text-xs text-void-fg-2 flex-1 font-mono'>{token}</code>
+							<VoidButtonBgDarken className='px-2 py-1 text-xs' onClick={() => { navigator.clipboard.writeText(token); notificationService.info('Copied'); }}>Copy</VoidButtonBgDarken>
+							<VoidButtonBgDarken className='px-2 py-1 text-xs bg-red-900/20' onClick={() => voidSettingsService.setGlobalSetting('apiTokens', settingsState.globalSettings.apiTokens.filter((_, i) => i !== idx))}>Revoke</VoidButtonBgDarken>
+						</div>
+					))
+				)}
+			</div>
+			<VoidButtonBgDarken className='px-4 py-1 mt-2' onClick={() => {
+				const token = `acoder_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+				voidSettingsService.setGlobalSetting('apiTokens', [...settingsState.globalSettings.apiTokens, token]);
+				navigator.clipboard.writeText(token);
+				notificationService.info('Token generated and copied');
+			}}>Generate New Token</VoidButtonBgDarken>
+		</div>
+
+		{/* Connection Info */}
+		<div className='my-4 p-4 bg-void-bg-2 rounded'>
+			<h3 className='text-sm font-semibold mb-2'>Connection Info</h3>
+			<div className='text-xs text-void-fg-3 space-y-1'>
+				<div><strong>URL:</strong> {settingsState.globalSettings.apiTunnelUrl || `http://localhost:${settingsState.globalSettings.apiPort}`}</div>
+				<div><strong>Status:</strong> {settingsState.globalSettings.apiEnabled ? '🟢 Enabled' : '🔴 Disabled'}</div>
+			</div>
+		</div>
+
+	</ErrorBoundary>
+</div>
 
 
 

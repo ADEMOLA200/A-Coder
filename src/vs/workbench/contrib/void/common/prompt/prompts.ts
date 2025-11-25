@@ -506,7 +506,107 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 
 **When to use:** When you're done with a long-running process and want to clean up the terminal (e.g., stopping a dev server).`,
 		params: { persistent_terminal_id: { description: `The ID of the persistent terminal.` } }
-	}
+	},
+
+	// --- Planning & Task Management ---
+
+	create_plan: {
+		name: 'create_plan',
+		description: `Creates a structured plan for complex, multi-step tasks. This allows you to break down large requests into manageable steps and track progress.
+
+**When to use:** At the start of complex requests like:
+- Large refactors or redesigns
+- Multi-file features
+- Complex debugging investigations
+- Any task requiring multiple coordinated steps
+
+**What you'll receive:** A plan ID and summary showing all tasks.
+
+**Important:** After creating a plan, execute tasks in order, marking each as complete as you go using update_task_status.
+
+**Example workflow:**
+1. User requests: "Redesign the authentication system"
+2. You call create_plan with tasks:
+   - task1: "Analyze current auth implementation"
+   - task2: "Design new JWT-based flow" (depends on task1)
+   - task3: "Implement AuthService" (depends on task2)
+   - task4: "Update UI components" (depends on task3)
+3. Execute each task, calling update_task_status(task1, "in_progress"), then update_task_status(task1, "complete") when done
+4. Continue with remaining tasks in order`,
+		params: {
+			goal: { description: 'Overall goal this plan accomplishes (e.g., "Redesign authentication flow")' },
+			tasks: {
+				description: `Array of task objects. Each task must have:
+- id: Unique identifier (e.g., "task1", "refactor_auth", "add_tests")
+- description: Clear description of the task (e.g., "Refactor AuthService to use JWT")
+- dependencies: Array of task IDs this task depends on (tasks that must complete first). Use empty array [] if no dependencies.
+
+Example: [
+  { id: "task1", description: "Read current implementation", dependencies: [] },
+  { id: "task2", description: "Design new approach", dependencies: ["task1"] },
+  { id: "task3", description: "Implement changes", dependencies: ["task2"] }
+]`
+			}
+		}
+	},
+
+	update_task_status: {
+		name: 'update_task_status',
+		description: `Updates the status of a task in your current plan.
+
+**When to use:**
+- When starting a task: mark as 'in_progress'
+- When completing a task: mark as 'complete'
+- If a task fails: mark as 'failed' with error notes
+- If skipping a task: mark as 'skipped' with reason
+
+**What you'll receive:** Confirmation with the task ID, new status, and updated plan summary.
+
+**Best practice:** Always update status when you START and when you FINISH each task. This keeps your progress visible.`,
+		params: {
+			task_id: { description: 'The ID of the task to update (must match an ID from create_plan)' },
+			status: { description: `New status. Must be one of: "pending", "in_progress", "complete", "failed", "skipped"` },
+			notes: { description: 'Optional. Brief notes about this status change (e.g., "Completed refactor of AuthService", "Failed: circular dependency found")' }
+		}
+	},
+
+	get_plan_status: {
+		name: 'get_plan_status',
+		description: `Retrieves the current state of your plan, showing all tasks and their statuses.
+
+**When to use:**
+- To check which tasks are complete and what's next
+- To resume work after an interruption or error
+- To see the overall progress
+
+**What you'll receive:** A formatted summary showing:
+- Plan goal
+- Progress (X/Y tasks completed)
+- Tasks grouped by status (in_progress, pending, complete, failed, skipped)
+- Dependencies for pending tasks`,
+		params: {}
+	},
+
+	add_tasks_to_plan: {
+		name: 'add_tasks_to_plan',
+		description: `Adds new tasks to the current plan.
+
+**When to use:** When you discover additional work needed that wasn't in the original plan (e.g., "I realize I also need to update the tests").
+
+**What you'll receive:** Updated plan summary with the new tasks added.
+
+**Example:** While implementing task3, you realize you need to add migration scripts, so you call add_tasks_to_plan with a new task for migrations.`,
+		params: {
+			tasks: {
+				description: `Array of new task objects to add. Each task must have:
+- id: Unique identifier (must not conflict with existing task IDs)
+- description: Clear description of the task
+- dependencies: Array of task IDs this task depends on (can reference existing tasks)
+
+Example: [{ id: "task_migrations", description: "Create database migration scripts", dependencies: ["task3"] }]`
+			}
+		}
+	},
 
 
 	// go_to_definition
@@ -758,7 +858,24 @@ When making code changes, NEVER output code to the USER, unless requested. Inste
 
 ALWAYS use tools (edit, terminal, etc) to take actions and implement changes. For example, if you would like to edit a file, you MUST use a tool.
 
-CRITICAL: DO NOT just describe what you will do - TAKE ACTION IMMEDIATELY by calling tools. If you respond with text explaining your plan without calling a tool, you will be prompted to actually execute the plan.
+Task planning:
+For any complex, multi-step, or "planning" style request (e.g. redesigns, refactors, roadmaps, multi-file features), you MUST FIRST respond with a concise numbered plan of concrete actions, then execute it step by step.
+
+- ALWAYS start the plan on its own, as a plain markdown numbered list, with each line beginning exactly with \`1.\`, \`2.\`, \`3.\` etc. at the start of the line.
+- Example format (not literal content):
+  1. Analyze existing layout and extract key components
+  2. Design new header and navigation structure
+  3. Implement updated styling and responsive behavior
+- Each bullet MUST be a single, actionable step you can complete in one or a few tool calls.
+- Use clear, imperative descriptions ("Refactor header component", "Create new layout file", "Update onboarding overlay styles" etc.).
+- Do NOT mix the plan bullets with prose paragraphs, checklists, or sub-bullets. Keep the top-level plan as a simple \`1. / 2. / 3.\` list.
+- After you have written this plan, follow it in order, updating or extending it only when strictly necessary.
+
+Triggering the plan:
+- If the USER asks you to "plan", "break down", "redesign", "architect", "refactor a large area", or otherwise implies multiple steps, you MUST produce this numbered plan before doing anything else.
+- For these complex requests, DO NOT skip the plan and go straight to tools, even if you think you understand the task.
+
+CRITICAL: After the initial numbered plan (when needed), do NOT keep re-explaining what you will do. TAKE ACTION by calling tools to execute the current step. Natural-language explanations should be brief and mainly summarize what you just did or are about to do.
 
 Prioritize taking as many steps as you need to complete your request over stopping early.
 

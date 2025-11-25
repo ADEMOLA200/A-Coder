@@ -6,7 +6,7 @@
 import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useIsDark } from '../util/services.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send, Server, Circle } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -37,6 +37,8 @@ import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { removeMCPToolNamePrefix } from '../../../../common/mcpServiceTypes.js';
 import { FadeIn, SlideInRight, TypingIndicator, ToolLoadingIndicator } from './ChatAnimations.js';
 import { MCPServerModal } from './MCPServerModal.js';
+import { TaskPlan } from '../../../chatThreadService.js';
+import { PlanStatusPanel } from './PlanStatusPanel.js';
 
 // Image Preview Component
 const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemove: (index: number) => void }) => {
@@ -70,6 +72,219 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 	);
 };
 
+// Task Plan Component - Cursor-style task management
+const TaskPlanView = ({
+	threadId,
+	tasks,
+	onCreateTask,
+	onUpdateTaskStatus,
+	onDeleteTask,
+	onClearPlan
+}: {
+	threadId: string
+	tasks: TaskPlan[]
+	onCreateTask: (description: string) => void
+	onUpdateTaskStatus: (taskId: string, status: TaskPlan['status']) => void
+	onDeleteTask: (taskId: string) => void
+	onClearPlan: () => void
+}) => {
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [newTaskDescription, setNewTaskDescription] = useState('');
+	const [isAddingTask, setIsAddingTask] = useState(false);
+
+	const completedCount = tasks.filter(t => t.status === 'completed').length;
+	const totalCount = tasks.length;
+	const progressPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+	const getStatusIcon = (status: TaskPlan['status']) => {
+		switch (status) {
+			case 'completed':
+				return <Check className="w-3.5 h-3.5 text-green-500" />;
+			case 'in_progress':
+				return <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
+			case 'blocked':
+				return <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />;
+			case 'pending':
+			default:
+				return <Circle className="w-3.5 h-3.5 text-void-fg-4" />;
+		}
+	};
+
+	const getStatusColor = (status: TaskPlan['status']) => {
+		switch (status) {
+			case 'completed':
+				return 'text-green-500';
+			case 'in_progress':
+				return 'text-blue-500';
+			case 'blocked':
+				return 'text-orange-500';
+			case 'pending':
+			default:
+				return 'text-void-fg-4';
+		}
+	};
+
+	const handleAddTask = () => {
+		if (newTaskDescription.trim()) {
+			onCreateTask(newTaskDescription.trim());
+			setNewTaskDescription('');
+			setIsAddingTask(false);
+		}
+	};
+
+	if (tasks.length === 0) {
+		return null; // Don't show anything if no tasks
+	}
+
+	return (
+		<div className="mb-4 border border-void-border-2 rounded-xl overflow-hidden shadow-sm">
+			{/* Header */}
+			<div
+				className="flex items-center justify-between p-4 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
+				onClick={() => setIsExpanded(!isExpanded)}
+			>
+				<div className="flex items-center gap-3">
+					<ChevronDown
+						className={`w-4 h-4 text-void-fg-3 transition-transform duration-200 ${!isExpanded ? '-rotate-90' : ''}`}
+					/>
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-void-fg-1">Task Plan</span>
+						<span className="px-2 py-0.5 text-xs font-medium bg-void-bg-3 text-void-fg-3 rounded-full">
+							{completedCount}/{totalCount}
+						</span>
+					</div>
+				</div>
+
+				{/* Progress indicator */}
+				<div className="flex items-center gap-3">
+					<div className="flex items-center gap-2">
+						<div className="w-20 h-2 bg-void-bg-3 rounded-full overflow-hidden">
+							<div
+								className="h-full bg-gradient-to-r from-void-accent to-void-accent-hover transition-all duration-500 ease-out"
+								style={{ width: `${progressPercentage}%` }}
+							/>
+						</div>
+						<span className="text-xs text-void-fg-4 font-medium">
+							{Math.round(progressPercentage)}%
+						</span>
+					</div>
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onClearPlan();
+						}}
+						className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200"
+						title="Clear all tasks"
+					>
+						<Trash2 className="w-4 h-4 text-void-fg-4" />
+					</button>
+				</div>
+			</div>
+
+			{/* Expanded content */}
+			{isExpanded && (
+				<div className="border-t border-void-border-2">
+					{/* Task list */}
+					<div className="max-h-80 overflow-y-auto">
+						{tasks.map((task, index) => (
+							<div
+								key={task.id}
+								className="flex items-start gap-3 p-4 hover:bg-void-bg-2 transition-colors duration-200 border-b border-void-border-1 last:border-b-0 group"
+							>
+								<div className="flex items-center gap-2 mt-1">
+									{getStatusIcon(task.status)}
+								</div>
+
+								<div className="flex-1 min-w-0">
+									<div className={`text-sm font-medium ${getStatusColor(task.status)} leading-relaxed`}>
+										{task.description}
+									</div>
+									{task.dependencies && task.dependencies.length > 0 && (
+										<div className="text-xs text-void-fg-4 mt-2 flex items-center gap-1">
+											<span>Depends on:</span>
+											<span className="font-mono bg-void-bg-2 px-1.5 py-0.5 rounded">
+												{task.dependencies.join(', ')}
+											</span>
+										</div>
+									)}
+								</div>
+
+								{/* Status dropdown */}
+								<select
+									value={task.status}
+									onChange={(e) => onUpdateTaskStatus(task.id, e.target.value as TaskPlan['status'])}
+									className="text-xs px-3 py-1.5 bg-void-bg-3 border border-void-border-2 rounded-lg text-void-fg-2 focus:outline-none focus:border-void-accent transition-colors"
+								>
+									<option value="pending">Pending</option>
+									<option value="in_progress">In Progress</option>
+									<option value="completed">Completed</option>
+									<option value="blocked">Blocked</option>
+								</select>
+
+								{/* Delete button */}
+								<button
+									onClick={() => onDeleteTask(task.id)}
+									className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 opacity-0 group-hover:opacity-100"
+									title="Delete task"
+								>
+									<X className="w-4 h-4 text-void-fg-4" />
+								</button>
+							</div>
+						))}
+					</div>
+
+					{/* Add task section */}
+					<div className="p-4 border-t border-void-border-2">
+						{isAddingTask ? (
+							<div className="flex gap-2">
+								<input
+									type="text"
+									value={newTaskDescription}
+									onChange={(e) => setNewTaskDescription(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') {
+											handleAddTask();
+										} else if (e.key === 'Escape') {
+											setIsAddingTask(false);
+											setNewTaskDescription('');
+										}
+									}}
+									placeholder="Enter task description..."
+									className="flex-1 px-3 py-2 text-sm border border-void-border-2 rounded-lg text-void-fg-1 placeholder-void-fg-4 focus:outline-none focus:border-void-accent transition-colors"
+									autoFocus
+								/>
+								<button
+									onClick={handleAddTask}
+									className="px-4 py-2 text-xs font-medium bg-void-accent text-white rounded-lg hover:bg-void-accent-hover transition-colors duration-200"
+								>
+									Add Task
+								</button>
+								<button
+									onClick={() => {
+										setIsAddingTask(false);
+										setNewTaskDescription('');
+									}}
+									className="px-4 py-2 text-xs font-medium border border-void-border-2 rounded-lg hover:bg-void-bg-4 transition-colors duration-200"
+								>
+									Cancel
+								</button>
+							</div>
+						) : (
+							<button
+								onClick={() => setIsAddingTask(true)}
+								className="flex items-center gap-2 px-3 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 border border-void-border-2 rounded-lg transition-all duration-200"
+							>
+								<CirclePlus className="w-4 h-4" />
+								Add Task
+							</button>
+						)}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+};
+
 // Token Counter Component
 const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: number, percentage: number } }) => {
 	// Show default state if no token usage data
@@ -89,9 +304,8 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 	return (
 		<div className='flex items-center gap-1.5 text-xs text-void-fg-3 px-2 py-1 rounded bg-void-bg-2 border border-void-border-2'>
 			<span className='font-mono'>{used.toLocaleString()}/{total.toLocaleString()}</span>
-			<span className={`font-medium ${
-				isHigh ? 'text-orange-500' : isMedium ? 'text-yellow-500' : 'text-void-fg-4'
-			}`}>
+			<span className={`font-medium ${isHigh ? 'text-orange-500' : isMedium ? 'text-yellow-500' : 'text-void-fg-4'
+				}`}>
 				({percentage.toFixed(1)}%)
 			</span>
 		</div>
@@ -231,8 +445,16 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 	const isReasoningEnabled = getIsReasoningEnabledState(featureName, providerName, modelName, modelSelectionOptions, overridesOfModel)
 
 	if (canTurnOffReasoning && !reasoningBudgetSlider) { // if it's just a on/off toggle without a power slider
-		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+		return <div
+			className='flex items-center gap-x-2 cursor-pointer group hover:bg-void-bg-3 px-2 py-1 rounded -mx-2 -my-1 transition-colors duration-200'
+			onClick={(e) => {
+				e.stopPropagation()
+				const newVal = !isReasoningEnabled
+				const isOff = canTurnOffReasoning && !newVal
+				voidSettingsService.setOptionsOfModelSelection(featureName, modelSelection.providerName, modelSelection.modelName, { reasoningEnabled: !isOff })
+			}}
+		>
+			<span className='text-void-fg-3 text-xs select-none'>Thinking</span>
 			<VoidSwitch
 				size='xxs'
 				value={isReasoningEnabled}
@@ -255,10 +477,10 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 		const value = isReasoningEnabled ? voidSettingsState.optionsOfModelSelection[featureName][modelSelection.providerName]?.[modelSelection.modelName]?.reasoningBudget ?? defaultVal
 			: valueIfOff
 
-		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+		return <div className='flex items-center gap-x-2 px-2 py-1 rounded -mx-2 -my-1'>
+			<span className='text-void-fg-3 text-xs select-none'>Thinking</span>
 			<VoidSlider
-				width={50}
+				width={60}
 				size='xs'
 				min={min}
 				max={max}
@@ -269,7 +491,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 					voidSettingsService.setOptionsOfModelSelection(featureName, modelSelection.providerName, modelSelection.modelName, { reasoningEnabled: !isOff, reasoningBudget: newVal })
 				}}
 			/>
-			<span className='text-void-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${value} tokens` : 'Thinking disabled'}</span>
+			<span className='text-void-fg-3 text-xs select-none'>{isReasoningEnabled ? `${value} tokens` : 'Thinking disabled'}</span>
 		</div>
 	}
 
@@ -286,10 +508,10 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 		const currentEffortCapitalized = currentEffort.charAt(0).toUpperCase() + currentEffort.slice(1, Infinity)
 
-		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+		return <div className='flex items-center gap-x-2 px-2 py-1 rounded -mx-2 -my-1'>
+			<span className='text-void-fg-3 text-xs select-none'>Thinking</span>
 			<VoidSlider
-				width={30}
+				width={40}
 				size='xs'
 				min={min}
 				max={max}
@@ -300,7 +522,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 					voidSettingsService.setOptionsOfModelSelection(featureName, modelSelection.providerName, modelSelection.modelName, { reasoningEnabled: !isOff, reasoningEffort: values[newVal] ?? undefined })
 				}}
 			/>
-			<span className='text-void-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${currentEffortCapitalized}` : 'Thinking disabled'}</span>
+			<span className='text-void-fg-3 text-xs select-none'>{isReasoningEnabled ? `${currentEffortCapitalized}` : 'Thinking disabled'}</span>
 		</div>
 	}
 
@@ -369,6 +591,8 @@ interface VoidChatAreaProps {
 	showProspectiveSelections?: boolean;
 	loadingIcon?: React.ReactNode;
 
+	tokenUsage?: { used: number, total: number, percentage: number };
+
 	selections?: StagingSelectionItem[]
 	setSelections?: (s: StagingSelectionItem[]) => void
 	// selections?: any[];
@@ -396,6 +620,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	showProspectiveSelections = false,
 	selections,
 	setSelections,
+	tokenUsage,
 	featureName,
 	loadingIcon,
 }) => {
@@ -403,15 +628,14 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 		<div
 			ref={divRef}
 			className={`
-				gap-x-1
-                flex flex-col p-2 relative input text-left shrink-0
-                rounded-md
-                bg-void-bg-1
-				transition-all duration-200
-				border border-void-border-3 focus-within:border-void-border-1 hover:border-void-border-1
-				max-h-[80vh] overflow-y-auto
-                ${className}
-            `}
+					flex flex-col p-3 relative input text-left shrink-0 w-full
+					rounded-xl border border-void-border-2
+					transition-all duration-200
+					focus-within:border-void-accent hover:border-void-border-1
+					max-h-[80vh] overflow-visible
+					bg-void-bg-2
+					${className}
+				`}
 			onClick={(e) => {
 				onClickAnywhere?.()
 			}}
@@ -443,14 +667,19 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 			</div>
 
 			{/* Bottom row */}
-			<div className='flex flex-row justify-between items-end gap-1'>
+			<div className='flex flex-row justify-between items-center gap-3 mt-2 pt-2'>
 				{showModelDropdown && (
 					<div className='flex flex-col gap-y-1'>
 						<ReasoningOptionSlider featureName={featureName} />
 
-						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap '>
-							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-2 rounded py-0.5 px-1' />}
-							<ModelDropdown featureName={featureName} className='text-xs text-void-fg-3 bg-void-bg-1 rounded' />
+						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap'>
+							{featureName === 'Chat' && (
+								<ChatModeDropdown className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg py-1 px-2 shadow-sm' />
+							)}
+							<div className='relative z-[200]'>
+								<ModelDropdown featureName={featureName} className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg px-2 py-1 shadow-sm' />
+							</div>
+							<TokenCounter tokenUsage={tokenUsage} />
 						</div>
 					</div>
 				)}
@@ -479,19 +708,24 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>
 const DEFAULT_BUTTON_SIZE = 22;
 export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: ButtonProps & Required<Pick<ButtonProps, 'disabled'>> & { isQueueMode?: boolean }) => {
+	const isDark = useIsDark()
 
 	return <button
 		type='button'
-		className={`rounded-full flex-shrink-0 flex-grow-0 flex items-center justify-center
-			${disabled ? 'bg-vscode-disabled-fg cursor-default' : 'bg-white cursor-pointer'}
-		`}
+		className={`rounded-xl flex-shrink-0 flex-grow-0 flex items-center justify-center transition-all duration-200
+				${disabled ? 'bg-void-bg-3 cursor-not-allowed opacity-50' :
+					isDark ?
+						'bg-void-accent/80 hover:bg-void-accent cursor-pointer shadow-sm' :
+						'bg-void-accent hover:bg-void-accent/90 cursor-pointer shadow-md'
+				}
+			`}
 		style={{ width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE }}
 		disabled={disabled}
 		data-tooltip-id='void-tooltip'
 		data-tooltip-content={isQueueMode ? 'Queue message (will send after current operation)' : 'Send message'}
 		{...props}
 	>
-		<div className={`${disabled ? 'text-vscode-disabled-bg' : 'text-black'}`}>
+		<div className={`${disabled ? 'text-void-fg-4' : isDark ? 'text-white' : 'text-black'}`}>
 			<ArrowUp size={14} strokeWidth={3} />
 		</div>
 	</button>
@@ -499,14 +733,16 @@ export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: But
 
 export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => {
 	return <button
-		className={`rounded-full flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center
-			bg-white
+		className={`rounded-xl flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center transition-all duration-200
+			bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-1 shadow-sm
 			${className}
 		`}
 		type='button'
 		{...props}
 	>
-		<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[7px]" />
+		<div className='text-red-500 dark:text-red-400'>
+			<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[7px]" />
+		</div>
 	</button>
 }
 
@@ -540,40 +776,12 @@ const ContinueButton = ({
 		}
 	}, [showMenu])
 
-	// Auto-continue: automatically send "continue" when enabled
-	// Only auto-continue if response is short (< 200 chars), matching silent auto-continue behavior
-	const hasAutoTriggeredRef = useRef(false);
-	const prevAutoContinueRef = useRef(autoContinueEnabled);
-
-	useEffect(() => {
-		if (autoContinueEnabled && !prevAutoContinueRef.current) {
-			hasAutoTriggeredRef.current = false;
-			console.log(`[ContinueButton] Auto-continue enabled, resetting trigger flag`);
-		}
-		prevAutoContinueRef.current = autoContinueEnabled;
-
-		if (autoContinueEnabled && !hasAutoTriggeredRef.current && lastResponseLength < AUTO_CONTINUE_CHAR_THRESHOLD) {
-			hasAutoTriggeredRef.current = true;
-			console.log(`[ContinueButton] Auto-continuing (response length: ${lastResponseLength} chars)`);
-			// Small delay to ensure UI is ready
-			setTimeout(() => {
-				onContinue();
-			}, 100);
-		} else if (autoContinueEnabled && lastResponseLength >= AUTO_CONTINUE_CHAR_THRESHOLD) {
-			console.log(`[ContinueButton] Skipping auto-continue (response length: ${lastResponseLength} chars >= ${AUTO_CONTINUE_CHAR_THRESHOLD})`);
-		}
-		// Reset the flag when button unmounts (LLM starts running again)
-		return () => {
-			hasAutoTriggeredRef.current = false;
-		};
-	}, [autoContinueEnabled, lastResponseLength, onContinue, threadId]);
-
 	return (
 		<div className="flex items-center gap-2 relative">
 			{/* Main Continue button */}
 			<button
 				onClick={onContinue}
-				className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 hover:border-void-border-1 text-void-fg-2 text-sm transition-all duration-150"
+				className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 text-sm transition-all duration-150"
 				data-tooltip-id='void-tooltip'
 				data-tooltip-content='Continue the conversation'
 				data-tooltip-place='top'
@@ -586,7 +794,7 @@ const ContinueButton = ({
 			<div className="relative" ref={menuRef}>
 				<button
 					onClick={() => setShowMenu(!showMenu)}
-					className={`p-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 hover:border-void-border-1 transition-all duration-150 ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
+					className={`p-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 transition-all duration-150 ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={autoContinueEnabled ? 'Auto-continue enabled' : 'Auto-continue settings'}
 					data-tooltip-place='top'
@@ -977,6 +1185,19 @@ const ToolHeaderWrapper = ({
 
 	const isDesc1Clickable = !!desc1OnClick
 
+	// Determine if this is a reading tool vs coding tool
+	const isReadingTool = (title && typeof title === 'string' && (title.includes('Read') || title.includes('Searched') || title.includes('Listed'))) || false
+	const isCodingTool = (title && typeof title === 'string' && (title.includes('Edit') || title.includes('Rewrite') || title.includes('Created'))) || false
+
+	// Apply different styles based on tool type
+	const containerClasses = `
+		w-full rounded-xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md
+		${isReadingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
+		${isCodingTool ? 'border-l-4 border-l-void-accent border border-void-border-2 bg-void-bg-2' : ''}
+		${!isReadingTool && !isCodingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
+		${className}
+	`
+
 	const desc1HTML = <span
 		className={`text-void-fg-4 text-xs italic truncate ml-2
 			${isDesc1Clickable ? 'cursor-pointer hover:brightness-125 transition-all duration-150' : ''}
@@ -991,9 +1212,9 @@ const ToolHeaderWrapper = ({
 	>{desc1}</span>
 
 	return (<div className=''>
-		<div className={`w-full border border-void-border-3 rounded-lg px-3 py-2 bg-void-bg-3/50 backdrop-blur-sm overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 tool-card ${className}`}>
+		<div className={containerClasses}>
 			{/* header */}
-			<div className={`select-none flex items-center min-h-[24px]`}>
+			<div className={`select-none flex items-center ${isReadingTool ? 'min-h-[20px]' : 'min-h-[24px]'} ${isReadingTool ? 'px-3 py-1.5' : 'px-3 py-2'}`}>
 				<div className={`flex items-center w-full gap-x-2 overflow-hidden justify-between ${isRejected ? 'line-through' : ''}`}>
 					{/* left */}
 					<div // container for if desc1 is clickable
@@ -1015,7 +1236,10 @@ const ToolHeaderWrapper = ({
 								${isExpanded ? 'rotate-90' : ''}
 							`}
 							/>)}
-							<span className="text-void-fg-3 flex-shrink-0">{title}</span>
+							<span className={`
+								flex-shrink-0
+								${isReadingTool ? 'text-void-fg-3 text-xs font-medium' : 'text-void-fg-2 text-sm font-medium'}
+							`}>{title}</span>
 
 							{!isDesc1Clickable && desc1HTML}
 						</div>
@@ -1060,9 +1284,10 @@ const ToolHeaderWrapper = ({
 			</div>
 			{/* children */}
 			{<div
-				className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded ? 'opacity-100 py-1' : 'max-h-0 opacity-0'}
-					text-void-fg-4 rounded-sm overflow-x-auto
-				  `}
+				className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+				${isReadingTool ? 'py-1 px-3' : 'py-2 px-3'}
+				text-void-fg-4 rounded-sm overflow-x-auto
+			  `}
 			//    bg-black bg-opacity-10 border border-void-border-4 border-opacity-50
 			>
 				{children}
@@ -1318,7 +1543,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 							key={index}
 							src={`data:${image.mimeType};base64,${image.base64}`}
 							alt={image.name || `Image ${index + 1}`}
-							className="w-24 h-24 object-cover rounded border border-void-border-2 cursor-pointer hover:opacity-80 transition-opacity"
+							className="w-20 h-20 object-cover rounded-lg border border-void-border-1/50 cursor-pointer hover:opacity-80 transition-all duration-200 hover:scale-105 shadow-sm"
 							onClick={(e) => {
 								e.stopPropagation(); // Prevent triggering edit mode
 								// Could add full-size image viewer here
@@ -1411,11 +1636,11 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 	return <div
 		// align chatbubble accoridng to role
-	className={`
-		relative
+		className={`
+		relative group
 		${mode === 'edit' ? 'w-full max-w-full'
-			: mode === 'display' ? 'self-end w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
-		}
+				: mode === 'display' ? 'self-end w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
+			}
 
         ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-50' : ''}
     `}
@@ -1425,9 +1650,9 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		<div
 			// style chatbubble according to role
 			className={`
-            text-left rounded-lg max-w-full
+            text-left rounded-xl max-w-full transition-all duration-200
             ${mode === 'edit' ? ''
-					: mode === 'display' ? 'p-2 flex flex-col bg-void-bg-1 text-void-fg-1 overflow-x-auto cursor-pointer' : ''
+					: mode === 'display' ? 'p-3 flex flex-col bg-void-bg-2 border border-void-border-2 text-void-fg-1 overflow-x-auto cursor-pointer hover:bg-void-bg-3' : ''
 				}
         `}
 			onClick={() => { if (mode === 'display') { onOpenEdit() } }}
@@ -1438,19 +1663,14 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 
 		<div
-			className="absolute -top-1 -right-1 translate-x-0 -translate-y-0 z-1"
-		// data-tooltip-id='void-tooltip'
-		// data-tooltip-content='Edit message'
-		// data-tooltip-place='left'
+			className="absolute -top-2 -right-2 translate-x-0 -translate-y-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
 		>
 			<EditSymbol
-				size={18}
+				size={16}
 				className={`
                     cursor-pointer
-                    p-[2px]
-                    bg-void-bg-1 border border-void-border-1 rounded-md
-                    transition-opacity duration-200 ease-in-out
-                    ${isHovered || (isFocused && mode === 'edit') ? 'opacity-100' : 'opacity-0'}
+                    p-1.5 bg-void-bg-2 border border-void-border-2 rounded-lg shadow-sm hover:bg-void-bg-3 hover:shadow-md transition-all duration-200
+                    text-void-fg-3 hover:text-void-fg-1
                 `}
 				onClick={() => {
 					if (mode === 'display') {
@@ -1461,105 +1681,103 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 				}}
 			/>
 		</div>
-
-
 	</div>
-
 }
 
 const SmallProseWrapper = ({ children }: { children: React.ReactNode }) => {
 	return <div className='
-text-void-fg-4
-prose
-prose-sm
-break-words
-max-w-none
-leading-snug
-text-[13px]
+	text-void-fg-3
+	prose
+	prose-sm
+	break-words
+	max-w-none
+	leading-relaxed
+	text-[13px]
 
-[&>:first-child]:!mt-0
-[&>:last-child]:!mb-0
+	[&>:first-child]:!mt-0
+	[&>:last-child]:!mb-0
 
-prose-h1:text-[14px]
-prose-h1:my-4
+	prose-h1:text-[14px]
+	prose-h1:my-3
+	prose-h1:font-semibold
 
-prose-h2:text-[13px]
-prose-h2:my-4
+	prose-h2:text-[13px]
+	prose-h2:my-3
+	prose-h2:font-medium
 
-prose-h3:text-[13px]
-prose-h3:my-3
+	prose-h3:text-[13px]
+	prose-h3:my-2
+	prose-h3:font-medium
 
-prose-h4:text-[13px]
-prose-h4:my-2
+	prose-h4:text-[13px]
+	prose-h4:my-2
 
-prose-p:my-2
-prose-p:leading-snug
-prose-hr:my-2
+	prose-p:my-2
+	prose-p:leading-relaxed
+	prose-hr:my-2
 
-prose-ul:my-2
-prose-ul:pl-4
-prose-ul:list-outside
-prose-ul:list-disc
-prose-ul:leading-snug
+	prose-ul:my-2
+	prose-ul:pl-4
+	prose-ul:list-outside
+	prose-ul:list-disc
+	prose-ul:leading-snug
 
+	prose-ol:my-2
+	prose-ol:pl-4
+	prose-ol:list-outside
+	prose-ol:list-decimal
+	prose-ol:leading-snug
 
-prose-ol:my-2
-prose-ol:pl-4
-prose-ol:list-outside
-prose-ol:list-decimal
-prose-ol:leading-snug
+	marker:text-inherit
 
-marker:text-inherit
+	prose-blockquote:pl-2
+	prose-blockquote:my-2
 
-prose-blockquote:pl-2
-prose-blockquote:my-2
+	prose-code:text-void-fg-3
+	prose-code:text-[12px]
+	prose-code:before:content-none
+	prose-code:after:content-none
 
-prose-code:text-void-fg-3
-prose-code:text-[12px]
-prose-code:before:content-none
-prose-code:after:content-none
+	prose-pre:text-[12px]
+	prose-pre:p-2
+	prose-pre:my-2
 
-prose-pre:text-[12px]
-prose-pre:p-2
-prose-pre:my-2
-
-prose-table:text-[13px]
-'>
+	prose-table:text-[13px]
+	'>
 		{children}
 	</div>
 }
 
 const ProseWrapper = ({ children }: { children: React.ReactNode }) => {
 	return <div className='
-text-void-fg-2
-prose
-prose-sm
-break-words
-prose-p:block
-prose-hr:my-4
-prose-pre:my-2
-marker:text-inherit
-prose-ol:list-outside
-prose-ol:list-decimal
-prose-ul:list-outside
-prose-ul:list-disc
-prose-li:my-0
-prose-code:before:content-none
-prose-code:after:content-none
-prose-headings:prose-sm
-prose-headings:font-bold
+	text-void-fg-1
+	prose
+	prose-sm
+	break-words
+	prose-p:block
+	prose-hr:my-4
+	prose-pre:my-2
+	marker:text-inherit
+	prose-ol:list-outside
+	prose-ol:list-decimal
+	prose-ul:list-outside
+	prose-ul:list-disc
+	prose-li:my-0
+	prose-code:before:content-none
+	prose-code:after:content-none
+	prose-headings:prose-sm
+	prose-headings:font-semibold
 
-prose-p:leading-normal
-prose-ol:leading-normal
-prose-ul:leading-normal
+	prose-p:leading-relaxed
+	prose-ol:leading-relaxed
+	prose-ul:leading-relaxed
 
-max-w-none
+	max-w-none
 
-px-4 py-3
-rounded-lg
-bg-void-bg-1/20
-'
-	>
+	px-4 py-3
+	rounded-xl
+	bg-void-bg-2
+	'>
 		{children}
 	</div>
 }
@@ -1669,6 +1887,12 @@ const titleOfBuiltinToolName = {
 	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: loadingTitleWrapper('Searching in file') },
 
 	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
+
+	// Planning tools
+	'create_plan': { done: 'Created plan', proposed: 'Create plan', running: loadingTitleWrapper('Creating plan') },
+	'update_task_status': { done: 'Updated task', proposed: 'Update task', running: loadingTitleWrapper('Updating task') },
+	'get_plan_status': { done: 'Got plan status', proposed: 'Get plan status', running: loadingTitleWrapper('Getting plan status') },
+	'add_tasks_to_plan': { done: 'Added tasks', proposed: 'Add tasks', running: loadingTitleWrapper('Adding tasks') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -1834,7 +2058,31 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			return {
 				desc1: 'Executing code in sandbox',
 			}
-		}
+		},
+		// Planning tools
+		'create_plan': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['create_plan']
+			return {
+				desc1: `"${toolParams.goal}"`,
+			}
+		},
+		'update_task_status': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['update_task_status']
+			return {
+				desc1: `Task: ${toolParams.taskId} → ${toolParams.status}`,
+			}
+		},
+		'get_plan_status': () => {
+			return {
+				desc1: '',
+			}
+		},
+		'add_tasks_to_plan': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['add_tasks_to_plan']
+			return {
+				desc1: `${toolParams.tasks.length} task(s)`,
+			}
+		},
 	}
 
 	try {
@@ -1920,7 +2168,7 @@ export const ToolChildrenWrapper = ({ children, className }: { children: React.R
 	</div>
 }
 export const CodeChildren = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-	return <div className={`${className ?? ''} p-1 rounded-sm overflow-auto text-sm`}>
+	return <div className={`${className ?? ''} p-3 rounded-lg overflow-auto text-sm font-mono bg-void-bg-2 border border-void-border-2`}>
 		<div className='!select-text cursor-auto'>
 			{children}
 		</div>
@@ -1970,9 +2218,9 @@ const BottomChildren = ({ children, title }: { children: React.ReactNode, title:
 	const [isOpen, setIsOpen] = useState(false);
 	if (!children) return null;
 	return (
-		<div className="w-full px-2 mt-0.5">
+		<div className="w-full px-3 mt-2">
 			<div
-				className={`flex items-center cursor-pointer select-none transition-colors duration-150 pl-0 py-0.5 rounded group`}
+				className={`flex items-center cursor-pointer select-none transition-colors duration-150 px-2 py-1.5 rounded-lg hover:bg-void-bg-2/50 group`}
 				onClick={() => setIsOpen(o => !o)}
 				style={{ background: 'none' }}
 			>
@@ -2803,6 +3051,169 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			return <ToolHeaderWrapper {...componentParams} />
 		},
 	},
+
+	// Planning tools
+	'create_plan': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={result.summary}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'update_task_status': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={result.summary}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'get_plan_status': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				if (result.summary) {
+					componentParams.children = <ToolChildrenWrapper>
+						<SmallProseWrapper>
+							<ChatMarkdownRender
+								string={result.summary}
+								chatMessageLocation={undefined}
+								isApplyEnabled={false}
+								isLinkDetectionEnabled={true}
+							/>
+						</SmallProseWrapper>
+					</ToolChildrenWrapper>
+				}
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'add_tasks_to_plan': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={result.summary}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
 };
 
 
@@ -3034,9 +3445,9 @@ const CommandBarInChat = () => {
 	const threadStatus = (
 		chatThreadsStreamState?.isRunning === 'awaiting_user' ? { title: 'Needs Approval', color: 'yellow', } as const
 			: chatThreadsStreamState?.isRunning === 'tool' ? { title: getToolStatusTitle(), color: 'orange', } as const
-			: isAnyToolGenerating ? { title: getToolStatusTitle(), color: 'orange', } as const
-			: chatThreadsStreamState?.isRunning ? { title: 'Running', color: 'orange', } as const
-				: { title: 'Done', color: 'dark', } as const
+				: isAnyToolGenerating ? { title: getToolStatusTitle(), color: 'orange', } as const
+					: chatThreadsStreamState?.isRunning ? { title: 'Running', color: 'orange', } as const
+						: { title: 'Done', color: 'dark', } as const
 	)
 
 
@@ -3277,12 +3688,12 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 	// Determine loading message based on tool type
 	const loadingMessage =
 		toolCallSoFar.name === 'read_file' ? 'Reading file...' :
-		toolCallSoFar.name === 'edit_file' ? 'Editing file...' :
-		toolCallSoFar.name === 'rewrite_file' ? 'Writing file...' :
-		toolCallSoFar.name === 'create_file_or_folder' ? 'Creating...' :
-		toolCallSoFar.name === 'delete_file_or_folder' ? 'Deleting...' :
-		toolCallSoFar.name === 'outline_file' ? 'Reading outline...' :
-		'Processing...';
+			toolCallSoFar.name === 'edit_file' ? 'Editing file...' :
+				toolCallSoFar.name === 'rewrite_file' ? 'Writing file...' :
+					toolCallSoFar.name === 'create_file_or_folder' ? 'Creating...' :
+						toolCallSoFar.name === 'delete_file_or_folder' ? 'Deleting...' :
+							toolCallSoFar.name === 'outline_file' ? 'Reading outline...' :
+								'Processing...';
 
 	const desc1 = <span className='flex items-center gap-1.5'>
 		{uriDone ? (
@@ -3403,6 +3814,46 @@ export const SidebarChat = () => {
 	// MCP Server Modal state
 	const [isMCPModalOpen, setIsMCPModalOpen] = useState(false)
 
+	// Task Plan state
+	const [tasks, setTasks] = useState<TaskPlan[]>([])
+	const threadId = chatThreadsState.currentThreadId
+
+	// Load tasks when thread changes
+	useEffect(() => {
+		if (threadId) {
+			setTasks(chatThreadsService.getTaskPlan(threadId))
+		}
+	}, [threadId, chatThreadsState])
+
+	// Task handlers
+	const handleCreateTask = (description: string) => {
+		if (threadId) {
+			chatThreadsService.createTask(threadId, description)
+			setTasks(chatThreadsService.getTaskPlan(threadId))
+		}
+	}
+
+	const handleUpdateTaskStatus = (taskId: string, status: TaskPlan['status']) => {
+		if (threadId) {
+			chatThreadsService.updateTaskStatus(threadId, taskId, status)
+			setTasks(chatThreadsService.getTaskPlan(threadId))
+		}
+	}
+
+	const handleDeleteTask = (taskId: string) => {
+		if (threadId) {
+			chatThreadsService.deleteTask(threadId, taskId)
+			setTasks(chatThreadsService.getTaskPlan(threadId))
+		}
+	}
+
+	const handleClearPlan = () => {
+		if (threadId) {
+			chatThreadsService.clearTaskPlan(threadId)
+			setTasks([])
+		}
+	}
+
 	// Image upload helpers
 	const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
 	const MAX_IMAGES = 10;
@@ -3501,7 +3952,6 @@ export const SidebarChat = () => {
 
 	const keybindingString = accessor.get('IKeybindingService').lookupKeybinding(VOID_CTRL_L_ACTION_ID)?.getLabel()
 
-	const threadId = currentThread.id
 	const currCheckpointIdx = chatThreadsState.allThreads[threadId]?.state?.currCheckpointIdx ?? undefined  // if not exist, treat like checkpoint is last message (infinity)
 
 	const [autoContinueEnabled, setAutoContinueEnabled] = useState(() => chatThreadsService.getAutoContinuePreference(threadId))
@@ -3617,11 +4067,11 @@ export const SidebarChat = () => {
 	// Helper to check if tool should show EditToolSoFar component
 	const isFileRelatedTool = (name: string | undefined) => {
 		return name === 'edit_file' ||
-		       name === 'rewrite_file' ||
-		       name === 'read_file' ||
-		       name === 'create_file_or_folder' ||
-		       name === 'delete_file_or_folder' ||
-		       name === 'outline_file';
+			name === 'rewrite_file' ||
+			name === 'read_file' ||
+			name === 'create_file_or_folder' ||
+			name === 'delete_file_or_folder' ||
+			name === 'outline_file';
 	};
 
 	// Check if last message is already a tool message (to avoid showing duplicate)
@@ -3675,6 +4125,18 @@ export const SidebarChat = () => {
 		</ProseWrapper>
 	) : null
 
+	// Task Plan View - Cursor-style task management
+	const taskPlanView = tasks.length > 0 ? (
+		<TaskPlanView
+			threadId={threadId}
+			tasks={tasks}
+			onCreateTask={handleCreateTask}
+			onUpdateTaskStatus={handleUpdateTaskStatus}
+			onDeleteTask={handleDeleteTask}
+			onClearPlan={handleClearPlan}
+		/>
+	) : null
+
 	const messagesHTML = <ScrollToBottomContainer
 		key={'messages' + chatThreadsState.currentThreadId} // force rerender on all children if id changes
 		scrollContainerRef={scrollContainerRef}
@@ -3690,6 +4152,9 @@ export const SidebarChat = () => {
 		{/* previous messages */}
 		{previousMessagesHTML}
 		{currStreamingMessageHTML}
+
+		{/* Inline Task Plan View - rendered within chat stream */}
+		{taskPlanView}
 
 		{/* Generating tool */}
 		{generatingTool}
@@ -3838,7 +4303,7 @@ export const SidebarChat = () => {
 
 	const [isQueueExpanded, setIsQueueExpanded] = useState(false);
 
-	const inputChatArea = 	<div
+	const inputChatArea = <div
 		onDragOver={handleDragOver}
 		onDragLeave={handleDragLeave}
 		onDrop={handleDrop}
@@ -3847,26 +4312,31 @@ export const SidebarChat = () => {
 	>
 		{/* Queue indicator */}
 		{queuedCount > 0 && (
-			<div className="mb-2 bg-void-bg-2 border border-void-border-2 rounded-md overflow-hidden">
+			<div className="mb-3 border border-void-border-2 rounded-xl overflow-hidden shadow-sm">
 				{/* Header - always visible */}
 				<div
-					className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-3 transition-colors"
+					className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
 					onClick={() => setIsQueueExpanded(!isQueueExpanded)}
 				>
-					<div className="flex items-center gap-2 text-void-fg-3 text-sm">
-						{isQueueExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-						<span className="font-medium">{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
+					<div className="flex items-center gap-3">
+						{isQueueExpanded ? <ChevronDown size={16} className="text-void-fg-3" /> : <ChevronRight size={16} className="text-void-fg-3" />}
+						<div className="flex items-center gap-2">
+							<span className="text-sm font-semibold text-void-fg-1">Queued Messages</span>
+							<span className="px-2 py-0.5 text-xs font-medium bg-void-accent/20 text-void-accent rounded-full">
+								{queuedCount}
+							</span>
+						</div>
 					</div>
-					<div className="flex items-center gap-2">
-						<span className="text-xs text-void-fg-4">
-							Enter to send (⏎)
+					<div className="flex items-center gap-3">
+						<span className="text-xs text-void-fg-4 font-medium">
+							Press Enter to send
 						</span>
 						<button
 							onClick={(e) => {
 								e.stopPropagation();
 								chatThreadsService.clearMessageQueue(threadId);
 							}}
-							className="px-2 py-1 text-xs text-void-fg-3 hover:text-void-fg-1 bg-void-bg-3 hover:bg-void-bg-4 border border-void-border-2 rounded transition-colors"
+							className="px-3 py-1.5 text-xs font-medium text-void-fg-3 hover:text-void-fg-1 bg-void-bg-3 hover:bg-void-bg-4 border border-void-border-2 rounded-lg transition-colors duration-200"
 							data-tooltip-id='void-tooltip'
 							data-tooltip-content='Cancel all queued messages'
 							data-tooltip-place='top'
@@ -3878,11 +4348,11 @@ export const SidebarChat = () => {
 
 				{/* Expanded queue list */}
 				{isQueueExpanded && (
-					<div className="border-t border-void-border-2 max-h-64 overflow-y-auto">
+					<div className="border-t border-void-border-2 max-h-80 overflow-y-auto">
 						{queuedMessages.map((msg, index) => (
 							<div
 								key={index}
-								className="group relative px-3 py-2 border-b border-void-border-1 last:border-b-0 hover:bg-void-bg-3 transition-colors cursor-pointer"
+								className="group relative px-4 py-3 border-b border-void-border-1 last:border-b-0 hover:bg-void-bg-2 transition-all duration-200 cursor-pointer"
 								onClick={() => {
 									// Load message into input box for editing
 									if (textAreaFnsRef.current) {
@@ -3894,17 +4364,17 @@ export const SidebarChat = () => {
 									textAreaRef.current?.focus();
 								}}
 							>
-								<div className="pr-16 text-sm text-void-fg-2 line-clamp-2">
+								<div className="pr-20 text-sm text-void-fg-2 leading-relaxed line-clamp-2">
 									{msg.userMessage}
 								</div>
 								{/* Quick actions - show on hover */}
-								<div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+								<div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
 											chatThreadsService.forceSendQueuedMessage(threadId, index);
 										}}
-										className="p-1.5 text-void-fg-3 hover:text-void-accent bg-void-bg-1 hover:bg-void-bg-4 border border-void-border-2 rounded transition-colors"
+										className="p-2 text-void-fg-3 hover:text-void-accent hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-all duration-200"
 										data-tooltip-id='void-tooltip'
 										data-tooltip-content='Force send (stops AI and sends this message)'
 										data-tooltip-place='left'
@@ -3916,7 +4386,7 @@ export const SidebarChat = () => {
 											e.stopPropagation();
 											chatThreadsService.removeQueuedMessage(threadId, index);
 										}}
-										className="p-1.5 text-void-fg-3 hover:text-red-400 bg-void-bg-1 hover:bg-void-bg-4 border border-void-border-2 rounded transition-colors"
+										className="p-2 text-void-fg-3 hover:text-red-400 hover:bg-red-500/10 border border-void-border-2 rounded-lg transition-all duration-200"
 										data-tooltip-id='void-tooltip'
 										data-tooltip-content='Remove from queue'
 										data-tooltip-place='left'
@@ -3941,6 +4411,7 @@ export const SidebarChat = () => {
 			// showProspectiveSelections={previousMessagesHTML.length === 0}
 			selections={selections}
 			setSelections={setSelections}
+			tokenUsage={currThreadStreamState?.tokenUsage}
 			onClickAnywhere={() => { textAreaRef.current?.focus() }}
 		>
 			{/* Image Preview */}
@@ -3950,7 +4421,7 @@ export const SidebarChat = () => {
 
 			<VoidInputBox2
 				enableAtToMention
-				className={`min-h-[81px] px-0.5 py-0.5`}
+				className={`min-h-[81px] px-3 py-2 border-0 focus:ring-0 w-full`}
 				placeholder={queuedCount > 0 ? `Enter to send queued message (⏎)` : `@ to mention, ${keybindingString ? `${keybindingString} to add a selection. ` : ''}Enter instructions...`}
 				onChangeText={onChangeText}
 				onKeyDown={onKeyDown}
@@ -3985,23 +4456,17 @@ export const SidebarChat = () => {
 
 
 
-	const threadPageInput = <div key={'input' + chatThreadsState.currentThreadId}>
+	const threadPageInput = <div key={'input' + chatThreadsState.currentThreadId} className="space-y-3">
 		<div className='px-4'>
 			<CommandBarInChat />
 		</div>
-		{/* Token counter - always visible */}
-		<div className='px-4 pb-2'>
-			<TokenCounter tokenUsage={currThreadStreamState?.tokenUsage} />
-		</div>
-		<div className='px-2 pb-2'>
+		<div className='px-0 pb-4'>
 			{inputChatArea}
 		</div>
 	</div>
 
-	const landingPageInput = <div>
-		<div className='px-2 pb-2'>
-			{inputChatArea}
-		</div>
+	const landingPageInput = <div className="px-0 pb-4">
+		{inputChatArea}
 	</div>
 
 	const currentChatMode = settingsState.globalSettings.chatMode
@@ -4012,28 +4477,40 @@ export const SidebarChat = () => {
 		className='w-full h-full max-h-full flex flex-col overflow-hidden'
 	>
 		{/* Centered empty state */}
-		<div className='flex-1 flex flex-col items-center justify-center px-4 pb-8'>
+		<div className='flex-1 flex flex-col items-center justify-center px-8 pb-8'>
 			<ErrorBoundary>
 				{/* Logo */}
-				<div className='@@void-void-icon mb-6' style={{ width: '80px', height: '80px', opacity: 0.8 }} />
+				<div className='@@void-void-icon mb-8' style={{ width: '96px', height: '96px', opacity: 0.9 }} />
 
 				{/* Title with mode */}
-				<h1 className='text-void-fg-1 text-2xl font-semibold mb-2'>
-					A-Coder <span className='text-void-fg-3 font-normal'>· {chatModeName}</span>
-				</h1>
+				<div className="text-center space-y-3">
+					<h1 className='text-void-fg-1 text-3xl font-bold mb-2'>
+						A-Coder
+					</h1>
+					<div className="flex items-center justify-center gap-2">
+						<span className="px-3 py-1 text-sm font-medium bg-void-accent/20 text-void-accent rounded-full">
+							{chatModeName}
+						</span>
+					</div>
+				</div>
 
 				{/* Tagline */}
-				<p className='text-void-fg-3 text-sm text-center mb-8'>
+				<p className='text-void-fg-3 text-base text-center mt-6 leading-relaxed max-w-md'>
 					Kick off a new project. Make changes<br />across your entire codebase.
 				</p>
 			</ErrorBoundary>
 		</div>
 
 		{/* Recent activity at bottom */}
-		<div className='flex-shrink-0 overflow-y-auto px-4 pb-2'>
+		<div className='flex-shrink-0 overflow-y-auto px-8 pb-6'>
 			{Object.keys(chatThreadsState.allThreads).length > 1 ? // show if there are threads
 				<ErrorBoundary>
-					<PastThreadsList />
+					<div className="space-y-2">
+						<div className="text-xs font-medium text-void-fg-4 uppercase tracking-wide mb-3">
+							Recent Conversations
+						</div>
+						<PastThreadsList />
+					</div>
 				</ErrorBoundary>
 				: null
 			}
@@ -4041,34 +4518,45 @@ export const SidebarChat = () => {
 
 		{/* Input at bottom */}
 		<ErrorBoundary>
-			{landingPageInput}
+			<div className='flex-shrink-0 border-t border-void-border-1'>
+				{landingPageInput}
+			</div>
 		</ErrorBoundary>
 	</div>
 
 
-	// const threadPageContent = <div>
-	// 	{/* Thread content */}
-	// 	<div className='flex flex-col overflow-hidden'>
-	// 		<div className={`overflow-hidden ${previousMessages.length === 0 ? 'h-0 max-h-0 pb-2' : ''}`}>
-	// 			<ErrorBoundary>
-	// 				{messagesHTML}
-	// 			</ErrorBoundary>
-	// 		</div>
-	// 		<ErrorBoundary>
-	// 			{inputForm}
-	// 		</ErrorBoundary>
-	// 	</div>
-	// </div>
 	const threadPageContent = <div
 		ref={sidebarRef}
 		className='w-full h-full flex flex-col overflow-hidden'
 	>
-
+		{/* Top toolbar with MCP Server button */}
 		<ErrorBoundary>
-			{messagesHTML}
+			<div className='flex-shrink-0 px-4 py-2 flex justify-between items-center border-b border-void-border-1'>
+				<div className='flex-1' />
+				<div className='flex gap-2 items-center'>
+					{/* MCP Server Button */}
+					<IconShell1
+						Icon={Server}
+						onClick={() => {
+							const mcpModalService = accessor.get('IMCPModalService');
+							mcpModalService.openModal();
+						}}
+						data-tooltip-id='void-tooltip'
+						data-tooltip-place='top'
+						data-tooltip-content='MCP Servers'
+					/>
+				</div>
+			</div>
 		</ErrorBoundary>
 		<ErrorBoundary>
-			{threadPageInput}
+			<div className='flex-1 overflow-hidden'>
+				{messagesHTML}
+			</div>
+		</ErrorBoundary>
+		<ErrorBoundary>
+			<div className='flex-shrink-0 border-t border-void-border-1'>
+				{threadPageInput}
+			</div>
 		</ErrorBoundary>
 	</div>
 

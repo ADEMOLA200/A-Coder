@@ -51,10 +51,10 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 	if (!isOpen) return null;
 
 	return (
-		<div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+		<div className="fixed inset-0 z-50 bg-black/20" onClick={onClose}>
 			<div
 				ref={modalRef}
-				className="absolute top-2 right-2 w-80 bg-void-bg-1 border border-void-border-2 rounded-lg shadow-2xl overflow-hidden"
+				className="absolute top-20 right-4 w-80 bg-void-bg-1 border border-void-border-2 rounded-lg shadow-xl overflow-hidden"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}

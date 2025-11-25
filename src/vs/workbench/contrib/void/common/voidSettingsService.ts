@@ -215,12 +215,12 @@ const _validatedModelState = (state: Omit<VoidSettingsState, '_modelOptions'>): 
 const defaultState = () => {
 	const d: VoidSettingsState = {
 		settingsOfProvider: deepClone(defaultSettingsOfProvider),
-		modelSelectionOfFeature: { 
-			'Chat': null, 
-			'Ctrl+K': null, 
-			'Autocomplete': null, 
-			'Apply': null, 
-			'SCM': null, 
+		modelSelectionOfFeature: {
+			'Chat': null,
+			'Ctrl+K': null,
+			'Autocomplete': null,
+			'Apply': null,
+			'SCM': null,
 			'Vision': { providerName: 'ollama', modelName: 'qwen3-vl:235b-instruct-cloud' } // Default vision model
 		},
 		globalSettings: deepClone(defaultGlobalSettings),
@@ -297,9 +297,15 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 			}
 			// add disableSystemMessage feature
 			if (readS.globalSettings.disableSystemMessage === undefined) readS.globalSettings.disableSystemMessage = false;
-			
+
 			// add autoAcceptLLMChanges feature
 			if (readS.globalSettings.autoAcceptLLMChanges === undefined) readS.globalSettings.autoAcceptLLMChanges = false;
+
+			// add Mobile API settings (1.4.0+)
+			if (readS.globalSettings.apiEnabled === undefined) readS.globalSettings.apiEnabled = false;
+			if (readS.globalSettings.apiPort === undefined) readS.globalSettings.apiPort = 3737;
+			if (readS.globalSettings.apiTokens === undefined) readS.globalSettings.apiTokens = [];
+			if (readS.globalSettings.apiTunnelUrl === undefined) readS.globalSettings.apiTunnelUrl = undefined;
 		}
 		catch (e) {
 			readS = defaultState()

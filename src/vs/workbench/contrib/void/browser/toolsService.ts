@@ -22,6 +22,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IMorphService } from './morphService.js'
 import { ToonService } from '../common/toonService.js'
+import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
 
 
 // tool use for AI
@@ -133,6 +134,7 @@ export interface IToolsService {
 	validateParams: ValidateBuiltinParams;
 	callTool: CallBuiltinTool;
 	stringOfResult: BuiltinToolResultToString;
+	getPlanningService(): PlanningService;
 }
 
 export const IToolsService = createDecorator<IToolsService>('ToolsService');
@@ -146,6 +148,7 @@ export class ToolsService implements IToolsService {
 	public stringOfResult: BuiltinToolResultToString;
 
 	private readonly toonService: ToonService;
+	private readonly planningService: PlanningService;
 
 	constructor(
 		@IFileService fileService: IFileService,
@@ -164,6 +167,7 @@ export class ToolsService implements IToolsService {
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
 		this.toonService = new ToonService();
+		this.planningService = new PlanningService();
 
 		this.validateParams = {
 			read_file: (params: RawToolParamsObj) => {
@@ -312,6 +316,93 @@ export class ToolsService implements IToolsService {
 				const { persistent_terminal_id: terminalIdUnknown } = params;
 				const persistentTerminalId = validateProposedTerminalId(terminalIdUnknown);
 				return { persistentTerminalId };
+			},
+
+			// --- Planning tools ---
+
+			create_plan: (params: RawToolParamsObj) => {
+				const { goal: goalUnknown, tasks: tasksUnknown } = params;
+				const goal = validateStr('goal', goalUnknown);
+
+				// Validate tasks array - handle both array and JSON string
+				let tasksParsed: any;
+				if (typeof tasksUnknown === 'string') {
+					try {
+						tasksParsed = JSON.parse(tasksUnknown);
+					} catch (e) {
+						throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
+					}
+				} else {
+					tasksParsed = tasksUnknown;
+				}
+
+				if (!Array.isArray(tasksParsed)) {
+					throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+				}
+
+				const tasks = tasksParsed.map((task: any, idx: number) => {
+					if (typeof task !== 'object' || task === null) {
+						throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
+					}
+					const id = validateStr('task.id', task.id);
+					const description = validateStr('task.description', task.description);
+					const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
+					return { id, description, dependencies };
+				});
+
+				return { goal, tasks };
+			},
+
+			update_task_status: (params: RawToolParamsObj) => {
+				const { task_id: taskIdUnknown, status: statusUnknown, notes: notesUnknown } = params;
+				const taskId = validateStr('task_id', taskIdUnknown);
+				const status = validateStr('status', statusUnknown);
+				const notes = validateOptionalStr('notes', notesUnknown);
+
+				// Validate status is one of the allowed values
+				const validStatuses: PlanTaskStatus[] = ['pending', 'in_progress', 'complete', 'failed', 'skipped'];
+				if (!validStatuses.includes(status as PlanTaskStatus)) {
+					throw new Error(`Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`);
+				}
+
+				return { taskId, status, notes };
+			},
+
+			get_plan_status: (params: RawToolParamsObj) => {
+				// No parameters needed
+				return {};
+			},
+
+			add_tasks_to_plan: (params: RawToolParamsObj) => {
+				const { tasks: tasksUnknown } = params;
+
+				// Validate tasks array - handle both array and JSON string
+				let tasksParsed: any;
+				if (typeof tasksUnknown === 'string') {
+					try {
+						tasksParsed = JSON.parse(tasksUnknown);
+					} catch (e) {
+						throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
+					}
+				} else {
+					tasksParsed = tasksUnknown;
+				}
+
+				if (!Array.isArray(tasksParsed)) {
+					throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+				}
+
+				const tasks = tasksParsed.map((task: any, idx: number) => {
+					if (typeof task !== 'object' || task === null) {
+						throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
+					}
+					const id = validateStr('task.id', task.id);
+					const description = validateStr('task.description', task.description);
+					const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
+					return { id, description, dependencies };
+				});
+
+				return { tasks };
 			},
 
 		}
@@ -583,6 +674,36 @@ export class ToolsService implements IToolsService {
 				await this.terminalToolService.killPersistentTerminal(persistentTerminalId)
 				return { result: {} }
 			},
+
+			// --- Planning tools ---
+
+			create_plan: async ({ goal, tasks }) => {
+				const plan = this.planningService.createPlan(goal, tasks);
+				const summary = this.planningService.formatPlanStatus(plan);
+				return { result: { planId: plan.id, summary } };
+			},
+
+			update_task_status: async ({ taskId, status, notes }) => {
+				const task = this.planningService.updateTaskStatus(taskId, status as PlanTaskStatus, notes ?? undefined);
+				const plan = this.planningService.getPlanStatus();
+				const summary = plan ? this.planningService.formatPlanStatus(plan) : 'No active plan';
+				return { result: { taskId: task.id, newStatus: task.status, summary } };
+			},
+
+			get_plan_status: async () => {
+				const plan = this.planningService.getPlanStatus();
+				if (!plan) {
+					return { result: { planExists: false, summary: null } };
+				}
+				const summary = this.planningService.formatPlanStatus(plan);
+				return { result: { planExists: true, summary } };
+			},
+
+			add_tasks_to_plan: async ({ tasks }) => {
+				const plan = this.planningService.addTasksToPlan(tasks);
+				const summary = this.planningService.formatPlanStatus(plan);
+				return { result: { summary } };
+			},
 		}
 
 
@@ -721,6 +842,27 @@ export class ToolsService implements IToolsService {
 				const logsStr = result.logs.length > 0 ? `\n\nConsole output:\n${result.logs.join('\n')}` : '';
 				return `Code executed successfully.\n\nResult:\n${resultStr}${logsStr}`;
 			},
+
+			// --- Planning tools ---
+
+			create_plan: (params, result) => {
+				return `✅ Plan created successfully!\n\n${result.summary}`;
+			},
+
+			update_task_status: (params, result) => {
+				return `✅ Task "${result.taskId}" updated to status: ${result.newStatus}\n\n${result.summary}`;
+			},
+
+			get_plan_status: (params, result) => {
+				if (!result.planExists) {
+					return 'No active plan. Create one using create_plan.';
+				}
+				return result.summary!;
+			},
+
+			add_tasks_to_plan: (params, result) => {
+				return `✅ Tasks added to plan!\n\n${result.summary}`;
+			},
 		}
 
 
@@ -808,6 +950,12 @@ export class ToolsService implements IToolsService {
 	}
 
 
+	/**
+	 * Get the planning service for UI access
+	 */
+	public getPlanningService(): PlanningService {
+		return this.planningService;
+	}
 }
 
 registerSingleton(IToolsService, ToolsService, InstantiationType.Eager);

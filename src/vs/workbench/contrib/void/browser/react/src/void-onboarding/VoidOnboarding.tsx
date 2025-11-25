@@ -26,10 +26,12 @@ export const VoidOnboarding = () => {
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`}>
 			<div
 				className={`
-					bg-void-bg-3 fixed top-0 right-0 bottom-0 left-0 width-full z-[99999]
+					fixed inset-0 z-[99999]
+					bg-void-bg-3/95 backdrop-blur-md
+					overflow-y-auto
 					transition-all duration-1000 ${isOnboardingComplete ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}
 				`}
-				style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+				style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
 			>
 				<ErrorBoundary>
 					<VoidOnboardingContent />
@@ -149,18 +151,19 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 		};
 	}, [errorMessage]);
 
-	return (<div className="flex flex-col md:flex-row w-full h-[80vh] gap-6 max-w-[900px] mx-auto relative">
+	return (<div className="flex flex-col md:flex-row w-full min-h-[60vh] gap-6 max-w-[900px] mx-auto relative">
 		{/* Left Column */}
-		<div className="md:w-1/4 w-full flex flex-col gap-6 p-6 border-none border-void-border-2 h-full overflow-y-auto">
+		<div className="md:w-1/4 w-full flex flex-col gap-6 p-4 md:p-6 border-none border-void-border-2 h-full overflow-y-auto md:border-r md:border-void-border-2/60">
 			{/* Tab Selector */}
 			<div className="flex md:flex-col gap-2">
 				{[...tabNames, 'Cloud/Other'].map(tab => (
 					<button
 						key={tab}
-						className={`py-2 px-4 rounded-md text-left ${currentTab === tab
-							? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-							: 'bg-void-bg-2 hover:bg-void-bg-2/80 text-void-fg-1'
-							} transition-all duration-200`}
+						className={`py-2 px-4 rounded-lg text-left border transition-all duration-200
+								${currentTab === tab
+								? 'bg-void-bg-3 text-void-fg-0 border-void-border-2 shadow-sm'
+								: 'bg-transparent text-void-fg-3 border-transparent hover:bg-void-bg-2-hover'}
+							`}
 						onClick={() => {
 							setCurrentTab(tab as TabName);
 							setErrorMessage(null); // Reset error message when changing tabs
@@ -223,7 +226,6 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 					</div>
 					<div>
 						<SettingsForProvider providerName={providerName} showProviderTitle={false} showProviderSuggestions={true} />
-
 					</div>
 					{providerName === 'ollama' && <OllamaSetupInstructions />}
 				</div>
@@ -243,8 +245,6 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 					{currentTab === 'Cloud/Other' && <ModelDump filteredProviders={cloudProviders} />}
 				</div>
 			)}
-
-
 
 			{/* Navigation buttons in right column */}
 			<div className="flex flex-col items-end w-full mt-auto pt-8">
@@ -269,49 +269,13 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 				</div>
 			</div>
 		</div>
-	</div>);
-};
-// =============================================
-// 	OnboardingPage
-// 		title:
-// 			div
-// 				"Welcome to Void"
-// 			image
-// 		content:<></>
-// 		title
-// 		content
-// 		prev/next
+	</div>
+	);
+}
 
-// 	OnboardingPage
-// 		title:
-// 			div
-// 				"How would you like to use Void?"
-// 		content:
-// 			ModelQuestionContent
-// 				|
-// 					div
-// 						"I want to:"
-// 					div
-// 						"Use the smartest models"
-// 						"Keep my data fully private"
-// 						"Save money"
-// 						"I don't know"
-// 				| div
-// 					| div
-// 						"We recommend using "
-// 						"Set API"
-// 					| div
-// 						""
-// 					| div
-//
-// 		title
-// 		content
-// 		prev/next
-//
-// 	OnboardingPage
-// 		title
-// 		content
-// 		prev/next
+// =============================================
+//  OnboardingPage structure notes
+// =============================================
 
 const NextButton = ({ onClick, ...props }: { onClick: () => void } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
 
@@ -467,6 +431,81 @@ const PrimaryActionButton = ({ children, className, ringSize, ...props }: { chil
 
 type WantToUseOption = 'smart' | 'private' | 'cheap' | 'all'
 
+
+const MatrixRain = () => {
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+
+		// Set canvas size
+		const resize = () => {
+			canvas.width = window.innerWidth;
+			canvas.height = window.innerHeight;
+		};
+		resize();
+		window.addEventListener('resize', resize);
+
+		// Get theme colors
+		const styles = getComputedStyle(document.documentElement);
+		const fgColor = styles.getPropertyValue('--vscode-editor-foreground') || '#00FF00';
+		const bgColor = styles.getPropertyValue('--vscode-editor-background') || '#000000';
+
+		// Matrix characters
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
+		const fontSize = 16;
+		const columns = Math.ceil(canvas.width / fontSize);
+		const drops: number[] = Array(columns).fill(1);
+
+		let animationId: number;
+
+		const draw = () => {
+			// Fade out previous frame using theme background with low opacity
+			ctx.globalAlpha = 0.05;
+			ctx.fillStyle = bgColor;
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+			// Draw new characters
+			ctx.globalAlpha = 1.0;
+			ctx.fillStyle = fgColor;
+			ctx.font = `${fontSize}px monospace`;
+
+			for (let i = 0; i < drops.length; i++) {
+				const text = chars[Math.floor(Math.random() * chars.length)];
+				const x = i * fontSize;
+				const y = drops[i] * fontSize;
+
+				ctx.fillText(text, x, y);
+
+				// Reset drop to top randomly
+				if (y > canvas.height && Math.random() > 0.975) {
+					drops[i] = 0;
+				}
+				drops[i]++;
+			}
+			animationId = requestAnimationFrame(draw);
+		};
+
+		draw();
+
+		return () => {
+			window.removeEventListener('resize', resize);
+			cancelAnimationFrame(animationId);
+		};
+	}, []);
+
+	return (
+		<canvas
+			ref={canvasRef}
+			className="fixed inset-0 z-[100000] pointer-events-none animate-in fade-in duration-300"
+		// background removed to be transparent (shows theme background from parent)
+		/>
+	);
+};
+
 const VoidOnboardingContent = () => {
 
 
@@ -524,6 +563,18 @@ const VoidOnboardingContent = () => {
 
 	const didFillInSelectedProviderSettings = !!(didFillInProviderSettings && isApiKeyLongEnoughIfApiKeyExists && isAtLeastOneModel)
 
+	const [isExiting, setIsExiting] = useState(false)
+
+	useEffect(() => {
+		if (isExiting) {
+			const timer = setTimeout(() => {
+				voidSettingsService.setGlobalSetting('isOnboardingComplete', true);
+				voidMetricsService.capture('Completed Onboarding', { selectedProviderName, wantToUseOption })
+			}, 2500); // Wait for matrix animation
+			return () => clearTimeout(timer);
+		}
+	}, [isExiting, voidSettingsService, voidMetricsService, selectedProviderName, wantToUseOption]);
+
 	const prevAndNextButtons = <div className="max-w-[600px] w-full mx-auto flex flex-col items-end">
 		<div className="flex items-center gap-2">
 			<PreviousButton
@@ -542,14 +593,13 @@ const VoidOnboardingContent = () => {
 				onClick={() => { setPageIndex(pageIndex - 1) }}
 			/>
 			<PrimaryActionButton
-				onClick={() => {
-					voidSettingsService.setGlobalSetting('isOnboardingComplete', true);
-					voidMetricsService.capture('Completed Onboarding', { selectedProviderName, wantToUseOption })
-				}}
-				ringSize={voidSettingsState.globalSettings.isOnboardingComplete ? 'screen' : undefined}
+				onClick={() => setIsExiting(true)}
+			// ringSize removed for matrix animation
 			>Enter A-Coder</PrimaryActionButton>
 		</div>
 	</div>
+
+
 
 
 	// cannot be md
@@ -598,10 +648,10 @@ const VoidOnboardingContent = () => {
 				<div className='flex flex-col items-center justify-center gap-6'>
 					{/* Logo */}
 					{!isLinux && <div className='@@void-void-icon mb-2' style={{ width: '80px', height: '80px', opacity: 0.8 }} />}
-					
+
 					{/* Title */}
 					<h1 className="text-4xl font-semibold text-void-fg-1 text-center">Welcome to A-Coder</h1>
-					
+
 					{/* Tagline */}
 					<p className='text-void-fg-3 text-base text-center max-w-md'>
 						Your AI-powered coding assistant.<br />
@@ -646,6 +696,10 @@ const VoidOnboardingContent = () => {
 		/>,
 	}
 
+
+	if (isExiting) {
+		return <MatrixRain />
+	}
 
 	return <div key={pageIndex} className="w-full h-[80vh] text-left mx-auto flex flex-col items-center justify-center">
 		<ErrorBoundary>

@@ -80,7 +80,17 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 	}
 	else if (providerName === 'ollama') {
 		const thisConfig = settingsOfProvider[providerName]
-		return new OpenAI({ baseURL: `${thisConfig.endpoint}/v1`, apiKey: 'noop', ...commonPayloadOpts })
+		return new OpenAI({
+			baseURL: `${thisConfig.endpoint}/v1`,
+			apiKey: 'noop',
+			// Add specific configurations for better Ollama compatibility
+			defaultHeaders: {
+				'HTTP-User-Agent': 'Void/1.0.0'
+			},
+			// Increase timeout for Ollama models which can be slower
+			timeout: 120000, // 2 minutes
+			...commonPayloadOpts
+		})
 	}
 	else if (providerName === 'vLLM') {
 		const thisConfig = settingsOfProvider[providerName]
@@ -248,15 +258,15 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" has empty parameters string`)
 		return null
 	}
-	
+
 	let input: unknown
-	try { 
-		input = JSON.parse(toolParamsStr) 
+	try {
+		input = JSON.parse(toolParamsStr)
 	}
-	catch (e) { 
+	catch (e) {
 		console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
 		console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
-		return null 
+		return null
 	}
 
 	if (input === null) {
@@ -307,13 +317,21 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		...additionalOpenAIPayload
 	}
 
+	console.log(`[sendLLMMessage] Reasoning config:`, {
+		reasoningCapabilities,
+		reasoningInfo,
+		includeInPayload: providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo),
+		finalPayload: includeInPayload
+	})
+
 	// tools - only send if model supports native tool calling (specialToolFormat === 'openai-style')
 	// Models without specialToolFormat will use XML tool calling instead
 	const potentialTools = openAITools(chatMode, mcpTools)
 	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
 		: {}
-	
+	const hasTools = potentialTools && potentialTools.length > 0
+
 	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'openai-style') {
 		console.log(`[sendLLMMessage] ✅ Sending ${potentialTools.length} tools via native API`)
@@ -338,13 +356,13 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		...additionalOpenAIPayload
 		// max_completion_tokens: maxTokens,
 	}
-	
-	console.log(`[sendLLMMessage] Request options:`, JSON.stringify({ 
-		model: options.model, 
+
+	console.log(`[sendLLMMessage] Request options:`, JSON.stringify({
+		model: options.model,
 		messageCount: options.messages.length,
 		hasTools: 'tools' in options,
 		toolCount: (options as any).tools?.length ?? 0,
-		stream: options.stream 
+		stream: options.stream
 	}))
 
 	// open source models - manually parse think tokens
@@ -365,11 +383,14 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		manuallyParseReasoning
 	})
 
-	if (manuallyParseReasoning && openSourceThinkTags) {
+	// Use manual parsing only if we have tags but no direct reasoning field
+	if (manuallyParseReasoning && openSourceThinkTags && !nameOfReasoningFieldInDelta) {
 		console.log(`[sendLLMMessage] ✅ Enabling reasoning extraction with tags:`, openSourceThinkTags)
 		const { newOnText, newOnFinalMessage } = extractReasoningWrapper(onText, onFinalMessage, openSourceThinkTags)
 		onText = newOnText
 		onFinalMessage = newOnFinalMessage
+	} else if (nameOfReasoningFieldInDelta) {
+		console.log(`[sendLLMMessage] ✅ Enabling direct reasoning extraction from field:`, nameOfReasoningFieldInDelta)
 	}
 
 	const toText = (content: unknown): string => {
@@ -399,12 +420,20 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		if (!toolCall || (typeof toolCall === 'object' && 'index' in toolCall && toolCall.index !== 0)) {
 			return
 		}
+
+		// Skip if we already have a tool call (only process the first one)
+		if (toolName) {
+			return
+		}
+
 		const fn = toolCall.function ?? {}
 		if (fn.name) {
+			// Only process the first tool call to avoid concatenation issues
 			toolName = fn.name
 			console.log(`[sendLLMMessage] Tool call detected: ${toolName}`)
 		}
 		if (typeof fn.arguments === 'string') {
+			// Only process arguments if we haven't set a tool name yet (first tool call)
 			if (isFinal) {
 				toolParamsStr = fn.arguments
 				console.log(`[sendLLMMessage] Tool arguments (final): ${toolParamsStr.substring(0, 200)}${toolParamsStr.length > 200 ? '...' : ''}`)
@@ -414,6 +443,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 		} else if (fn.arguments && typeof fn.arguments === 'object') {
 			// Some models might return arguments as object instead of string
+			// Only process if we haven't set a tool name yet (first tool call)
 			console.log(`[sendLLMMessage] ⚠️ Tool arguments received as object, converting to JSON string`)
 			const argsStr = JSON.stringify(fn.arguments)
 			if (isFinal) {
@@ -423,6 +453,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 		}
 		if (toolCall.id) {
+			// Only set the first tool ID
 			toolId = toolCall.id
 		}
 	}
@@ -434,7 +465,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		toolCount: options.tools?.length,
 		stream: options.stream
 	}))
-	
+
 	// Log the actual messages being sent (first 3 for debugging)
 	if (options.messages && options.messages.length > 0) {
 		console.log(`[sendLLMMessage] First message:`, JSON.stringify(options.messages[0], null, 2).substring(0, 500))
@@ -442,16 +473,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			console.log(`[sendLLMMessage] Last message:`, JSON.stringify(options.messages[options.messages.length - 1], null, 2).substring(0, 500))
 		}
 	}
-	
+
 	openai.chat.completions
 		.create(options)
 		.then(async response => {
 			console.log(`[sendLLMMessage] Request created successfully, starting to read stream`)
 			_setAborter(() => response.controller.abort())
-			
+
 			// Import XML stripping function for streaming
 			const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
-			
+
 			// when receive text
 			let chunkCount = 0
 			for await (const chunk of response) {
@@ -476,6 +507,9 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				fullTextSoFar += newText
 
 				for (const toolDelta of delta.tool_calls ?? []) {
+					if (toolName && toolDelta.function?.name) {
+						console.log(`[sendLLMMessage] ⚠️ Multiple tool calls detected, skipping additional tool: ${toolDelta.function.name}`)
+					}
 					applyToolCall(toolDelta, { isFinal: false })
 				}
 				if (choice.finish_reason === 'tool_calls') {
@@ -501,7 +535,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 			// on final
 			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${fullTextSoFar}", reasoning: "${fullReasoningSoFar}", toolName: "${toolName}", toolParams: "${toolParamsStr}"`)
-			
+
 			// If no native tool call detected and model doesn't support native tools, check for XML tool calls
 			if (!toolName && !specialToolFormat && fullTextSoFar) {
 				const { extractXMLToolCalls, stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
@@ -517,10 +551,71 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					console.log(`[sendLLMMessage] Cleaned text (XML stripped): "${fullTextSoFar}"`)
 				}
 			}
-			
-			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
-				console.log(`[sendLLMMessage] Empty response detected. fullText: "${fullTextSoFar}", reasoning: "${fullReasoningSoFar}", toolName: "${toolName}", toolParams: "${toolParamsStr}"`)
-				onError({ message: 'Void: Response from model was empty.', fullError: null })
+
+			// Enhanced empty response detection for Ollama
+			const hasEmptyResponse = !fullTextSoFar && !fullReasoningSoFar && !toolName
+			const hasToolCallWithEmptyContent = toolName && !fullTextSoFar && !fullReasoningSoFar
+
+			if (hasEmptyResponse) {
+				console.log(`[sendLLMMessage] ❌ Empty response detected`)
+				console.log(`[sendLLMMessage] Diagnostic info:`)
+				console.log(`  - fullText: "${fullTextSoFar}" (${fullTextSoFar.length} chars)`)
+				console.log(`  - reasoning: "${fullReasoningSoFar}" (${fullReasoningSoFar.length} chars)`)
+				console.log(`  - toolName: "${toolName}"`)
+				console.log(`  - toolParams: "${toolParamsStr}" (${toolParamsStr.length} chars)`)
+				console.log(`  - Provider: ${providerName}`)
+				console.log(`  - Model: ${modelName}`)
+				console.log(`  - specialToolFormat: ${specialToolFormat}`)
+				console.log(`  - hasTools: ${hasTools}`)
+
+				// For Ollama models with tool calling, provide specific guidance
+				if (providerName === 'ollama' && hasTools) {
+					const modelLower = modelName.toLowerCase()
+					let specificGuidance = ''
+
+					// Model-specific guidance based on research
+					if (modelLower.includes('llama') && (modelLower.includes('3.2') || modelLower.includes('8b') || modelLower.includes('3b'))) {
+						specificGuidance = ' Smaller Llama models (3.2, 8B, 3B) often struggle with tool calling. Try using Llama 3.1 70B or Llama 3.3 for better results.'
+					} else if (modelLower.includes('gemma') && !modelLower.includes('tool')) {
+						specificGuidance = ' Gemma models may need the "gemma-tools" or "gemma2-tools" variant for reliable tool calling.'
+					} else if (modelLower.includes('qwen') && (modelLower.includes('0.5b') || modelLower.includes('1.5b'))) {
+						specificGuidance = ' Very small Qwen models are unreliable for tool calling. Try Qwen 2.5-coder:7b or Qwen 3 series.'
+					} else if (modelLower.includes('mistral')) {
+						specificGuidance = ' Mistral models may hang on tool calls. Ensure you\'re using a recent version with tool calling support.'
+					} else if (modelLower.includes('cloud') || modelLower.includes('kimi') || modelLower.includes('gpt-oss')) {
+						specificGuidance = ' Cloud/Kimi/GPT-OSS models often have strict protocol requirements or missing IDs. The system will attempt XML fallback.'
+					} else if (modelLower.includes('deepseek')) {
+						specificGuidance = ' DeepSeek models may require specific prompting or "thinking" mode handling. XML fallback is often more reliable.'
+					}
+
+					if (specialToolFormat === 'openai-style') {
+						console.warn(`[sendLLMMessage] ⚠️ Ollama native tool calling failed - model may not support it properly`)
+						onError({
+							message: `Ollama model "${modelName}" returned empty response with native tool calling.${specificGuidance}\n\nSuggestions:\n1. The model may be falling back to XML tool calling automatically\n2. Try a larger model (70B+ for complex tasks)\n3. Check Ollama logs for errors\n4. Ensure model is fully downloaded`,
+							fullError: null
+						})
+					} else {
+						console.warn(`[sendLLMMessage] ⚠️ Ollama XML tool calling returned empty response`)
+						onError({
+							message: `Ollama model "${modelName}" returned empty response with XML tool calling.${specificGuidance}\n\nThis may indicate:\n1. Model doesn't understand tool calling instructions\n2. Insufficient GPU/RAM resources\n3. Model needs to be updated\n\nTry a different model or check Ollama server logs.`,
+							fullError: null
+						})
+					}
+				} else {
+					// Generic empty response error for non-Ollama or non-tool cases
+					onError({ message: 'Void: Response from model was empty.', fullError: null })
+				}
+			}
+			else if (hasToolCallWithEmptyContent && providerName === 'ollama') {
+				// This is actually EXPECTED behavior for successful tool calls
+				// When a tool is called, content field should be empty and tool_calls should be populated
+				console.log(`[sendLLMMessage] ℹ️ Tool call detected with empty content - this is expected behavior`)
+				console.log(`[sendLLMMessage] Tool: ${toolName}, Params length: ${toolParamsStr.length}`)
+
+				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
+				const toolCallObj = toolCall ? { toolCall } : {}
+				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolName: ${toolName}, hasToolCall: ${!!toolCall}`)
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning: null, ...toolCallObj });
 			}
 			else {
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
@@ -864,6 +959,51 @@ const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | u
 
 
 
+// Enhanced Ollama chat with fallback for better tool calling reliability
+const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
+	const { chatMode, mcpTools, modelName } = params
+
+	// Check if model supports native tool calling
+	const { specialToolFormat } = getModelCapabilities('ollama', modelName, params.overridesOfModel)
+	const hasNativeTools = specialToolFormat === 'openai-style'
+	const potentialTools = openAITools(chatMode, mcpTools)
+	const hasTools = potentialTools && potentialTools.length > 0
+
+	console.log(`[sendOllamaChatWithFallback] Model: ${modelName}, specialToolFormat: ${specialToolFormat}, hasTools: ${hasTools}`)
+
+	// For models with native tool support, try OpenAI-compatible endpoint first
+	if (hasNativeTools && hasTools) {
+		console.log(`[sendOllamaChatWithFallback] 🚀 Trying OpenAI-compatible endpoint with native tools`)
+
+		try {
+			// Try the OpenAI-compatible endpoint
+			await _sendOpenAICompatibleChat(params)
+			console.log(`[sendOllamaChatWithFallback] ✅ OpenAI-compatible endpoint succeeded`)
+			return
+		} catch (error) {
+			console.warn(`[sendOllamaChatWithFallback] ⚠️ OpenAI-compatible endpoint failed:`, error)
+			console.log(`[sendOllamaChatWithFallback] 🔄 Retrying without native tool format`)
+		}
+	}
+
+	// Fallback: Try without native tools if the first attempt failed
+	if (hasTools) {
+		try {
+			// For the fallback, we'll just try the same function but let it naturally fall back
+			// to XML tool calling if the model doesn't support native tools
+			await _sendOpenAICompatibleChat(params)
+			console.log(`[sendOllamaChatWithFallback] ✅ Fallback succeeded`)
+		} catch (error) {
+			console.error(`[sendOllamaChatWithFallback] ❌ Both attempts failed:`, error)
+			params.onError({ message: `Ollama tool calling failed: ${error}`, fullError: error })
+		}
+	} else {
+		// No tools needed, use standard OpenAI-compatible chat
+		console.log(`[sendOllamaChatWithFallback] 💬 No tools needed, using standard chat`)
+		await _sendOpenAICompatibleChat(params)
+	}
+}
+
 // Implementation for Gemini using Google's native API
 const sendGeminiChat = async ({
 	messages,
@@ -894,14 +1034,17 @@ const sendGeminiChat = async ({
 	// const { providerReasoningIOSettings } = getProviderCapabilities(providerName)
 
 	// reasoning
-	// const { canIOReasoning, openSourceThinkTags, } = reasoningCapabilities || {}
 	const reasoningInfo = getSendableReasoningInfo('Chat', providerName, modelName_, modelSelectionOptions, overridesOfModel) // user's modelName_ here
-	// const includeInPayload = providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo) || {}
 
 	const thinkingConfig: ThinkingConfig | undefined = !reasoningInfo?.isReasoningEnabled ? undefined
 		: reasoningInfo.type === 'budget_slider_value' ?
 			{ thinkingBudget: reasoningInfo.reasoningBudget }
-			: undefined
+			: undefined // Gemini only supports budget_slider, not effort_slider
+
+	console.log(`[sendLLMMessage] Gemini reasoning config:`, {
+		reasoningInfo,
+		thinkingConfig
+	})
 
 	// tools
 	const potentialTools = geminiTools(chatMode, mcpTools)
@@ -1025,7 +1168,7 @@ export const sendLLMMessageToProviderImplementation = {
 		list: null,
 	},
 	ollama: {
-		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendChat: (params) => _sendOllamaChatWithFallback(params),
 		sendFIM: sendOllamaFIM,
 		list: ollamaList,
 	},

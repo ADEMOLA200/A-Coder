@@ -36,25 +36,25 @@ export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
 export class ContextCompressionService {
 	constructor(
 		private tokenCountingService: TokenCountingService
-	) {}
+	) { }
 
 	/**
-	 * Compress messages to fit within target context window usage
+	 * Compress messages to fit within target token limit (async version for accuracy)
 	 */
-	public compressMessages(
+	public async compressMessages(
 		messages: LLMChatMessage[],
 		modelName: string,
 		config: Partial<CompressionConfig> = {}
-	): { 
+	): Promise<{
 		compressedMessages: LLMChatMessage[];
 		stats: CompressionStats;
-	} {
+	}> {
 		const fullConfig = { ...DEFAULT_COMPRESSION_CONFIG, ...config };
 		const contextWindow = this.tokenCountingService.getContextWindowSize(modelName);
 		const targetTokens = Math.floor(contextWindow * fullConfig.targetUsage);
-		
+
 		const stats: CompressionStats = {
-			originalTokens: this.tokenCountingService.countMessagesTokens(messages, modelName),
+			originalTokens: await this.tokenCountingService.countMessagesTokensAsync(messages, modelName),
 			originalMessageCount: messages.length,
 			targetTokens,
 			finalTokens: 0,
@@ -75,19 +75,19 @@ export class ContextCompressionService {
 
 		// Strategy 1: Truncate large tool results
 		let compressed = this.truncateToolResults(messages, fullConfig.maxToolResultLength);
-		let currentTokens = this.tokenCountingService.countMessagesTokens(compressed, modelName);
-		
+		let currentTokens = await this.tokenCountingService.countMessagesTokensAsync(compressed, modelName);
+
 		if (currentTokens > targetTokens) {
 			// Strategy 2: Remove old messages (keep system + recent messages)
 			compressed = this.removeOldMessages(compressed, fullConfig.keepLastNMessages);
-			currentTokens = this.tokenCountingService.countMessagesTokens(compressed, modelName);
+			currentTokens = await this.tokenCountingService.countMessagesTokensAsync(compressed, modelName);
 			stats.messagesRemoved = messages.length - compressed.length;
 		}
 
 		if (currentTokens > targetTokens && fullConfig.enableSummarization) {
 			// Strategy 3: Summarize middle messages
 			compressed = this.summarizeMiddleMessages(compressed, fullConfig.keepLastNMessages);
-			currentTokens = this.tokenCountingService.countMessagesTokens(compressed, modelName);
+			currentTokens = await this.tokenCountingService.countMessagesTokensAsync(compressed, modelName);
 			stats.messagesSummarized = this.countSummarizedMessages(compressed);
 		}
 
@@ -113,7 +113,7 @@ export class ContextCompressionService {
 					};
 				}
 			}
-			
+
 			// Anthropic tool result format
 			if ('content' in msg && Array.isArray(msg.content)) {
 				const newContent = msg.content.map(part => {
@@ -169,7 +169,7 @@ export class ContextCompressionService {
 		const recentMessages = messages.slice(-keepLastN);
 
 		// Check if first message is system message
-		const hasSystemMessage = 'role' in systemMessage && 
+		const hasSystemMessage = 'role' in systemMessage &&
 			(systemMessage.role === 'system' || systemMessage.role === 'developer');
 
 		if (hasSystemMessage) {
@@ -188,7 +188,7 @@ export class ContextCompressionService {
 		}
 
 		const systemMessage = messages[0];
-		const hasSystemMessage = 'role' in systemMessage && 
+		const hasSystemMessage = 'role' in systemMessage &&
 			(systemMessage.role === 'system' || systemMessage.role === 'developer');
 
 		const startIdx = hasSystemMessage ? 1 : 0;
@@ -209,7 +209,7 @@ export class ContextCompressionService {
 			content: `[Previous conversation summary: ${summaryText}]`
 		} as LLMChatMessage;
 
-		const result = hasSystemMessage 
+		const result = hasSystemMessage
 			? [systemMessage, summaryMessage, ...recentMessages]
 			: [summaryMessage, ...recentMessages];
 
@@ -221,7 +221,7 @@ export class ContextCompressionService {
 	 */
 	private createSummary(messages: LLMChatMessage[]): string {
 		const summaryParts: string[] = [];
-		
+
 		for (const msg of messages) {
 			if ('content' in msg && typeof msg.content === 'string') {
 				// Extract first sentence or first 100 chars
@@ -244,37 +244,37 @@ export class ContextCompressionService {
 	 * Count how many messages were summarized
 	 */
 	private countSummarizedMessages(messages: LLMChatMessage[]): number {
-		return messages.filter(msg => 
-			'content' in msg && 
-			typeof msg.content === 'string' && 
+		return messages.filter(msg =>
+			'content' in msg &&
+			typeof msg.content === 'string' &&
 			msg.content.includes('[Previous conversation summary:')
 		).length;
 	}
 
 	/**
-	 * Check if compression is needed
+	 * Check if compression is needed (async version for accuracy)
 	 */
-	public needsCompression(
+	public async needsCompression(
 		messages: LLMChatMessage[],
 		modelName: string,
 		threshold: number = 0.8
-	): boolean {
-		const currentTokens = this.tokenCountingService.countMessagesTokens(messages, modelName);
+	): Promise<boolean> {
+		const currentTokens = await this.tokenCountingService.countMessagesTokensAsync(messages, modelName);
 		const contextWindow = this.tokenCountingService.getContextWindowSize(modelName);
 		const usage = currentTokens / contextWindow;
-		
+
 		return usage > threshold;
 	}
 
 	/**
-	 * Get compression statistics without actually compressing
+	 * Get compression statistics without actually compressing (async version for accuracy)
 	 */
-	public getCompressionPreview(
+	public async getCompressionPreview(
 		messages: LLMChatMessage[],
 		modelName: string,
 		config: Partial<CompressionConfig> = {}
-	): CompressionStats {
-		const { stats } = this.compressMessages(messages, modelName, config);
+	): Promise<CompressionStats> {
+		const { stats } = await this.compressMessages(messages, modelName, config);
 		return stats;
 	}
 }

@@ -26,6 +26,9 @@ export class TokenCountingChannel implements IServerChannel {
 				this.encoderCache.set(modelName, encoder);
 			}
 		}
+		// NOTE: We intentionally do NOT call encoder.free() here or elsewhere,
+		// because encoders are cached for the lifetime of the process. Freeing
+		// a cached encoder would make it invalid for subsequent uses.
 		return this.encoderCache.get(modelName)!;
 	}
 
@@ -33,15 +36,11 @@ export class TokenCountingChannel implements IServerChannel {
 		switch (command) {
 			case 'countTokens': {
 				const { text, modelName } = arg as { text: string; modelName: string };
-				
+
 				try {
 					const encoder = this.getEncoder(modelName);
 					const tokens = encoder.encode(text);
 					const count = tokens.length;
-					
-					// Free the tokens array
-					encoder.free();
-					
 					return count;
 				} catch (error) {
 					console.error('[TokenCountingChannel] Error counting tokens:', error);
@@ -51,30 +50,28 @@ export class TokenCountingChannel implements IServerChannel {
 			}
 
 			case 'countMessagesTokens': {
-				const { messages, modelName } = arg as { 
+				const { messages, modelName } = arg as {
 					messages: Array<{ role: string; content: string }>;
 					modelName: string;
 				};
-				
+
 				try {
 					const encoder = this.getEncoder(modelName);
 					let totalTokens = 0;
-					
+
 					// Count tokens for each message
 					// Add overhead for message formatting (role, delimiters, etc.)
 					for (const message of messages) {
 						const contentTokens = encoder.encode(message.content);
 						const roleTokens = encoder.encode(message.role);
-						
+
 						// OpenAI format overhead: ~4 tokens per message
 						totalTokens += contentTokens.length + roleTokens.length + 4;
-						
-						encoder.free();
 					}
-					
+
 					// Add 3 tokens for reply priming
 					totalTokens += 3;
-					
+
 					return totalTokens;
 				} catch (error) {
 					console.error('[TokenCountingChannel] Error counting message tokens:', error);

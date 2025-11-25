@@ -44,6 +44,54 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 
 ---
 
+### 📱 Mobile API (NEW!)
+**Feature:** REST/WebSocket API for building mobile companion apps to control A-Coder remotely.
+
+**What It Does:**
+- Exposes A-Coder's coding agent and workspace features via HTTP API
+- Enables mobile apps to interact with chat threads, files, and planning
+- Real-time updates via WebSocket connections
+- Secure token-based authentication
+
+**API Endpoints:**
+- **Chat/Threads:** Create threads, send messages, get status, cancel agent
+- **Workspace:** List files, read files, search, get diagnostics
+- **Planning:** Get current plan, create plans, update task status
+- **Settings:** Get settings and available models (read-only)
+
+**Security:**
+- API disabled by default (must be enabled in settings)
+- Localhost-only binding (no direct internet exposure)
+- Token-based authentication (Bearer tokens)
+- Optional Cloudflare Tunnel for secure remote access
+
+**Setup:**
+1. Go to Settings → Mobile API
+2. Toggle "Enable Mobile API"
+3. Generate an API token (click "Generate New Token")
+4. (Optional) Configure Cloudflare Tunnel URL for remote access
+5. Test with: `curl http://localhost:3737/api/v1/health`
+
+**WebSocket Support:**
+```javascript
+const ws = new WebSocket('ws://localhost:3737?token=YOUR_TOKEN');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data);
+};
+```
+
+**Use Cases:**
+- Control A-Coder from mobile device
+- Monitor agent progress remotely
+- Send messages to chat threads
+- Browse and edit workspace files
+- Track planning and task status
+
+**Details:** API runs on port 3737 by default. All endpoints require authentication via Bearer token in `Authorization` header.
+
+---
+
 ### 🚀 Morph Fast Apply Integration (NEW!)
 **Feature:** Intelligent code application using Morph's Fast Apply API to enhance the Apply functionality.
 
@@ -181,7 +229,41 @@ TOON:  {files:[a.ts,b.ts],count:2}              (27 chars, 40% savings)
 
 **Details:** See [OLLAMA_CLOUD_TOOL_CALLING_BUG.md](./docs/OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
 
+---
 
+### 🔧 Ollama Tool Calling Improvements (NEW!)
+**Comprehensive fixes for all Ollama tool calling issues based on extensive research and testing.**
+
+#### Issues Fixed:
+1. **Multiple Tool Call Concatenation** - Ollama sometimes returns multiple tool calls in one response
+   - **Problem:** Arguments were concatenated into invalid JSON: `{"uri":"file1"}{"uri":"file2"}`
+   - **Fix:** Only process the first tool call to prevent concatenation errors
+   - **Result:** Tool calls now work reliably without JSON parsing failures
+
+2. **Empty Response Detection** - Tool calls with empty content were incorrectly treated as errors
+   - **Problem:** `{"hasToolCall":true,"fullText":"","reasoning":""}` was seen as an error
+   - **Reality:** This is expected behavior for Ollama native tool calls
+   - **Fix:** Modified empty response check to accept tool calls with empty content
+   - **Result:** No more unnecessary retries and failures
+
+3. **Agent Mode Completion Detection** - Agent stopped too early when LLM described plans
+   - **Problem:** "This is...complete overview" incorrectly matched completion patterns
+   - **Fix:** Made completion signal patterns more precise with end-of-text requirements
+   - **Result:** Agent continues appropriately when LLM is planning, stops when actually complete
+
+#### Enhanced Logging:
+- Shows when multiple tool calls are detected and skipped
+- Detailed error logging for tool parameter parsing
+- Clear indication of successful tool call processing
+
+#### Status:
+- ✅ All Ollama models (local and cloud) now work reliably with tools
+- ✅ Agent mode properly handles Ollama's response format
+- ✅ No more "empty response" retries for valid tool calls
+
+**Details:** See [OLLAMA_TOOL_CALLING_IMPROVEMENTS.md](./OLLAMA_TOOL_CALLING_IMPROVEMENTS.md)
+
+---
 ## Development
 
 To get started developing A-Coder, see [DEVELOPMENT_GUIDE.md](./docs/DEVELOPMENT_GUIDE.md) for complete instructions on:

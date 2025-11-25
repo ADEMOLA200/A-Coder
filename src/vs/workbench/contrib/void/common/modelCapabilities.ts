@@ -232,7 +232,8 @@ type ProviderReasoningIOSettings = {
 	// needsManualParse: whether we must manually parse out the <think> tags
 	output?:
 	| { nameOfFieldInDelta?: string, needsManualParse?: undefined, }
-	| { nameOfFieldInDelta?: undefined, needsManualParse?: true, };
+	| { nameOfFieldInDelta?: undefined, needsManualParse?: true, }
+	| { nameOfFieldInDelta: string, needsManualParse: true }; // Allow both for models that have direct reasoning field but also support tag parsing
 }
 
 type VoidStaticProviderInfo = { // doesn't change (not stateful)
@@ -745,6 +746,9 @@ const openAICompatIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningI
 	if (reasoningInfo.type === 'effort_slider_value') {
 		return { reasoning_effort: reasoningInfo.reasoningEffort }
 	}
+	if (reasoningInfo.type === 'budget_slider_value') {
+		return { max_completion_tokens: reasoningInfo.reasoningBudget }
+	}
 	return null
 
 }
@@ -1245,21 +1249,18 @@ const ollamaModelOptions = {
 		reasoningCapabilities: false,
 	},
 	'glm-4.6:cloud': {
-		contextWindow: 128_000,
+		contextWindow: 200_000, // Expanded from 128K to 200K tokens
 		reservedOutputTokenSpace: 8_192,
 		cost: { input: 0, output: 0 },
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
 		reasoningCapabilities: {
 			supportsReasoning: true,
 			canTurnOffReasoning: true,
 			canIOReasoning: true,
-			reasoningSlider: {
-				type: 'effort_slider',
-				values: ['low', 'medium', 'high'],
-				default: 'medium'
-			}
+			openSourceThinkTags: ['<think>', '</think>'] // GLM-4.6 uses <think> tags for reasoning content
 		},
 	},
 	// Ollama Cloud models - https://docs.ollama.com/cloud
@@ -1281,7 +1282,17 @@ const ollamaModelOptions = {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
-		reasoningCapabilities: false,
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			},
+			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
+		},
 	},
 	'gpt-oss:120b-cloud': {
 		contextWindow: 128_000,
@@ -1299,7 +1310,8 @@ const ollamaModelOptions = {
 				type: 'effort_slider',
 				values: ['low', 'medium', 'high'],
 				default: 'medium'
-			}
+			},
+			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
 		},
 	},
 	'kimi-k2:1t-cloud': {
@@ -1322,7 +1334,7 @@ const ollamaModelOptions = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 1.0, // Recommended by Moonshot AI for reasoning model
-		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] }, // Long-horizon: can handle 200-300 consecutive tool calls
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
 	},
 	'kimi-k2-thinking:cloud': { // Alias for kimi-k2-thinking:1t-cloud
 		contextWindow: 256_000,
@@ -1333,7 +1345,7 @@ const ollamaModelOptions = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 1.0,
-		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['</think>', '</think>'] },
 	},
 	'qwen3-coder:480b-cloud': {
 		contextWindow: 128_000,
@@ -1362,7 +1374,8 @@ const ollamaModelOptions = {
 				type: 'effort_slider',
 				values: ['low', 'medium', 'high'],
 				default: 'medium'
-			}
+			},
+			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
 		},
 	},
 
@@ -1394,7 +1407,9 @@ const ollamaSettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } }),
 	modelOptions: ollamaModelOptions,
 	providerReasoningIOSettings: {
-		// reasoning: we need to filter out reasoning <think> tags manually
+		// reasoning: we need to filter out reasoning <think> tags manually from the normal text stream
+		// Ollama's OpenAI-compatible endpoint does not expose a separate `reasoning` field in the delta
+		// so we rely entirely on manual parsing of <think> ... </think> tags.
 		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
 		output: { needsManualParse: true },
 	},
