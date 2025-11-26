@@ -5,15 +5,15 @@
 
 import React, { useState, useEffect } from 'react'
 import { useAccessor } from '../util/services.js'
-import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
+import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 
 interface PlanningResultWrapperProps {
 	toolMessage: {
 		name: ToolName
 		params: any
 		content: string
-		result?: any // Use any to handle different planning tool result structures
+		result?: any
 		id: string
 	}
 	messageIdx: number
@@ -26,12 +26,11 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	threadId
 }) => {
 	const accessor = useAccessor()
-	const commandService = accessor.get('ICommandService')
 	const chatThreadsService = accessor.get('IChatThreadService') as any
 
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [latestPlanning, setLatestPlanning] = useState(toolMessage)
-	const [isExpanded, setIsExpanded] = useState(true) // Add collapsible state
+	const [isExpanded, setIsExpanded] = useState(true)
 
 	// Check for newer planning updates in this thread
 	useEffect(() => {
@@ -42,7 +41,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 
 			const messages = thread.messages || []
 			const planningMessages = messages.filter((m: any) =>
-				m.name === 'create_plan' || m.name === 'update_task_status' || m.name === 'add_tasks_to_plan'
+				m.name === 'create_plan' || m.name === 'update_task_status' || m.name === 'add_tasks_to_plan' || m.name === 'get_plan_status'
 			)
 			const latest = planningMessages[planningMessages.length - 1]
 
@@ -52,10 +51,8 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 			}
 		}
 
-		// Check immediately and then periodically
 		checkForUpdates()
 		const interval = setInterval(checkForUpdates, 2000)
-
 		return () => clearInterval(interval)
 	}, [threadId, toolMessage.id, chatThreadsService])
 
@@ -64,23 +61,23 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 		return <div className="p-3 text-void-fg-3">Planning tool result not available</div>
 	}
 
-	// Extract summary from different result structures
-	const getSummary = () => {
-		switch (toolMessage.name) {
-			case 'create_plan':
-				return result.summary || 'Plan created'
-			case 'update_task_status':
-				return result.summary || 'Task updated'
-			case 'add_tasks_to_plan':
-				return result.summary || 'Tasks added'
-			case 'get_plan_status':
-				return result.summary || result.status || 'Plan status retrieved'
-			default:
-				return result.summary || 'Operation completed'
+	// Get the markdown summary from result
+	const summary = result.summary || ''
+
+	// Extract progress info from markdown or result
+	const getProgressFromSummary = () => {
+		// Try to parse progress from markdown like "**Progress:** 2/5 tasks completed"
+		const match = summary.match(/\*\*Progress:\*\*\s*(\d+)\/(\d+)/)
+		if (match) {
+			return { completed: parseInt(match[1]), total: parseInt(match[2]) }
 		}
+		return null
 	}
 
-	// Check if operation was successful (planning tools generally succeed if they have a result)
+	const progress = getProgressFromSummary()
+	const completedCount = progress?.completed ?? 0
+	const totalCount = progress?.total ?? 0
+	const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 	const isSuccess = result && !result.error
 
 	const getToolIcon = () => {
@@ -117,7 +114,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 		<div className="void-planning-result border border-void-border-2 rounded-lg overflow-hidden">
 			{/* Header */}
 			<div
-				className="bg-void-bg-2 px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-3 transition-colors"
+				className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-2 transition-colors"
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
 				<div className="flex items-center gap-2 min-w-0 flex-1">
@@ -134,37 +131,53 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 						<div className="font-medium text-void-fg-1 truncate">
 							{getToolTitle()}
 						</div>
-						<div className="text-xs text-void-fg-4 truncate">
-							Planning operation completed successfully
-						</div>
 					</div>
 				</div>
-				{isSuccess && (
-					<div className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-md text-xs font-medium flex-shrink-0">
-						Success
-					</div>
-				)}
+				<div className="flex items-center gap-2 flex-shrink-0">
+					{totalCount > 0 && (
+						<div className="text-xs text-void-fg-3">
+							{completedCount}/{totalCount}
+						</div>
+					)}
+					{isSuccess && totalCount > 0 && (
+						<div className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-md text-xs font-medium">
+							{progressPercent === 100 ? 'Done' : `${progressPercent}%`}
+						</div>
+					)}
+				</div>
 			</div>
 
-			{/* Collapsible Content */}
-			{isExpanded && (
-				<div className="p-3">
-					<div className="text-sm font-medium text-void-fg-2 mb-2">Result:</div>
-					<div className="bg-void-bg-1 border border-void-border-2 rounded-md p-4 max-h-64 overflow-y-auto prose prose-sm prose-invert max-w-none">
-						<ChatMarkdownRender
-							key={refreshKey}
-							string={getSummary()}
-							chatMessageLocation={undefined}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</div>
+			{/* Progress bar */}
+			{totalCount > 0 && (
+				<div className="h-1 bg-void-bg-2">
+					<div
+						className="h-full bg-green-500 transition-all duration-300"
+						style={{ width: `${progressPercent}%` }}
+					/>
+				</div>
+			)}
+
+			{/* Collapsible Content - Full Markdown Preview */}
+			{isExpanded && summary && (
+				<div className="p-3 max-h-96 overflow-y-auto">
+					<ChatMarkdownRender
+						key={refreshKey}
+						string={summary}
+						chatMessageLocation={{ threadId, messageIdx }}
+					/>
+				</div>
+			)}
+
+			{/* Fallback for no summary */}
+			{isExpanded && !summary && (
+				<div className="p-3 text-sm text-void-fg-3">
+					No plan details available.
 				</div>
 			)}
 
 			{/* Update indicator */}
 			{latestPlanning.id !== toolMessage.id && (
-				<div className="px-3 pb-2 text-xs text-void-fg-4 italic">
+				<div className="px-3 pb-2 text-xs text-void-fg-4 italic border-t border-void-border-2 pt-2">
 					This plan has been updated. See latest version above.
 				</div>
 			)}

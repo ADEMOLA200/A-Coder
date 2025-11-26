@@ -132,86 +132,62 @@ export class PlanningService {
 	}
 
 	/**
-	 * Formats the plan as a readable string for the AI
+	 * Formats the plan as a markdown checklist
 	 */
 	formatPlanStatus(plan: Plan): string {
 		const completedCount = plan.tasks.filter(t => t.status === 'complete').length;
 		const totalCount = plan.tasks.length;
 
-		let output = `## Plan: ${plan.goal}\n`;
-		output += `Progress: ${completedCount}/${totalCount} tasks completed\n\n`;
+		let output = `## 📋 ${plan.goal}\n`;
+		output += `**Progress:** ${completedCount}/${totalCount} tasks completed\n\n`;
 
-		// Group tasks by status
-		const tasksByStatus: Record<TaskStatus, Task[]> = {
-			in_progress: [],
-			pending: [],
-			complete: [],
-			failed: [],
-			skipped: [],
-		};
-
+		// Format all tasks as a markdown checklist in order
 		for (const task of plan.tasks) {
-			tasksByStatus[task.status].push(task);
-		}
+			const checkbox = this.getCheckboxForStatus(task.status);
+			output += `${checkbox} **${task.id}:** ${task.description}`;
 
-		// Show in-progress tasks first
-		if (tasksByStatus.in_progress.length > 0) {
-			output += `### 🔄 In Progress\n`;
-			for (const task of tasksByStatus.in_progress) {
-				output += `- [${task.id}] ${task.description}\n`;
-				if (task.notes) {
-					output += `  Notes: ${task.notes}\n`;
-				}
+			// Add status indicator for non-standard states
+			if (task.status === 'in_progress') {
+				output += ` *(in progress)*`;
+			} else if (task.status === 'failed') {
+				output += ` *(failed)*`;
+			} else if (task.status === 'skipped') {
+				output += ` *(skipped)*`;
 			}
-			output += '\n';
-		}
 
-		// Then pending tasks
-		if (tasksByStatus.pending.length > 0) {
-			output += `### ⏳ Pending\n`;
-			for (const task of tasksByStatus.pending) {
-				const deps = task.dependencies.length > 0 ? ` (depends on: ${task.dependencies.join(', ')})` : '';
-				output += `- [${task.id}] ${task.description}${deps}\n`;
-			}
 			output += '\n';
-		}
 
-		// Then completed tasks (collapsed)
-		if (tasksByStatus.complete.length > 0) {
-			output += `### ✅ Complete (${tasksByStatus.complete.length})\n`;
-			for (const task of tasksByStatus.complete) {
-				output += `- [${task.id}] ${task.description}\n`;
-				if (task.notes) {
-					output += `  Notes: ${task.notes}\n`;
-				}
+			// Add notes if present
+			if (task.notes) {
+				output += `  - ${task.notes}\n`;
 			}
-			output += '\n';
-		}
 
-		// Show failed tasks
-		if (tasksByStatus.failed.length > 0) {
-			output += `### ❌ Failed\n`;
-			for (const task of tasksByStatus.failed) {
-				output += `- [${task.id}] ${task.description}\n`;
-				if (task.notes) {
-					output += `  Error: ${task.notes}\n`;
-				}
+			// Add dependencies if present and task is pending
+			if (task.status === 'pending' && task.dependencies.length > 0) {
+				output += `  - *Depends on: ${task.dependencies.join(', ')}*\n`;
 			}
-			output += '\n';
-		}
-
-		// Show skipped tasks
-		if (tasksByStatus.skipped.length > 0) {
-			output += `### ⏭️ Skipped\n`;
-			for (const task of tasksByStatus.skipped) {
-				output += `- [${task.id}] ${task.description}\n`;
-				if (task.notes) {
-					output += `  Reason: ${task.notes}\n`;
-				}
-			}
-			output += '\n';
 		}
 
 		return output.trim();
 	}
+
+	/**
+	 * Gets the markdown checkbox for a task status
+	 */
+	private getCheckboxForStatus(status: TaskStatus): string {
+		switch (status) {
+			case 'complete':
+				return '- [x]';
+			case 'in_progress':
+				return '- [~]'; // Tilde indicates in-progress
+			case 'failed':
+				return '- [!]'; // Exclamation indicates failed
+			case 'skipped':
+				return '- [-]'; // Dash indicates skipped
+			case 'pending':
+			default:
+				return '- [ ]';
+		}
+	}
+
 }
