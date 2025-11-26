@@ -78,48 +78,15 @@ export const SlideInRight = ({ children, delay = 0 }: { children: React.ReactNod
 };
 
 /**
- * Enhanced typing indicator with smooth wave animation and contextual states
+ * Enhanced typing indicator with shimmer text animation
+ * Uses CSS text-shimmer class for GPU-accelerated effect
  */
 export const TypingIndicator = ({
 	state = 'thinking', // 'thinking' | 'processing' | 'generating'
-	size = 'medium' // 'small' | 'medium' | 'large'
 }: {
 	state?: 'thinking' | 'processing' | 'generating';
-	size?: 'small' | 'medium' | 'large';
 }) => {
-	// Generate unique ID for this instance to avoid keyframe conflicts
-	const animId = useRef(`wave-${Math.random().toString(36).substr(2, 9)}`).current;
-
-	// Size configurations
-	const sizeConfig = {
-		small: { dot: 'w-1.5 h-1.5', gap: 'gap-1', container: 'py-1' },
-		medium: { dot: 'w-2 h-2', gap: 'gap-1.5', container: 'py-2' },
-		large: { dot: 'w-2.5 h-2.5', gap: 'gap-2', container: 'py-3' }
-	};
-
-	// State-based colors and speeds
-	const stateConfig = {
-		thinking: {
-			color: 'var(--vscode-void-accent, #007acc)',
-			duration: '1.4s',
-			opacity: 0.7
-		},
-		processing: {
-			color: 'var(--vscode-charts-orange, #f38500)',
-			duration: '1.0s',
-			opacity: 0.8
-		},
-		generating: {
-			color: 'var(--vscode-charts-green, #388a34)',
-			duration: '0.8s',
-			opacity: 0.9
-		}
-	};
-
-	const config = sizeConfig[size];
-	const stateSettings = stateConfig[state];
-
-	// Rotating loading messages so it doesn't feel repetitive
+	// Rotating loading messages
 	const messagesByState: Record<'thinking' | 'processing' | 'generating', string[]> = {
 		thinking: [
 			'A-Coder is thinking',
@@ -141,7 +108,7 @@ export const TypingIndicator = ({
 	const allMessages = messagesByState[state] ?? messagesByState.thinking;
 	const [messageIndex, setMessageIndex] = useState(() => Math.floor(Math.random() * allMessages.length));
 
-	// Advance message every few seconds while the indicator is mounted
+	// Advance message every few seconds
 	useEffect(() => {
 		const interval = window.setInterval(() => {
 			setMessageIndex((prev) => (prev + 1) % allMessages.length);
@@ -151,78 +118,12 @@ export const TypingIndicator = ({
 
 	const currentMessage = allMessages[messageIndex] || allMessages[0];
 
-	const textAnimId = `${animId}-text`;
-
 	return (
-		<>
-			<style>{`
-				@keyframes ${animId} {
-					0%, 60%, 100% {
-						transform: scale(1);
-						opacity: ${stateSettings.opacity * 0.6};
-					}
-					30% {
-						transform: scale(1.3);
-						opacity: ${stateSettings.opacity};
-					}
-				}
-				@keyframes ${textAnimId} {
-					0% {
-						background-position: -100% 50%;
-					}
-					100% {
-						background-position: 200% 50%;
-					}
-				}
-			`}</style>
-			<div className={`flex items-center justify-between ${config.container}`}>
-				<span
-					className="text-xs select-none mr-3"
-					style={{
-						backgroundImage: `linear-gradient(90deg,
-							var(--vscode-void-fg-3, #808080) 0%,
-							var(--vscode-void-accent, #007acc) 45%,
-							#ffffff 50%,
-							var(--vscode-void-accent, #007acc) 55%,
-							var(--vscode-void-fg-3, #808080) 100%)`,
-						backgroundSize: '300% 100%',
-						WebkitBackgroundClip: 'text',
-						backgroundClip: 'text',
-						color: 'var(--vscode-void-fg-3, #808080)',
-						opacity: stateSettings.opacity,
-						animation: `${textAnimId} 3s ease-in-out infinite`,
-					}}
-				>
-					{currentMessage}
-				</span>
-				<div className={`flex ${config.gap}`}>
-					<div
-						className={`rounded-full ${config.dot}`}
-						style={{
-							backgroundColor: stateSettings.color,
-							animation: `${animId} ${stateSettings.duration} ease-in-out infinite`,
-							animationDelay: '0s'
-						}}
-					/>
-					<div
-						className={`rounded-full ${config.dot}`}
-						style={{
-							backgroundColor: stateSettings.color,
-							animation: `${animId} ${stateSettings.duration} ease-in-out infinite`,
-							animationDelay: '0.2s'
-						}}
-					/>
-					<div
-						className={`rounded-full ${config.dot}`}
-						style={{
-							backgroundColor: stateSettings.color,
-							animation: `${animId} ${stateSettings.duration} ease-in-out infinite`,
-							animationDelay: '0.4s'
-						}}
-					/>
-				</div>
-			</div>
-		</>
+		<div className="py-2">
+			<span className="text-sm select-none text-shimmer">
+				{currentMessage}
+			</span>
+		</div>
 	);
 };
 
@@ -552,29 +453,19 @@ export const ToolLoadingIndicator = ({
 
 /**
  * Expand/collapse animation for tool calls
+ * Uses max-height for GPU-accelerated animation
  */
 export const ExpandCollapse = ({ isExpanded, children }: { isExpanded: boolean, children: React.ReactNode }) => {
-	const contentRef = useRef<HTMLDivElement>(null);
-	const [height, setHeight] = useState<number | undefined>(isExpanded ? undefined : 0);
-
-	useEffect(() => {
-		if (contentRef.current) {
-			const contentHeight = contentRef.current.scrollHeight;
-			setHeight(isExpanded ? contentHeight : 0);
-		}
-	}, [isExpanded]);
-
 	return (
 		<div
 			style={{
-				height: height,
+				maxHeight: isExpanded ? '500px' : '0px',
+				opacity: isExpanded ? 1 : 0,
 				overflow: 'hidden',
-				transition: 'height 200ms ease-in-out',
+				transition: 'max-height 200ms ease-out, opacity 150ms ease-out',
 			}}
 		>
-			<div ref={contentRef}>
-				{children}
-			</div>
+			{children}
 		</div>
 	);
 };
@@ -725,38 +616,19 @@ export const PulseOnce = ({ children, trigger }: { children: React.ReactNode, tr
 
 /**
  * Smooth height animation for content changes
+ * Uses max-height for better performance (no layout measurements)
  */
-export const SmoothHeight = ({ children, isVisible }: { children: React.ReactNode, isVisible: boolean }) => {
-	const contentRef = useRef<HTMLDivElement>(null);
-	const [height, setHeight] = useState<number | 'auto'>(isVisible ? 'auto' : 0);
-
-	useEffect(() => {
-		if (contentRef.current) {
-			if (isVisible) {
-				const contentHeight = contentRef.current.scrollHeight;
-				setHeight(contentHeight);
-				const timer = setTimeout(() => setHeight('auto'), 300);
-				return () => clearTimeout(timer);
-			} else {
-				const contentHeight = contentRef.current.scrollHeight;
-				setHeight(contentHeight);
-				const timer = setTimeout(() => setHeight(0), 50);
-				return () => clearTimeout(timer);
-			}
-		}
-	}, [isVisible]);
-
+export const SmoothHeight = ({ children, isVisible, maxHeight = '1000px' }: { children: React.ReactNode, isVisible: boolean, maxHeight?: string }) => {
 	return (
 		<div
 			style={{
-				height: height,
+				maxHeight: isVisible ? maxHeight : '0px',
+				opacity: isVisible ? 1 : 0,
 				overflow: 'hidden',
-				transition: 'height 300ms ease-in-out',
+				transition: 'max-height 250ms ease-out, opacity 200ms ease-out',
 			}}
 		>
-			<div ref={contentRef}>
-				{children}
-			</div>
+			{children}
 		</div>
 	);
 };

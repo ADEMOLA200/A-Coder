@@ -103,66 +103,71 @@
 	@apply bg-vscode-dropdown-bg text-vscode-dropdown-foreground border-vscode-dropdown-border focus:outline-vscode-focus-border;
 } */
 
-/* Modern chat animations */
+/* Modern chat animations - GPU accelerated (transform/opacity only) */
 @keyframes shimmer {
-	0% {
-		transform: translateX(-100%);
-	}
-	100% {
-		transform: translateX(100%);
-	}
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(100%); }
 }
 
 @keyframes spin {
-	0% {
-		transform: rotate(0deg);
-	}
-	100% {
-		transform: rotate(360deg);
-	}
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 
 @keyframes pulse-gentle {
-	0%, 100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.7;
-	}
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.6; }
 }
 
 @keyframes slide-up {
-	0% {
-		opacity: 0;
-		transform: translateY(20px);
-	}
-	100% {
-		opacity: 1;
-		transform: translateY(0);
-	}
+	from { opacity: 0; transform: translateY(10px); }
+	to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fade-in-scale {
-	0% {
-		opacity: 0;
-		transform: scale(0.95);
-	}
-	100% {
-		opacity: 1;
-		transform: scale(1);
-	}
+	from { opacity: 0; transform: scale(0.97); }
+	to { opacity: 1; transform: scale(1); }
+}
+
+/* Text shimmer for typing indicator - smooth continuous loop */
+@keyframes text-shimmer {
+	0% { background-position: 200% 50%; }
+	100% { background-position: -200% 50%; }
 }
 
 .animate-shimmer {
 	animation: shimmer 2s infinite;
+	will-change: transform;
 }
 
 .animate-spin {
 	animation: spin 1s linear infinite;
+	will-change: transform;
 }
 
 .animate-pulse-gentle {
-	animation: pulse-gentle 2s ease-in-out infinite;
+	animation: pulse-gentle 1.5s ease-in-out infinite;
+	will-change: opacity;
+}
+
+/* Text shimmer effect - KITT scanner style sweep */
+.text-shimmer {
+	background-image: linear-gradient(90deg,
+		#666666 0%,
+		#666666 35%,
+		#888888 42%,
+		#cccccc 48%,
+		#ffffff 50%,
+		#cccccc 52%,
+		#888888 58%,
+		#666666 65%,
+		#666666 100%);
+	background-size: 400% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: text-shimmer 2.5s ease-in-out infinite;
+	will-change: background-position;
 }
 
 /* Smooth message transitions */
@@ -177,14 +182,14 @@
 	transition: opacity 300ms ease-out, transform 300ms ease-out;
 }
 
-/* Tool call hover effects */
+/* Tool call hover effects - simplified for performance */
 .tool-card {
-	transition: all 200ms ease-in-out;
+	transition: transform 150ms ease-out, opacity 150ms ease-out;
+	will-change: transform;
 }
 
 .tool-card:hover {
 	transform: translateY(-1px);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* Enhanced loading states */
@@ -231,10 +236,11 @@
 	transition: stroke-dashoffset 300ms ease-in-out;
 }
 
-/* Smooth height transitions */
+/* Smooth height transitions - use max-height for better performance */
 .smooth-height {
-	transition: height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: max-height 200ms ease-out, opacity 200ms ease-out;
 	overflow: hidden;
+	will-change: max-height, opacity;
 }
 
 /* Staggered animations */

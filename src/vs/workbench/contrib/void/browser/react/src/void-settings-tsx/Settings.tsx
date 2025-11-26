@@ -361,13 +361,10 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 					mouseDownInsideModal.current = false;
 				}}
 			>
-				{/* MODAL */}
+				{/* MODAL - always centered in viewport */}
 				<div
 					className="bg-void-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh] fixed z-[10000000]"
-					style={anchor ? {
-						top: Math.max(16, anchor.y + 10),
-						left: Math.max(16, Math.min(window.innerWidth - 576 - 16, anchor.x - 288)),
-					} : {
+					style={{
 						top: '50%',
 						left: '50%',
 						transform: 'translate(-50%, -50%)',

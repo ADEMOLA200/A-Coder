@@ -6,7 +6,11 @@
 import React, { useState, useEffect } from 'react'
 import { useAccessor } from '../util/services.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
-import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
+
+interface TaskItem {
+	text: string
+	status: 'complete' | 'in_progress' | 'pending'
+}
 
 interface PlanningResultWrapperProps {
 	toolMessage: {
@@ -20,6 +24,88 @@ interface PlanningResultWrapperProps {
 	threadId: string
 }
 
+// Parse markdown checklist into task items
+const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string } => {
+	const lines = markdown.split('\n')
+	const tasks: TaskItem[] = []
+	let goal = ''
+
+	for (const line of lines) {
+		// Extract goal from header like "## 📋 Build feature"
+		const goalMatch = line.match(/^##\s*📋?\s*(.+)$/)
+		if (goalMatch) {
+			goal = goalMatch[1].trim()
+			continue
+		}
+
+		// Parse checkbox items
+		// - [x] completed
+		// - [~] in progress
+		// - [ ] pending
+		// - [!] failed (treat as pending)
+		// - [-] skipped (treat as complete)
+		const checkboxMatch = line.match(/^-\s*\[([ x~!\-])\]\s*(.+)$/)
+		if (checkboxMatch) {
+			const marker = checkboxMatch[1]
+			let text = checkboxMatch[2]
+
+			// Remove bold task ID like **task1:**
+			text = text.replace(/\*\*[^*]+:\*\*\s*/, '')
+			// Remove status indicators like *(in progress)*
+			text = text.replace(/\s*\*\([^)]+\)\*\s*$/, '')
+
+			let status: TaskItem['status'] = 'pending'
+			if (marker === 'x' || marker === '-') {
+				status = 'complete'
+			} else if (marker === '~') {
+				status = 'in_progress'
+			}
+
+			tasks.push({ text: text.trim(), status })
+		}
+	}
+
+	return { tasks, goal }
+}
+
+// Status icon component
+const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ status, index }) => {
+	if (status === 'complete') {
+		return (
+			<div className="w-5 h-5 rounded-full bg-green-500/20 border border-green-500/50 flex items-center justify-center flex-shrink-0">
+				<svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+				</svg>
+			</div>
+		)
+	}
+
+	if (status === 'in_progress') {
+		return (
+			<div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+				<span className="text-white text-xs font-bold">{(index ?? 0) + 1}</span>
+			</div>
+		)
+	}
+
+	// Pending - empty circle
+	return (
+		<div className="w-5 h-5 rounded-full border-2 border-void-fg-4 flex-shrink-0" />
+	)
+}
+
+// Task row component
+const TaskRow: React.FC<{ task: TaskItem, index: number }> = ({ task, index }) => {
+	return (
+		<div className="flex items-center gap-3 py-1.5">
+			<StatusIcon status={task.status} index={index} />
+			<span className={`text-sm ${task.status === 'complete' ? 'text-void-fg-3' : 'text-void-fg-1'}`}>
+				{task.text}
+			</span>
+		</div>
+	)
+}
+
 const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	toolMessage,
 	messageIdx,
@@ -28,9 +114,8 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService') as any
 
-	const [refreshKey, setRefreshKey] = useState(0)
 	const [latestPlanning, setLatestPlanning] = useState(toolMessage)
-	const [isExpanded, setIsExpanded] = useState(true)
+	const [isExpanded, setIsExpanded] = useState(false) // Start collapsed like Cascade
 
 	// Check for newer planning updates in this thread
 	useEffect(() => {
@@ -47,7 +132,6 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 
 			if (latest && latest.id !== toolMessage.id) {
 				setLatestPlanning(latest)
-				setRefreshKey(prev => prev + 1)
 			}
 		}
 
@@ -61,124 +145,56 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 		return <div className="p-3 text-void-fg-3">Planning tool result not available</div>
 	}
 
-	// Get the markdown summary from result
+	// Parse the markdown summary into tasks
 	const summary = result.summary || ''
+	const { tasks, goal } = parseMarkdownTasks(summary)
 
-	// Extract progress info from markdown or result
-	const getProgressFromSummary = () => {
-		// Try to parse progress from markdown like "**Progress:** 2/5 tasks completed"
-		const match = summary.match(/\*\*Progress:\*\*\s*(\d+)\/(\d+)/)
-		if (match) {
-			return { completed: parseInt(match[1]), total: parseInt(match[2]) }
-		}
-		return null
-	}
+	const completedCount = tasks.filter(t => t.status === 'complete').length
+	const totalCount = tasks.length
 
-	const progress = getProgressFromSummary()
-	const completedCount = progress?.completed ?? 0
-	const totalCount = progress?.total ?? 0
-	const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
-	const isSuccess = result && !result.error
-
-	const getToolIcon = () => {
-		switch (toolMessage.name) {
-			case 'create_plan': return '📋'
-			case 'update_task_status': return '✅'
-			case 'add_tasks_to_plan': return '➕'
-			case 'get_plan_status': return '📊'
-			default: return '🎯'
-		}
-	}
-
-	const getToolTitle = () => {
-		switch (toolMessage.name) {
-			case 'create_plan': return 'Plan Created'
-			case 'update_task_status': return 'Task Updated'
-			case 'add_tasks_to_plan': return 'Tasks Added'
-			case 'get_plan_status': return 'Plan Status'
-			default: return 'Planning Operation'
-		}
-	}
-
-	const getActionColor = () => {
-		switch (toolMessage.name) {
-			case 'create_plan': return 'text-blue-400'
-			case 'update_task_status': return 'text-green-400'
-			case 'add_tasks_to_plan': return 'text-purple-400'
-			case 'get_plan_status': return 'text-orange-400'
-			default: return 'text-void-fg-1'
-		}
-	}
+	// Show first 2 tasks when collapsed, all when expanded
+	const visibleTasks = isExpanded ? tasks : tasks.slice(0, 2)
+	const hiddenCount = tasks.length - visibleTasks.length
 
 	return (
-		<div className="void-planning-result border border-void-border-2 rounded-lg overflow-hidden">
-			{/* Header */}
+		<div className="void-planning-result">
+			{/* Header - "X / Y tasks done >" */}
 			<div
-				className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-2 transition-colors"
+				className="flex items-center gap-1 text-sm text-void-fg-3 cursor-pointer hover:text-void-fg-2 transition-colors py-1"
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
-				<div className="flex items-center gap-2 min-w-0 flex-1">
-					<svg
-						className={`w-4 h-4 text-void-fg-3 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} flex-shrink-0`}
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-					</svg>
-					<span className={`text-lg ${getActionColor()} flex-shrink-0`}>{getToolIcon()}</span>
-					<div className="min-w-0 flex-1">
-						<div className="font-medium text-void-fg-1 truncate">
-							{getToolTitle()}
-						</div>
-					</div>
-				</div>
-				<div className="flex items-center gap-2 flex-shrink-0">
-					{totalCount > 0 && (
-						<div className="text-xs text-void-fg-3">
-							{completedCount}/{totalCount}
-						</div>
-					)}
-					{isSuccess && totalCount > 0 && (
-						<div className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-md text-xs font-medium">
-							{progressPercent === 100 ? 'Done' : `${progressPercent}%`}
-						</div>
-					)}
-				</div>
+				<span>{completedCount} / {totalCount} tasks done</span>
+				<svg
+					className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+				</svg>
 			</div>
 
-			{/* Progress bar */}
-			{totalCount > 0 && (
-				<div className="h-1 bg-void-bg-2">
+			{/* Task list */}
+			<div className="bg-void-bg-2 rounded-lg border border-void-border-2 px-3 py-2 mt-1">
+				{visibleTasks.map((task, index) => (
+					<TaskRow key={index} task={task} index={index} />
+				))}
+
+				{/* "X more" indicator when collapsed */}
+				{!isExpanded && hiddenCount > 0 && (
 					<div
-						className="h-full bg-green-500 transition-all duration-300"
-						style={{ width: `${progressPercent}%` }}
-					/>
-				</div>
-			)}
-
-			{/* Collapsible Content - Full Markdown Preview */}
-			{isExpanded && summary && (
-				<div className="p-3 max-h-96 overflow-y-auto">
-					<ChatMarkdownRender
-						key={refreshKey}
-						string={summary}
-						chatMessageLocation={{ threadId, messageIdx }}
-					/>
-				</div>
-			)}
-
-			{/* Fallback for no summary */}
-			{isExpanded && !summary && (
-				<div className="p-3 text-sm text-void-fg-3">
-					No plan details available.
-				</div>
-			)}
+						className="text-sm text-void-fg-4 py-1.5 cursor-pointer hover:text-void-fg-3"
+						onClick={() => setIsExpanded(true)}
+					>
+						{hiddenCount} more
+					</div>
+				)}
+			</div>
 
 			{/* Update indicator */}
 			{latestPlanning.id !== toolMessage.id && (
-				<div className="px-3 pb-2 text-xs text-void-fg-4 italic border-t border-void-border-2 pt-2">
-					This plan has been updated. See latest version above.
+				<div className="text-xs text-void-fg-4 italic mt-2">
+					Plan updated. Showing latest version.
 				</div>
 			)}
 		</div>

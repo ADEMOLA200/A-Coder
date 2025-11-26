@@ -39,6 +39,7 @@ import { FadeIn, SlideInRight, TypingIndicator, ToolLoadingIndicator, ReActPhase
 import { MCPServerModal } from './MCPServerModal.js';
 import { TaskPlan } from '../../../chatThreadService.js';
 import { PlanStatusPanel } from './PlanStatusPanel.js';
+import { CheckpointTimeline } from './CheckpointTimeline.js';
 
 // Image Preview Component
 const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemove: (index: number) => void }) => {
@@ -828,9 +829,16 @@ const ContinueButton = ({
 
 
 
-const scrollToBottom = (divRef: { current: HTMLElement | null }) => {
+const scrollToBottom = (divRef: { current: HTMLElement | null }, smooth: boolean = false) => {
 	if (divRef.current) {
-		divRef.current.scrollTop = divRef.current.scrollHeight;
+		if (smooth) {
+			divRef.current.scrollTo({
+				top: divRef.current.scrollHeight,
+				behavior: 'smooth'
+			});
+		} else {
+			divRef.current.scrollTop = divRef.current.scrollHeight;
+		}
 	}
 };
 
@@ -838,6 +846,8 @@ const scrollToBottom = (divRef: { current: HTMLElement | null }) => {
 
 const ScrollToBottomContainer = ({ children, className, style, scrollContainerRef }: { children: React.ReactNode, className?: string, style?: React.CSSProperties, scrollContainerRef: React.MutableRefObject<HTMLDivElement | null> }) => {
 	const [isAtBottom, setIsAtBottom] = useState(true); // Start at bottom
+	const isScrollingRef = useRef(false); // Prevent scroll jitter during streaming
+	const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const divRef = scrollContainerRef
 
@@ -845,23 +855,43 @@ const ScrollToBottomContainer = ({ children, className, style, scrollContainerRe
 		const div = divRef.current;
 		if (!div) return;
 
+		// More generous threshold for "at bottom" detection
 		const isBottom = Math.abs(
 			div.scrollHeight - div.clientHeight - div.scrollTop
-		) < 4;
+		) < 50; // Increased from 4 to 50 for smoother experience
 
 		setIsAtBottom(isBottom);
 	};
 
+	// Debounced scroll to bottom - prevents jitter during rapid updates
+	const debouncedScrollToBottom = useCallback(() => {
+		if (scrollTimeoutRef.current) {
+			clearTimeout(scrollTimeoutRef.current);
+		}
+		if (isScrollingRef.current) return;
+
+		isScrollingRef.current = true;
+		scrollTimeoutRef.current = setTimeout(() => {
+			scrollToBottom(divRef);
+			isScrollingRef.current = false;
+		}, 50); // Small delay to batch multiple updates
+	}, [divRef]);
+
 	// When children change (new messages added)
 	useEffect(() => {
 		if (isAtBottom) {
-			scrollToBottom(divRef);
+			debouncedScrollToBottom();
 		}
-	}, [children, isAtBottom]); // Dependency on children to detect new messages
+	}, [children, isAtBottom, debouncedScrollToBottom]);
 
 	// Initial scroll to bottom
 	useEffect(() => {
 		scrollToBottom(divRef);
+		return () => {
+			if (scrollTimeoutRef.current) {
+				clearTimeout(scrollTimeoutRef.current);
+			}
+		};
 	}, []);
 
 	return (
@@ -1841,11 +1871,21 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneReasoning: boolean, isStreaming: boolean, children: React.ReactNode }) => {
 	const isDone = isDoneReasoning || !isStreaming
 	const isWriting = !isDone
-	const [isOpen, setIsOpen] = useState(isWriting)
+	// Start open when writing, stay open after done (user can collapse manually)
+	const [isOpen, setIsOpen] = useState(true)
+	// Auto-open when reasoning starts
 	useEffect(() => {
-		if (!isWriting) setIsOpen(false) // if just finished reasoning, close
+		if (isWriting) setIsOpen(true)
 	}, [isWriting])
-	return <ToolHeaderWrapper title='Reasoning' desc1={isWriting ? <IconLoading /> : ''} isOpen={isOpen} onClick={() => setIsOpen(v => !v)}>
+
+	const statusText = isWriting ? 'Thinking...' : 'Thought process'
+
+	return <ToolHeaderWrapper
+		title='Reasoning'
+		desc1={isWriting ? <IconLoading /> : <span className="text-void-fg-4 text-xs">({statusText})</span>}
+		isOpen={isOpen}
+		onClick={() => setIsOpen(v => !v)}
+	>
 		<ToolChildrenWrapper>
 			<div className='!select-text cursor-auto'>
 				{children}
@@ -4099,7 +4139,7 @@ export const SidebarChat = () => {
 				return true;
 			})
 			.map(({ message, originalIdx }) => {
-				return <div key={originalIdx} className="mb-4 flex flex-col">
+				return <div key={originalIdx} className="mb-4 flex flex-col" data-message-idx={originalIdx}>
 					<ChatBubble
 						currCheckpointIdx={currCheckpointIdx}
 						chatMessage={message}
@@ -4626,7 +4666,14 @@ export const SidebarChat = () => {
 			</div>
 		</ErrorBoundary>
 		<ErrorBoundary>
-			<div className='flex-1 overflow-hidden'>
+			<div className='flex-1 overflow-hidden relative'>
+				{/* Checkpoint Timeline on the left */}
+				<CheckpointTimeline
+					threadId={threadId}
+					messages={previousMessages}
+					scrollContainerRef={scrollContainerRef}
+					currCheckpointIdx={currCheckpointIdx}
+				/>
 				{messagesHTML}
 			</div>
 		</ErrorBoundary>

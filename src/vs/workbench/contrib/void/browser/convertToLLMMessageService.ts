@@ -245,7 +245,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 	// A COMPLETE HACK: last message is system message for context purposes
 
 	const sysMsgParts: string[] = []
-	if (aiInstructions) sysMsgParts.push(`GUIDELINES (from the user's .voidrules file):\n${aiInstructions}`)
+	if (aiInstructions) sysMsgParts.push(`GUIDELINES (from the user's .a-coder-rules file):\n${aiInstructions}`)
 	if (systemMessage) sysMsgParts.push(systemMessage)
 	const combinedSystemMessage = sysMsgParts.join('\n\n')
 
@@ -481,13 +481,13 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		this.compressionService = new ContextCompressionService(this.tokenCountingService);
 	}
 
-	// Read .voidrules files from workspace folders
+	// Read .a-coder-rules files from workspace folders
 	private _getVoidRulesFileContents(): string {
 		try {
 			const workspaceFolders = this.workspaceContextService.getWorkspace().folders;
 			let voidRules = '';
 			for (const folder of workspaceFolders) {
-				const uri = URI.joinPath(folder.uri, '.voidrules')
+				const uri = URI.joinPath(folder.uri, '.a-coder-rules')
 				const { model } = this.voidModelService.getModel(uri)
 				if (!model) continue
 				voidRules += model.getValue(EndOfLinePreference.LF) + '\n\n';
@@ -499,7 +499,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		}
 	}
 
-	// Get combined AI instructions from settings and .voidrules files
+	// Get combined AI instructions from settings and .a-coder-rules files
 	private _getCombinedAIInstructions(): string {
 		const globalAIInstructions = this.voidSettingsService.state.globalSettings.aiInstructions;
 		const voidRulesFileContent = this._getVoidRulesFileContents();

@@ -1773,7 +1773,8 @@ export const getModelCapabilities = (
 	for (const modelName_ in modelOptions) {
 		const lowercaseModelName_ = modelName_.toLowerCase()
 		if (lowercaseModelName === lowercaseModelName_) {
-			return { ...modelOptions[modelName], ...overrides, modelName, recognizedModelName: modelName, isUnrecognizedModel: false };
+			// Use modelName_ (the actual key) to access modelOptions, not the input modelName
+			return { ...modelOptions[modelName_], ...overrides, modelName, recognizedModelName: modelName_, isUnrecognizedModel: false };
 		}
 	}
 
