@@ -32,14 +32,14 @@ The Mobile API consists of several key components:
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │              API Service Manager                       │ │
 │  │  - Lifecycle management                                │ │
-│  │  - Settings integration                                │ │
+│  │  - Controlled via IPC from Renderer                    │ │
 │  └────────────┬───────────────────────────────────────────┘ │
 │               │                                              │
 │  ┌────────────▼───────────────────────────────────────────┐ │
 │  │              API Server                                │ │
 │  │  - HTTP server (port 3737)                             │ │
 │  │  - WebSocket server                                    │ │
-│  │  - Authentication                                      │ │
+│  │  - Authentication (via IPC validation)                 │ │
 │  │  - CORS handling                                       │ │
 │  └────────────┬───────────────────────────────────────────┘ │
 │               │                                              │
@@ -58,16 +58,19 @@ The Mobile API consists of several key components:
 │               │                                              │
 │  ┌────────────▼───────────────────────────────────────────┐ │
 │  │              API Channel (IPC)                         │ │
-│  │  - Main → Renderer communication                       │ │
+│  │  - Main ↔ Renderer communication                       │ │
+│  │  - Server Control (Start/Stop)                         │ │
 │  └────────────┬───────────────────────────────────────────┘ │
 └───────────────┼──────────────────────────────────────────────┘
-                │ IPC
+                │ IPC (Requests & Control)
 ┌───────────────▼──────────────────────────────────────────────┐
 │                  Renderer Process (Browser)                   │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │              API Service Bridge                        │ │
 │  │  - IPC handler                                         │ │
 │  │  - Service integration                                 │ │
+│  │  - Settings monitoring                                 │ │
+│  │  - Server lifecycle control                            │ │
 │  └────────────┬───────────────────────────────────────────┘ │
 │               │                                              │
 │  ┌────────────▼───────────────────────────────────────────┐ │
@@ -112,10 +115,29 @@ The API uses token-based authentication:
 
 ## API Endpoints
 
+### Base URL
+- **Local**: `http://localhost:3737`
+- **Remote**: `https://your-tunnel-url.com` (via Cloudflare Tunnel)
+
+### Authentication
+All endpoints (except `/health`) require:
+```
+Authorization: Bearer acoder_<token>
+```
+
+### Response Format
+All responses follow this structure:
+```json
+{
+  "data": { ... }, // Response data
+  "error": null,   // Error if any
+  "timestamp": "2025-11-25T14:30:00.000Z"
+}
+```
+
 ### Health Check
 
 #### GET `/api/v1/health`
-
 Health check endpoint (no authentication required).
 
 **Response:**
@@ -127,12 +149,16 @@ Health check endpoint (no authentication required).
 }
 ```
 
+**Frontend Handling:**
+- Use this to check if API is running
+- Call before attempting authenticated requests
+- Retry with exponential backoff if failed
+
 ---
 
 ### Chat/Threads
 
 #### GET `/api/v1/threads`
-
 List all chat threads.
 
 **Response:**
@@ -141,6 +167,7 @@ List all chat threads.
   "threads": [
     {
       "id": "thread-123",
+      "title": "Help me understand this codebase",
       "createdAt": "2025-11-25T10:00:00.000Z",
       "lastModified": "2025-11-25T11:00:00.000Z",
       "messageCount": 5
@@ -149,9 +176,19 @@ List all chat threads.
 }
 ```
 
-#### GET `/api/v1/threads/:id`
+**Note:** The `title` field contains the first user message's content, matching the desktop UI's history section behavior.
 
+**Frontend Handling:**
+- Display `title` in thread list UI (truncate if too long)
+- Sort by `lastModified` descending
+- Show `messageCount` badge
+- Format `createdAt` and `lastModified` in local timezone
+
+#### GET `/api/v1/threads/:id`
 Get specific thread with messages.
+
+**Parameters:**
+- `id` (path): Thread ID
 
 **Response:**
 ```json
@@ -164,20 +201,89 @@ Get specific thread with messages.
       {
         "role": "user",
         "content": "Hello",
-        "timestamp": "2025-11-25T10:00:00.000Z"
+        "displayContent": "Hello",
+        "timestamp": "2025-11-25T10:00:00.000Z",
+        "selections": [],
+        "images": []
       },
       {
         "role": "assistant",
         "content": "Hi! How can I help?",
-        "timestamp": "2025-11-25T10:00:05.000Z"
+        "displayContent": "Hi! How can I help?",
+        "timestamp": "2025-11-25T10:00:05.000Z",
+        "reasoning": null,
+        "anthropicReasoning": null
+      },
+      {
+        "role": "tool",
+        "name": "read_file",
+        "content": "File contents...",
+        "type": "success",
+        "timestamp": "2025-11-25T10:00:10.000Z",
+        "params": { "uri": "file:///path/to/file.ts" },
+        "result": { ... }
+      },
+      {
+        "role": "checkpoint",
+        "type": "auto",
+        "timestamp": "2025-11-25T10:00:15.000Z"
       }
     ]
   }
 }
 ```
 
-#### POST `/api/v1/threads`
+**Message Types:**
+- `user` - User messages with optional `selections` (file/code references) and `images`
+- `assistant` - AI responses with optional `reasoning` for models with thinking enabled
+- `tool` - Tool execution results with `name`, `type` (success/error), `params`, and `result`
+- `checkpoint` - Automatic checkpoints for undo/redo functionality (can be filtered out in UI)
 
+**Frontend Handling:**
+- Load messages on thread selection
+- Render messages with `role` styling
+- Display timestamps in relative format (e.g., "2 hours ago")
+- Handle `tool` messages for special UI rendering (planning/walkthrough results)
+- Filter out `checkpoint` messages or show them as dividers
+- Implement infinite scroll or pagination for long threads
+
+#### Tool Message Rendering
+
+Messages with `role: "tool"` contain tool execution results:
+
+```json
+{
+  "role": "tool",
+  "name": "create_plan",
+  "type": "success",
+  "content": "Plan created successfully",
+  "result": {
+    // Planning result data
+  },
+  "params": { ... },
+  "timestamp": "2025-11-25T10:00:05.000Z"
+}
+```
+
+**Special Tool Types:**
+- **Planning Results** (`name: "create_plan"`, `"update_task_status"`, etc.):
+  - Show collapsible planning UI
+  - Display plan summary with markdown rendering
+  - Include success/error indicators
+
+- **Walkthrough Results** (`name: "update_walkthrough"`):
+  - Show collapsible walkthrough UI
+  - Display file preview with markdown rendering
+  - Include "Open" button for file access
+  - Support markdown preview for `.md` files
+
+**Mobile UI Recommendations:**
+- Implement collapsible sections for tool results
+- Use markdown rendering for rich text display
+- Add file opening functionality for walkthrough results
+- Show appropriate icons and status indicators
+
+#### POST `/api/v1/threads`
 Create a new thread.
 
 **Request Body:**
@@ -192,14 +298,23 @@ Create a new thread.
 {
   "thread": {
     "id": "thread-456",
-    "createdAt": "2025-11-25T11:30:00.000Z"
+    "createdAt": "2025-11-25T11:30:00.000Z",
+    "name": "My Thread"
   }
 }
 ```
 
-#### POST `/api/v1/threads/:id/messages`
+**Frontend Handling:**
+- Create new thread on user action
+- Auto-navigate to new thread
+- Show loading state during creation
+- Handle errors gracefully
 
+#### POST `/api/v1/threads/:id/messages`
 Send a message to a thread.
+
+**Parameters:**
+- `id` (path): Thread ID
 
 **Request Body:**
 ```json
@@ -213,14 +328,24 @@ Send a message to a thread.
 {
   "result": {
     "success": true,
-    "threadId": "thread-123"
+    "threadId": "thread-123",
+    "messageId": "msg-3"
   }
 }
 ```
 
-#### DELETE `/api/v1/threads/:id`
+**Frontend Handling:**
+- Show message immediately in UI (optimistic update)
+- Disable input during send
+- Handle streaming responses via WebSocket
+- Show typing indicator while waiting
+- Scroll to bottom on new message
 
+#### DELETE `/api/v1/threads/:id`
 Delete a thread.
+
+**Parameters:**
+- `id` (path): Thread ID
 
 **Response:**
 ```json
@@ -229,9 +354,17 @@ Delete a thread.
 }
 ```
 
-#### GET `/api/v1/threads/:id/status`
+**Frontend Handling:**
+- Show confirmation dialog before deletion
+- Remove from UI immediately (optimistic)
+- Handle errors with rollback
+- Navigate away if currently viewing deleted thread
 
+#### GET `/api/v1/threads/:id/status`
 Get agent execution status for a thread.
+
+**Parameters:**
+- `id` (path): Thread ID
 
 **Response:**
 ```json
@@ -239,14 +372,23 @@ Get agent execution status for a thread.
   "status": {
     "threadId": "thread-123",
     "isRunning": true,
-    "lastActivity": "2025-11-25T11:30:00.000Z"
+    "lastActivity": "2025-11-25T11:30:00.000Z",
+    "currentTool": "read_file"
   }
 }
 ```
 
-#### POST `/api/v1/threads/:id/cancel`
+**Frontend Handling:**
+- Show running indicator in thread list
+- Display current tool being executed
+- Update UI in real-time via WebSocket
+- Show stop button when running
 
+#### POST `/api/v1/threads/:id/cancel`
 Cancel running agent for a thread.
+
+**Parameters:**
+- `id` (path): Thread ID
 
 **Response:**
 ```json
@@ -255,13 +397,18 @@ Cancel running agent for a thread.
 }
 ```
 
+**Frontend Handling:**
+- Show cancel confirmation
+- Disable cancel button during request
+- Update UI status immediately
+- Handle errors gracefully
+
 ---
 
 ### Workspace
 
 #### GET `/api/v1/workspace`
-
-Get workspace information.
+Get workspace information including open files.
 
 **Response:**
 ```json
@@ -270,36 +417,76 @@ Get workspace information.
     "folders": [
       {
         "uri": "file:///Users/user/project",
-        "name": "project"
+        "name": "project",
+        "path": "/Users/user/project"
       }
-    ]
+    ],
+    "openFiles": [
+      {
+        "uri": "file:///Users/user/project/src/index.ts",
+        "path": "/Users/user/project/src/index.ts",
+        "name": "index.ts"
+      },
+      {
+        "uri": "file:///Users/user/project/src/utils.ts",
+        "path": "/Users/user/project/src/utils.ts",
+        "name": "utils.ts"
+      }
+    ],
+    "activeFile": {
+      "uri": "file:///Users/user/project/src/index.ts",
+      "path": "/Users/user/project/src/index.ts",
+      "name": "index.ts"
+    }
   }
 }
 ```
 
-#### GET `/api/v1/workspace/files`
+**Note:** `openFiles` contains all files currently open in the editor tabs, and `activeFile` is the currently focused file (matches desktop UI state).
 
+**Frontend Handling:**
+- Display workspace name in header
+- Show folder structure in sidebar
+- Display open files list (like desktop tabs)
+- Highlight active file
+- Handle multiple workspace folders
+- Parse URI for display
+
+#### GET `/api/v1/workspace/files`
 List workspace files (paginated).
 
 **Query Parameters:**
 - `page` (default: 1)
 - `limit` (default: 50)
-- `filter` (optional)
+- `filter` (optional) - glob pattern
 
 **Response:**
 ```json
 {
   "files": {
-    "files": [],
+    "files": [
+      {
+        "uri": "file:///Users/user/project/src/index.ts",
+        "name": "index.ts",
+        "type": "file",
+        "size": 1024
+      }
+    ],
     "page": 1,
     "limit": 50,
-    "total": 0
+    "total": 150
   }
 }
 ```
 
-#### GET `/api/v1/workspace/files/tree`
+**Frontend Handling:**
+- Implement pagination controls
+- Show file type icons
+- Display file sizes
+- Support search/filter
+- Lazy load more pages
 
+#### GET `/api/v1/workspace/files/tree`
 Get workspace directory tree.
 
 **Response:**
@@ -309,16 +496,38 @@ Get workspace directory tree.
     "roots": [
       {
         "uri": "file:///Users/user/project",
-        "name": "project"
+        "name": "project",
+        "children": [
+          {
+            "uri": "file:///Users/user/project/src",
+            "name": "src",
+            "type": "directory",
+            "children": [...]
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-#### GET `/api/v1/workspace/files/:path`
+**Frontend Handling:**
+- Render as expandable tree view
+- Lazy load subdirectories
+- Show file type icons
+- Support search/filter
+- Persist expanded state
 
+#### GET `/api/v1/workspace/files/:path(*)`
 Read file contents.
+
+**Parameters:**
+- `path` (path): File path (URL encoded)
+
+**Query Parameters:**
+- `start_line` (optional): Start line number (1-based)
+- `end_line` (optional): End line number (inclusive)
+- `page_number` (optional): For paginated large files
 
 **Response:**
 ```json
@@ -326,34 +535,59 @@ Read file contents.
   "content": {
     "path": "file:///Users/user/project/src/index.ts",
     "content": "console.log('Hello');",
-    "size": 21
+    "size": 21,
+    "lineCount": 1,
+    "hasNextPage": false
   }
 }
 ```
 
-#### GET `/api/v1/workspace/files/:path/outline`
+**Frontend Handling:**
+- Syntax highlight based on file extension
+- Show line numbers
+- Handle large files with pagination
+- Implement "Load more" for truncated files
+- Support read-only editor view
 
+#### GET `/api/v1/workspace/files/:path(*)/outline`
 Get file outline/structure.
+
+**Parameters:**
+- `path` (path): File path (URL encoded)
 
 **Response:**
 ```json
 {
   "outline": {
     "path": "file:///Users/user/project/src/index.ts",
-    "outline": []
+    "outline": [
+      {
+        "type": "function",
+        "name": "main",
+        "line": 1,
+        "signature": "function main(): void"
+      }
+    ]
   }
 }
 ```
 
-#### POST `/api/v1/workspace/search`
+**Frontend Handling:**
+- Show in file sidebar
+- Click to jump to location
+- Display with appropriate icons
+- Support nested structures
 
+#### POST `/api/v1/workspace/search`
 Search workspace files.
 
 **Request Body:**
 ```json
 {
   "query": "function",
-  "type": "content" // or "filename"
+  "type": "content", // or "filename"
+  "includePattern": "**/*.ts",
+  "excludePattern": "**/node_modules/**"
 }
 ```
 
@@ -363,43 +597,86 @@ Search workspace files.
   "results": {
     "query": "function",
     "type": "content",
-    "results": []
+    "results": [
+      {
+        "uri": "file:///Users/user/project/src/index.ts",
+        "line": 1,
+        "column": 1,
+        "match": "function",
+        "context": "function main() {"
+      }
+    ]
   }
 }
 ```
 
-#### GET `/api/v1/workspace/diagnostics`
+**Frontend Handling:**
+- Show search results with highlighting
+- Group by file
+- Display line numbers
+- Click to open file at location
+- Support advanced search options
 
+#### GET `/api/v1/workspace/diagnostics`
 Get workspace diagnostics (errors, warnings).
 
 **Response:**
 ```json
 {
   "diagnostics": {
-    "diagnostics": []
+    "diagnostics": [
+      {
+        "uri": "file:///Users/user/project/src/index.ts",
+        "severity": "error",
+        "message": "Cannot find name 'foo'",
+        "line": 5,
+        "column": 10
+      }
+    ]
   }
 }
 ```
+
+**Frontend Handling:**
+- Show error/warning badges in file tree
+- Display diagnostics panel
+- Click to jump to location
+- Filter by severity
+- Real-time updates via WebSocket
 
 ---
 
 ### Planning
 
 #### GET `/api/v1/planning/current`
-
 Get current plan.
 
 **Response:**
 ```json
 {
   "plan": {
-    // Plan data from PlanningService
+    "id": "plan-123",
+    "goal": "Implement user authentication",
+    "createdAt": "2025-11-25T10:00:00.000Z",
+    "tasks": [
+      {
+        "id": "task-1",
+        "description": "Create login form",
+        "status": "pending",
+        "dependencies": []
+      }
+    ]
   }
 }
 ```
 
-#### POST `/api/v1/planning/create`
+**Frontend Handling:**
+- Display in planning view
+- Show task status with colors
+- Allow status updates
+- Visualize dependencies
 
+#### POST `/api/v1/planning/create`
 Create a new plan.
 
 **Request Body:**
@@ -419,14 +696,24 @@ Create a new plan.
 ```json
 {
   "plan": {
-    // Created plan data
+    "id": "plan-456",
+    "goal": "Implement user authentication",
+    "createdAt": "2025-11-25T11:30:00.000Z"
   }
 }
 ```
 
-#### PATCH `/api/v1/planning/tasks/:id`
+**Frontend Handling:**
+- Show creation form
+- Validate input
+- Handle errors
+- Navigate to new plan
 
+#### PATCH `/api/v1/planning/tasks/:id`
 Update task status.
+
+**Parameters:**
+- `id` (path): Task ID
 
 **Request Body:**
 ```json
@@ -440,17 +727,24 @@ Update task status.
 ```json
 {
   "task": {
-    // Updated task data
+    "id": "task-1",
+    "status": "completed",
+    "notes": "Task finished successfully"
   }
 }
 ```
+
+**Frontend Handling:**
+- Allow inline status updates
+- Show status dropdown
+- Add notes field
+- Update UI optimistically
 
 ---
 
 ### Settings
 
 #### GET `/api/v1/settings`
-
 Get A-Coder settings (read-only).
 
 **Response:**
@@ -458,17 +752,27 @@ Get A-Coder settings (read-only).
 {
   "settings": {
     "globalSettings": {
-      // Global settings
+      "apiEnabled": true,
+      "apiPort": 3737,
+      "theme": "dark"
     },
     "modelSelectionOfFeature": {
-      // Model selections
+      "chat": {
+        "providerName": "openrouter",
+        "modelName": "anthropic/claude-3.5-sonnet"
+      }
     }
   }
 }
 ```
 
-#### GET `/api/v1/settings/models`
+**Frontend Handling:**
+- Display in settings view
+- Show read-only indicator
+- Format for display
+- Group by category
 
+#### GET `/api/v1/settings/models`
 Get available models (read-only).
 
 **Response:**
@@ -476,11 +780,559 @@ Get available models (read-only).
 {
   "models": {
     "models": [
-      // Available models
+      {
+        "name": "anthropic/claude-3.5-sonnet (openRouter)",
+        "selection": {
+          "providerName": "openRouter",
+          "modelName": "anthropic/claude-3.5-sonnet"
+        }
+      }
     ]
   }
 }
 ```
+
+**Frontend Handling:**
+- Show in model selector
+- Group by provider
+- Display model capabilities
+- Filter by availability
+
+#### GET `/api/v1/settings/model`
+Get current model selection.
+
+**Response:**
+```json
+{
+  "model": {
+    "providerName": "openRouter",
+    "modelName": "anthropic/claude-3.5-sonnet",
+    "available": true
+  }
+}
+```
+
+**Frontend Handling:**
+- Display current model in header/status bar
+- Show provider and model name
+- Indicate if model is available
+
+#### PUT `/api/v1/settings/model`
+Set current model selection.
+
+**Request Body:**
+```json
+{
+  "providerName": "openRouter",
+  "modelName": "anthropic/claude-3.5-sonnet"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "model": {
+    "providerName": "openRouter",
+    "modelName": "anthropic/claude-3.5-sonnet",
+    "success": true
+  }
+}
+```
+
+**Frontend Handling:**
+- Show model picker dropdown
+- Update UI immediately on selection
+- Handle errors (invalid model, provider not configured)
+- Sync with desktop app via WebSocket
+
+#### GET `/api/v1/settings/mode`
+Get current chat mode.
+
+**Response:**
+```json
+{
+  "mode": {
+    "mode": "agent",
+    "displayName": "Code",
+    "description": "Edit files & run commands",
+    "availableModes": [
+      { "mode": "normal", "displayName": "Chat", "description": "Conversation only, no tools" },
+      { "mode": "gather", "displayName": "Plan", "description": "Research, plan & document" },
+      { "mode": "agent", "displayName": "Code", "description": "Edit files & run commands" }
+    ]
+  }
+}
+```
+
+**Mode Descriptions:**
+- **Chat** (`normal`): Pure conversation mode, no tool access
+- **Plan** (`gather`): Research, create implementation plans, document findings (read-only tools)
+- **Code** (`agent`): Full execution mode - edit files, run commands, execute tasks
+
+**Frontend Handling:**
+- Display current mode in header/toolbar
+- Show mode selector with descriptions
+- Update UI based on mode capabilities
+
+#### PUT `/api/v1/settings/mode`
+Set chat mode.
+
+**Request Body:**
+```json
+{
+  "mode": "agent"
+}
+```
+
+**Valid modes:** `normal`, `gather`, `agent`
+
+**Response:**
+```json
+{
+  "success": true,
+  "mode": {
+    "mode": "agent",
+    "displayName": "Code",
+    "description": "Edit files & run commands",
+    "success": true
+  }
+}
+```
+
+**Frontend Handling:**
+- Show mode picker (Chat/Plan/Code)
+- Update UI immediately on selection
+- Show confirmation for mode changes during active tasks
+- Sync with desktop app via WebSocket
+
+---
+
+## Frontend Implementation Guide
+
+### Error Handling
+
+All API errors follow this format:
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or missing token",
+    "details": {...}
+  }
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `400` - Bad Request
+- `401` - Unauthorized
+- `404` - Not Found
+- `500` - Internal Server Error
+
+**Frontend Error Handling:**
+```typescript
+class ACoderAPI {
+  private async handleResponse(response: Response) {
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Redirect to login or show token input
+        throw new AuthError(data.error?.message || 'Unauthorized');
+      }
+      if (response.status === 404) {
+        throw new NotFoundError(data.error?.message || 'Not found');
+      }
+      throw new APIError(data.error?.message || 'API error');
+    }
+
+    return data;
+  }
+}
+```
+
+### Rate Limiting
+
+- **No explicit rate limiting** currently implemented
+- **Recommended**: Implement client-side rate limiting
+- **Suggested limits**:
+  - 60 requests/minute per token
+  - 1 request/second for streaming endpoints
+
+### Retry Strategy
+
+Implement exponential backoff for failed requests:
+
+```typescript
+async requestWithRetry(
+  method: string,
+  path: string,
+  body?: any,
+  retries = 3
+) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await this.request(method, path, body);
+    } catch (error) {
+      if (i === retries - 1) throw error;
+
+      // Exponential backoff: 1s, 2s, 4s
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.pow(2, i) * 1000)
+      );
+    }
+  }
+}
+```
+
+### WebSocket Implementation
+
+#### Connection
+```typescript
+class ACoderWebSocket {
+  private ws: WebSocket;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+
+  connect(baseUrl: string, token: string) {
+    const wsUrl = `${baseUrl.replace('http', 'ws')}?token=${token}`;
+
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      console.log('WebSocket connected');
+      this.reconnectAttempts = 0;
+
+      // Subscribe to events
+      this.send({
+        type: 'subscribe',
+        channels: ['threads', 'workspace', 'planning']
+      });
+    };
+
+    this.ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      this.handleEvent(data);
+    };
+
+    this.ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      this.attemptReconnect();
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  }
+
+  private attemptReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      setTimeout(() => {
+        console.log(`Reconnecting... (${this.reconnectAttempts})`);
+        this.connect(this.baseUrl, this.token);
+      }, Math.pow(2, this.reconnectAttempts) * 1000);
+    }
+  }
+}
+```
+
+#### Event Handling
+```typescript
+private handleEvent(event: any) {
+  switch (event.channel) {
+    case 'threads':
+      this.handleThreadEvent(event);
+      break;
+    case 'workspace':
+      this.handleWorkspaceEvent(event);
+      break;
+    case 'planning':
+      this.handlePlanningEvent(event);
+      break;
+  }
+}
+
+private handleThreadEvent(event: any) {
+  switch (event.event) {
+    case 'message_added':
+      // Update thread with new message
+      break;
+    case 'thread_status_changed':
+      // Update running indicator
+      break;
+    case 'thread_deleted':
+      // Remove from UI
+      break;
+  }
+}
+```
+
+### Mobile App Considerations
+
+#### React Native
+```typescript
+// Use fetch for HTTP requests
+import { fetch } from 'react-native';
+
+// Use WebSocket API
+import { WebSocket } from 'react-native';
+
+// Handle background tasks
+import { BackgroundTask } from 'react-native-background-task';
+
+// Store tokens securely
+import { SecureStorage } from 'react-native-secure-storage';
+```
+
+#### Flutter
+```dart
+// HTTP requests with http package
+import 'package:http/http.dart' as http;
+
+// WebSocket with web_socket_channel
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+// Secure storage with flutter_secure_storage
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+```
+
+#### Offline Support
+- Cache thread data locally
+- Queue messages when offline
+- Sync when connection restored
+- Use SQLite or similar for storage
+
+#### Push Notifications
+- Use WebSocket for real-time updates
+- Implement push notifications for mobile
+- Show notifications for new messages
+- Handle notification taps to open app
+
+### Mobile UI Implementation
+
+#### Collapsible Tool Results
+
+Mobile apps should implement collapsible UI components for tool results to match desktop functionality:
+
+**Planning Results UI:**
+```typescript
+// React Native example
+const PlanningResult = ({ message }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={styles.header}
+        onPress={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon name={isExpanded ? "chevron-down" : "chevron-right"} />
+        <Text style={styles.title}>{getToolTitle(message.name)}</Text>
+        {message.type === 'success' && (
+          <View style={styles.successBadge}>
+            <Text style={styles.successText}>Success</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.content}>
+          <Markdown>{message.result?.summary || ''}</Markdown>
+        </View>
+      )}
+    </View>
+  );
+};
+```
+
+**Walkthrough Results UI:**
+```typescript
+// React Native example
+const WalkthroughResult = ({ message }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const isMarkdown = message.result?.filePath?.endsWith('.md');
+
+  const handleOpen = () => {
+    if (isMarkdown) {
+      // Open in markdown preview
+      Linking.openURL(`vscode://file/${message.result.filePath}`);
+    } else {
+      // Open in regular editor
+      Linking.openURL(`vscode://file/${message.result.filePath}`);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={styles.header}
+        onPress={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon name={isExpanded ? "chevron-down" : "chevron-right"} />
+        <View style={styles.headerContent}>
+          <Text style={styles.title}>Walkthrough {message.result?.action}</Text>
+          <Text style={styles.filePath} numberOfLines={1}>
+            {message.result?.filePath}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.openButton}
+          onPress={handleOpen}
+        >
+          <Icon name="open" />
+          <Text>Open</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.content}>
+          <Markdown>{message.result?.preview || ''}</Markdown>
+        </View>
+      )}
+    </View>
+  );
+};
+```
+
+#### Markdown Rendering
+
+Use markdown libraries for rich text display:
+
+**React Native:**
+```typescript
+import { Markdown } from 'react-native-markdown';
+
+<Markdown style={markdownStyles}>
+  {message.result?.summary || message.result?.preview}
+</Markdown>
+```
+
+**Flutter:**
+```dart
+import 'package:flutter_markdown/flutter_markdown.dart';
+
+Markdown(
+  data: message.result['summary'] ?? message.result['preview'],
+  styleSheet: markdownStyles,
+)
+```
+
+#### File Opening
+
+Implement file opening with platform-specific handlers:
+
+**React Native:**
+```typescript
+import { Linking } from 'react-native';
+
+const openFile = async (filePath: string) => {
+  try {
+    // Use VS Code URI scheme for desktop integration
+    await Linking.openURL(`vscode://file/${filePath}`);
+  } catch (error) {
+    console.error('Failed to open file:', error);
+  }
+};
+```
+
+**Flutter:**
+```dart
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> openFile(String filePath) async {
+  final uri = 'vscode://file/$filePath';
+  if (await canLaunch(uri)) {
+    await launch(uri);
+  } else {
+    throw 'Could not launch $uri';
+  }
+}
+```
+
+#### Responsive Design
+
+- Use flexible layouts for different screen sizes
+- Implement text truncation for long file paths
+- Add touch-friendly interaction areas
+- Support both light and dark themes
+
+### Security Best Practices
+
+1. **Token Storage**:
+   - iOS: Keychain
+   - Android: Keystore
+   - Web: HttpOnly cookies or secure localStorage
+
+2. **HTTPS in Production**:
+   - Always use HTTPS in production
+   - Implement certificate pinning
+   - Validate SSL certificates
+
+3. **Token Management**:
+   - Rotate tokens periodically
+   - Implement token refresh
+   - Revoke tokens on logout
+   - Store tokens securely
+
+4. **Input Validation**:
+   - Sanitize all inputs
+   - Validate message length
+   - Escape HTML in chat messages
+   - Validate file paths
+
+### Testing
+
+#### Unit Tests
+```typescript
+describe('ACoderAPI', () => {
+  it('should create thread', async () => {
+    const api = new ACoderAPI('http://localhost:3737', 'test-token');
+    const result = await api.createThread('Test Thread');
+    expect(result.thread.name).toBe('Test Thread');
+  });
+});
+```
+
+#### Integration Tests
+```typescript
+describe('API Integration', () => {
+  it('should send and receive messages', async () => {
+    // Create thread
+    const { thread } = await api.createThread();
+
+    // Send message
+    await api.sendMessage(thread.id, 'Hello');
+
+    // Wait for response via WebSocket
+    const response = await waitForMessage(thread.id);
+    expect(response.role).toBe('assistant');
+  });
+});
+```
+
+### Performance Optimization
+
+1. **Request Batching**:
+   - Batch multiple file reads
+   - Combine related requests
+   - Use GraphQL if needed
+
+2. **Caching**:
+   - Cache thread lists
+   - Cache file contents
+   - Implement ETags
+
+3. **Lazy Loading**:
+   - Load messages on demand
+   - Lazy load file tree
+   - Paginate large lists
+
+4. **Compression**:
+   - Enable gzip compression
+   - Use binary formats if needed
+   - Optimize payload size
 
 ---
 
@@ -752,13 +1604,19 @@ The API integrates with existing A-Coder services:
 
 ### IPC Communication
 
-1. HTTP request arrives at API server (main process)
-2. Route handler calls `callRenderer(method, params)`
-3. Request forwarded via `ApiChannel` (IPC)
-4. `ApiServiceBridge` receives request (renderer process)
-5. Bridge calls appropriate service method
-6. Result returned via IPC
-7. Response sent to HTTP client
+1. **Server Control (Renderer → Main)**:
+   - `ApiServiceBridge` monitors settings changes
+   - Sends `startApiServer` / `stopApiServer` commands via IPC
+   - Main process receives commands and manages `ApiServer` lifecycle
+
+2. **API Requests (Main → Renderer)**:
+   - HTTP request arrives at API server (main process)
+   - Route handler calls `callRenderer(method, params)`
+   - Request forwarded via `ApiChannel` (IPC)
+   - `ApiServiceBridge` receives request (renderer process)
+   - Bridge calls appropriate service method
+   - Result returned via IPC
+   - Response sent to HTTP client
 
 ---
 

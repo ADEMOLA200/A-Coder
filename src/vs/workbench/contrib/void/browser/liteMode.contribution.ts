@@ -14,6 +14,16 @@ export interface ILiteModeService {
 	openLiteMode(): Promise<void>;
 
 	/**
+	 * Opens Lite Mode with walkthrough content
+	 */
+	openWalkthroughPreview(filePath: string, preview: string): Promise<void>;
+
+	/**
+	 * Opens Lite Mode with arbitrary markdown content (for implementation plans, etc.)
+	 */
+	openContentPreview(title: string, content: string): Promise<void>;
+
+	/**
 	 * Closes the Lite Mode webview panel
 	 */
 	closeLiteMode(): void;
@@ -28,4 +38,4 @@ export interface ILiteModeService {
 export const ILiteModeService = createDecorator<ILiteModeService>('voidLiteModeService');
 
 // Register the Lite Mode service as a singleton
-registerSingleton(ILiteModeService, LiteModeService, InstantiationType.Eager);
+registerSingleton(ILiteModeService, LiteModeService, InstantiationType.Delayed);

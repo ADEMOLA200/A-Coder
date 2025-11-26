@@ -23,6 +23,7 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'delete_file_or_folder': 'edits',
 	'rewrite_file': 'edits',
 	'edit_file': 'edits',
+	'update_walkthrough': 'edits',
 	'run_command': 'terminal',
 	'run_persistent_command': 'terminal',
 	'open_persistent_terminal': 'terminal',
@@ -68,6 +69,26 @@ export type BuiltinToolCallParams = {
 	'update_task_status': { taskId: string, status: string, notes: string | null },
 	'get_plan_status': {},
 	'add_tasks_to_plan': { tasks: Array<{ id: string; description: string; dependencies: string[] }> },
+	// ---
+	'create_implementation_plan': {
+		goal: string,
+		steps: Array<{
+			id: string;
+			title: string;
+			description: string;
+			complexity: 'simple' | 'medium' | 'complex';
+			files: string[];
+			dependencies: string[];
+			estimated_time?: number
+		}>
+	},
+	'preview_implementation_plan': {},
+	'execute_implementation_plan': { step_id?: string },
+	'update_implementation_step': { step_id: string, status: string, notes: string | null },
+	'get_implementation_status': {},
+	// ---
+	'update_walkthrough': { content: string, mode: 'create' | 'append' | 'replace', title?: string, includePlanStatus?: boolean },
+	'open_walkthrough_preview': { file_path: string },
 }
 
 // RESULT OF TOOL CALL
@@ -97,6 +118,15 @@ export type BuiltinToolResultType = {
 	'update_task_status': { taskId: string, newStatus: string, summary: string },
 	'get_plan_status': { planExists: boolean, summary: string | null },
 	'add_tasks_to_plan': { summary: string },
+	// ---
+	'create_implementation_plan': { planId: string, summary: string },
+	'preview_implementation_plan': { planId: string, goal: string, steps: any[], summary: string },
+	'execute_implementation_plan': { stepId: string, status: string, summary: string },
+	'update_implementation_step': { stepId: string, newStatus: string, summary: string },
+	'get_implementation_status': { planExists: boolean, summary: string | null },
+	// ---
+	'update_walkthrough': { success: boolean, filePath: string, action: 'created' | 'updated' | 'appended', preview: string },
+	'open_walkthrough_preview': { success: boolean, message: string },
 }
 
 

@@ -41,8 +41,7 @@ export interface IApiAuthService {
 }
 
 export const IApiAuthService = createDecorator<IApiAuthService>('ApiAuthService');
-
-class ApiAuthService implements IApiAuthService {
+export class ApiAuthService implements IApiAuthService {
 	_serviceBrand: undefined;
 
 	constructor(

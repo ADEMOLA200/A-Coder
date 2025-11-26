@@ -46,7 +46,6 @@ export class ApiServer {
 
 			// Start listening
 			this.server.listen(this.port, '127.0.0.1', () => {
-				console.log(`[API Server] Started on http://127.0.0.1:${this.port}`);
 				resolve();
 			});
 
@@ -80,7 +79,6 @@ export class ApiServer {
 		// Close HTTP server
 		return new Promise((resolve) => {
 			this.server!.close(() => {
-				console.log('[API Server] Stopped');
 				this.server = null;
 				resolve();
 			});
@@ -156,7 +154,6 @@ export class ApiServer {
 
 		// Add to clients
 		this.clients.add(ws);
-		console.log(`[API Server] WebSocket client connected (${this.clients.size} total)`);
 
 		// Handle messages
 		ws.on('message', (data: any) => {
@@ -171,7 +168,6 @@ export class ApiServer {
 		// Handle close
 		ws.on('close', () => {
 			this.clients.delete(ws);
-			console.log(`[API Server] WebSocket client disconnected (${this.clients.size} remaining)`);
 		});
 
 		// Send welcome message

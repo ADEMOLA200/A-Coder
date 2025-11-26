@@ -140,6 +140,17 @@ export class ApiRoutes {
 			}
 		});
 
+		// GET /api/v1/workspace/folder/:path - Get folder contents
+		this.router.register('GET', '/api/v1/workspace/folder/*', async (req, res, params) => {
+			try {
+				const folderPath = params['*'] || ''; // Capture everything after /folder/
+				const contents = await this.callRenderer('getFolderContents', { path: folderPath });
+				this.router.sendJson(res, 200, { contents });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to get folder contents', err instanceof Error ? err.message : String(err));
+			}
+		});
+
 		// GET /api/v1/workspace/files/:path - Read file
 		this.router.register('GET', '/api/v1/workspace/files/:path', async (req, res, params) => {
 			try {
@@ -250,6 +261,56 @@ export class ApiRoutes {
 				this.router.sendJson(res, 200, { models });
 			} catch (err) {
 				this.router.sendError(res, 500, 'Failed to get models', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// GET /api/v1/settings/model - Get current model selection
+		this.router.register('GET', '/api/v1/settings/model', async (req, res, params) => {
+			try {
+				const model = await this.callRenderer('getCurrentModel', {});
+				this.router.sendJson(res, 200, { model });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to get current model', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// PUT /api/v1/settings/model - Set current model
+		this.router.register('PUT', '/api/v1/settings/model', async (req, res, params) => {
+			try {
+				const { providerName, modelName } = params.body || {};
+				if (!providerName || !modelName) {
+					this.router.sendError(res, 400, 'Missing required fields: providerName, modelName');
+					return;
+				}
+				const result = await this.callRenderer('setCurrentModel', { providerName, modelName });
+				this.router.sendJson(res, 200, { success: true, model: result });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to set model', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// GET /api/v1/settings/mode - Get current chat mode
+		this.router.register('GET', '/api/v1/settings/mode', async (req, res, params) => {
+			try {
+				const mode = await this.callRenderer('getChatMode', {});
+				this.router.sendJson(res, 200, { mode });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to get chat mode', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// PUT /api/v1/settings/mode - Set chat mode
+		this.router.register('PUT', '/api/v1/settings/mode', async (req, res, params) => {
+			try {
+				const { mode } = params.body || {};
+				if (!mode || !['normal', 'gather', 'agent'].includes(mode)) {
+					this.router.sendError(res, 400, 'Invalid mode. Must be one of: normal, gather, agent');
+					return;
+				}
+				const result = await this.callRenderer('setChatMode', { mode });
+				this.router.sendJson(res, 200, { success: true, mode: result });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to set chat mode', err instanceof Error ? err.message : String(err));
 			}
 		});
 

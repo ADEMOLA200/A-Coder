@@ -35,7 +35,7 @@ import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { removeMCPToolNamePrefix } from '../../../../common/mcpServiceTypes.js';
-import { FadeIn, SlideInRight, TypingIndicator, ToolLoadingIndicator } from './ChatAnimations.js';
+import { FadeIn, SlideInRight, TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator } from './ChatAnimations.js';
 import { MCPServerModal } from './MCPServerModal.js';
 import { TaskPlan } from '../../../chatThreadService.js';
 import { PlanStatusPanel } from './PlanStatusPanel.js';
@@ -533,14 +533,14 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 const nameOfChatMode = {
 	'normal': 'Chat',
-	'gather': 'Gather',
-	'agent': 'Agent',
+	'gather': 'Plan',
+	'agent': 'Code',
 }
 
 const detailOfChatMode = {
-	'normal': 'Normal chat',
-	'gather': 'Reads files, but can\'t edit',
-	'agent': 'Edits files and uses tools',
+	'normal': 'Conversation only, no tools',
+	'gather': 'Research, plan & document',
+	'agent': 'Edit files & run commands',
 }
 
 
@@ -714,10 +714,10 @@ export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: But
 		type='button'
 		className={`rounded-xl flex-shrink-0 flex-grow-0 flex items-center justify-center transition-all duration-200
 				${disabled ? 'bg-void-bg-3 cursor-not-allowed opacity-50' :
-					isDark ?
-						'bg-void-accent/80 hover:bg-void-accent cursor-pointer shadow-sm' :
-						'bg-void-accent hover:bg-void-accent/90 cursor-pointer shadow-md'
-				}
+				isDark ?
+					'bg-void-accent/80 hover:bg-void-accent cursor-pointer shadow-sm' :
+					'bg-void-accent hover:bg-void-accent/90 cursor-pointer shadow-md'
+			}
 			`}
 		style={{ width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE }}
 		disabled={disabled}
@@ -1893,6 +1893,15 @@ const titleOfBuiltinToolName = {
 	'update_task_status': { done: 'Updated task', proposed: 'Update task', running: loadingTitleWrapper('Updating task') },
 	'get_plan_status': { done: 'Got plan status', proposed: 'Get plan status', running: loadingTitleWrapper('Getting plan status') },
 	'add_tasks_to_plan': { done: 'Added tasks', proposed: 'Add tasks', running: loadingTitleWrapper('Adding tasks') },
+	// Implementation Planning tools
+	'create_implementation_plan': { done: 'Created implementation plan', proposed: 'Create implementation plan', running: loadingTitleWrapper('Creating implementation plan') },
+	'preview_implementation_plan': { done: 'Previewed implementation plan', proposed: 'Preview implementation plan', running: loadingTitleWrapper('Previewing implementation plan') },
+	'execute_implementation_plan': { done: 'Executed implementation plan', proposed: 'Execute implementation plan', running: loadingTitleWrapper('Executing implementation plan') },
+	'update_implementation_step': { done: 'Updated implementation step', proposed: 'Update implementation step', running: loadingTitleWrapper('Updating implementation step') },
+	'get_implementation_status': { done: 'Got implementation status', proposed: 'Get implementation status', running: loadingTitleWrapper('Getting implementation status') },
+	// Documentation tools
+	'update_walkthrough': { done: 'Updated walkthrough', proposed: 'Update walkthrough', running: loadingTitleWrapper('Updating walkthrough') },
+	'open_walkthrough_preview': { done: 'Opened walkthrough preview', proposed: 'Open walkthrough preview', running: loadingTitleWrapper('Opening walkthrough preview') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -2081,6 +2090,47 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			const toolParams = _toolParams as BuiltinToolCallParams['add_tasks_to_plan']
 			return {
 				desc1: `${toolParams.tasks.length} task(s)`,
+			}
+		},
+		// Implementation Planning tools
+		'create_implementation_plan': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['create_implementation_plan']
+			return {
+				desc1: `"${toolParams.goal}"`,
+			}
+		},
+		'preview_implementation_plan': () => {
+			return {
+				desc1: 'Preview implementation plan',
+			}
+		},
+		'execute_implementation_plan': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['execute_implementation_plan']
+			return {
+				desc1: toolParams.step_id ? `Step: ${toolParams.step_id}` : 'Execute all steps',
+			}
+		},
+		'update_implementation_step': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['update_implementation_step']
+			return {
+				desc1: `Step: ${toolParams.step_id} → ${toolParams.status}`,
+			}
+		},
+		'get_implementation_status': () => {
+			return {
+				desc1: 'Get implementation status',
+			}
+		},
+		'update_walkthrough': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['update_walkthrough']
+			return {
+				desc1: toolParams.content,
+			}
+		},
+		'open_walkthrough_preview': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['open_walkthrough_preview']
+			return {
+				desc1: toolParams.file_path,
 			}
 		},
 	}
@@ -3054,165 +3104,208 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 
 	// Planning tools
 	'create_plan': {
-		resultWrapper: ({ toolMessage }) => {
-			const accessor = useAccessor()
-			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
-			const title = getTitle(toolMessage)
-			const icon = null
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
 
-			if (toolMessage.type === 'tool_request') return null
-			if (toolMessage.type === 'running_now') return null
+			// Import the PlanningResultWrapper component
+			const PlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
 
-			const isError = false
-			const isRejected = toolMessage.type === 'rejected'
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
-
-			if (toolMessage.type === 'success') {
-				const { result } = toolMessage
-				componentParams.children = <ToolChildrenWrapper>
-					<SmallProseWrapper>
-						<ChatMarkdownRender
-							string={result.summary}
-							chatMessageLocation={undefined}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</SmallProseWrapper>
-				</ToolChildrenWrapper>
-			}
-			else if (toolMessage.type === 'tool_error') {
-				const { result } = toolMessage
-				componentParams.bottomChildren = <BottomChildren title='Error'>
-					<CodeChildren>
-						{result}
-					</CodeChildren>
-				</BottomChildren>
-			}
-
-			return <ToolHeaderWrapper {...componentParams} />
-		},
+			return (
+				<React.Suspense fallback={<div>Loading plan...</div>}>
+					<PlanningResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
 	},
 
 	'update_task_status': {
-		resultWrapper: ({ toolMessage }) => {
-			const accessor = useAccessor()
-			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
-			const title = getTitle(toolMessage)
-			const icon = null
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
 
-			if (toolMessage.type === 'tool_request') return null
-			if (toolMessage.type === 'running_now') return null
+			// Import the PlanningResultWrapper component
+			const PlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
 
-			const isError = false
-			const isRejected = toolMessage.type === 'rejected'
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
-
-			if (toolMessage.type === 'success') {
-				const { result } = toolMessage
-				componentParams.children = <ToolChildrenWrapper>
-					<SmallProseWrapper>
-						<ChatMarkdownRender
-							string={result.summary}
-							chatMessageLocation={undefined}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</SmallProseWrapper>
-				</ToolChildrenWrapper>
-			}
-			else if (toolMessage.type === 'tool_error') {
-				const { result } = toolMessage
-				componentParams.bottomChildren = <BottomChildren title='Error'>
-					<CodeChildren>
-						{result}
-					</CodeChildren>
-				</BottomChildren>
-			}
-
-			return <ToolHeaderWrapper {...componentParams} />
-		},
-	},
-
-	'get_plan_status': {
-		resultWrapper: ({ toolMessage }) => {
-			const accessor = useAccessor()
-			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
-			const title = getTitle(toolMessage)
-			const icon = null
-
-			if (toolMessage.type === 'tool_request') return null
-			if (toolMessage.type === 'running_now') return null
-
-			const isError = false
-			const isRejected = toolMessage.type === 'rejected'
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
-
-			if (toolMessage.type === 'success') {
-				const { result } = toolMessage
-				if (result.summary) {
-					componentParams.children = <ToolChildrenWrapper>
-						<SmallProseWrapper>
-							<ChatMarkdownRender
-								string={result.summary}
-								chatMessageLocation={undefined}
-								isApplyEnabled={false}
-								isLinkDetectionEnabled={true}
-							/>
-						</SmallProseWrapper>
-					</ToolChildrenWrapper>
-				}
-			}
-			else if (toolMessage.type === 'tool_error') {
-				const { result } = toolMessage
-				componentParams.bottomChildren = <BottomChildren title='Error'>
-					<CodeChildren>
-						{result}
-					</CodeChildren>
-				</BottomChildren>
-			}
-
-			return <ToolHeaderWrapper {...componentParams} />
-		},
+			return (
+				<React.Suspense fallback={<div>Loading update...</div>}>
+					<PlanningResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
 	},
 
 	'add_tasks_to_plan': {
-		resultWrapper: ({ toolMessage }) => {
-			const accessor = useAccessor()
-			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
-			const title = getTitle(toolMessage)
-			const icon = null
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
 
-			if (toolMessage.type === 'tool_request') return null
-			if (toolMessage.type === 'running_now') return null
+			// Import the PlanningResultWrapper component
+			const PlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
 
-			const isError = false
-			const isRejected = toolMessage.type === 'rejected'
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+			return (
+				<React.Suspense fallback={<div>Loading tasks...</div>}>
+					<PlanningResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
 
-			if (toolMessage.type === 'success') {
-				const { result } = toolMessage
-				componentParams.children = <ToolChildrenWrapper>
-					<SmallProseWrapper>
-						<ChatMarkdownRender
-							string={result.summary}
-							chatMessageLocation={undefined}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</SmallProseWrapper>
-				</ToolChildrenWrapper>
-			}
-			else if (toolMessage.type === 'tool_error') {
-				const { result } = toolMessage
-				componentParams.bottomChildren = <BottomChildren title='Error'>
-					<CodeChildren>
-						{result}
-					</CodeChildren>
-				</BottomChildren>
-			}
+	'get_plan_status': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
 
-			return <ToolHeaderWrapper {...componentParams} />
-		},
+			// Import the PlanningResultWrapper component
+			const PlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading status...</div>}>
+					<PlanningResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+
+	'update_walkthrough': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the WalkthroughResultWrapper component
+			const WalkthroughResultWrapper = React.lazy(() => import('./WalkthroughResultWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading walkthrough...</div>}>
+					<WalkthroughResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+
+	// --- Implementation Planning tools ---
+	'create_implementation_plan': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the ImplementationPlanPreviewWrapper component
+			const ImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading implementation plan...</div>}>
+					<ImplementationPlanPreviewWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+	'preview_implementation_plan': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the ImplementationPlanPreviewWrapper component
+			const ImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading implementation plan...</div>}>
+					<ImplementationPlanPreviewWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+	'execute_implementation_plan': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the ImplementationPlanPreviewWrapper component
+			const ImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading implementation plan...</div>}>
+					<ImplementationPlanPreviewWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+	'update_implementation_step': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the ImplementationPlanPreviewWrapper component
+			const ImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading implementation plan...</div>}>
+					<ImplementationPlanPreviewWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+	'get_implementation_status': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the ImplementationPlanPreviewWrapper component
+			const ImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading implementation plan...</div>}>
+					<ImplementationPlanPreviewWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
+	},
+	'open_walkthrough_preview': {
+		resultWrapper: (params) => {
+			const { toolMessage, messageIdx, threadId } = params
+
+			// Import the WalkthroughResultWrapper component (same as update_walkthrough)
+			const WalkthroughResultWrapper = React.lazy(() => import('./WalkthroughResultWrapper.js'))
+
+			return (
+				<React.Suspense fallback={<div>Loading walkthrough...</div>}>
+					<WalkthroughResultWrapper
+						toolMessage={toolMessage}
+						messageIdx={messageIdx}
+						threadId={threadId}
+					/>
+				</React.Suspense>
+			)
+		}
 	},
 };
 
@@ -3773,23 +3866,28 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, _rawTextBeforeStripping } = currThreadStreamState?.llmInfo ?? {}
+	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = !!(toolCallSoFar && !toolCallSoFar.isDone) // show loading for slow tools (right now just edit)
 
 	// Also detect if tool name exists (even if params aren't done yet)
-	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name)
+	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name && toolCallSoFar.name !== 'detecting...')
 
 	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
 	// Use raw text before stripping to detect the XML tags
 	const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
 
+	// ReAct phase detection for enhanced UI
+	const isReActThoughtPhase = reactPhase?.type === 'thought';
+	const isReActActionPhase = reactPhase?.type === 'action';
+	const isReActObservationPhase = reactPhase?.type === 'observation';
+
 	// Detect ANY tool call activity (native or XML) - ensure boolean
 	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
 
-	// Debug: log tool state
-	if (toolCallSoFar || isGeneratingXMLToolCall) {
+	// Debug: log tool state and ReAct phase
+	if (toolCallSoFar || isGeneratingXMLToolCall || reactPhase) {
 		console.log('[SidebarChat] Tool generation state:', {
 			toolCallSoFar: toolCallSoFar ? {
 				name: toolCallSoFar.name,
@@ -3797,6 +3895,11 @@ export const SidebarChat = () => {
 				isGenerating: toolIsGenerating,
 			} : null,
 			isGeneratingXMLToolCall,
+			reactPhase: reactPhase ? {
+				type: reactPhase.type,
+				content: reactPhase.content,
+				detectedAt: reactPhase.detectedAt
+			} : null,
 			displayContentLength: displayContentSoFar?.length
 		});
 	}
@@ -3984,7 +4087,8 @@ export const SidebarChat = () => {
 		// const lastMessageIdx = previousMessages.findLastIndex(v => v.role !== 'checkpoint')
 		// tool request shows up as Editing... if in progress
 		return previousMessages
-			.filter((message, i) => {
+			.map((message, originalIdx) => ({ message, originalIdx })) // Preserve original index
+			.filter(({ message }) => {
 				// Filter out assistant messages that only contain "(empty message)"
 				if (message.role === 'assistant') {
 					const content = message.displayContent?.trim() || '';
@@ -3994,12 +4098,12 @@ export const SidebarChat = () => {
 				}
 				return true;
 			})
-			.map((message, i) => {
-				return <div key={i} className="mb-4 flex flex-col">
+			.map(({ message, originalIdx }) => {
+				return <div key={originalIdx} className="mb-4 flex flex-col">
 					<ChatBubble
 						currCheckpointIdx={currCheckpointIdx}
 						chatMessage={message}
-						messageIdx={i}
+						messageIdx={originalIdx}
 						isCommitted={true}
 						chatIsRunning={isRunning}
 						threadId={threadId}
@@ -4029,39 +4133,9 @@ export const SidebarChat = () => {
 		/> : null
 
 
-	// Detect "About to Act" pattern - LLM announcing it will use a tool
-	const detectAboutToActTool = (text: string | undefined): { toolName: string; intent: string } | null => {
-		if (!text) return null;
-
-		const trimmed = text.trim();
-		// Check if ends with colon (common pattern: "Let me edit the file:")
-		if (!trimmed.endsWith(':')) return null;
-
-		// Get last sentence/phrase before the colon
-		const lastPart = trimmed.split(/[.!]/).pop()?.toLowerCase() || '';
-
-		// Detect tool intentions with various phrase patterns
-		// Supports: "Let me", "Let me also", "I'll", "I'll also", "I will", "Additionally", "Next", "Now", "First"
-		const editPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(edit|modify|update|change|fix)/;
-		const readPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(read|check|look at|examine|view)/;
-		const createPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(create|add|make)/;
-		const deletePatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(delete|remove)/;
-		const runPatterns = /(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*(run|execute)/;
-
-		if (lastPart.match(editPatterns)) return { toolName: 'edit_file', intent: 'editing' };
-		if (lastPart.match(readPatterns)) return { toolName: 'read_file', intent: 'reading' };
-		if (lastPart.match(createPatterns)) return { toolName: 'create_file_or_folder', intent: 'creating' };
-		if (lastPart.match(deletePatterns)) return { toolName: 'delete_file_or_folder', intent: 'deleting' };
-		if (lastPart.match(runPatterns)) return { toolName: 'run_command', intent: 'running' };
-
-		return null;
-	};
-
-	const aboutToActTool = detectAboutToActTool(displayContentSoFar);
-
 	// Determine which tool to show UI for
-	// Priority: 1) toolCallSoFar (streaming), 2) toolInfo (executing), 3) About to act pattern, 4) XML generating
-	const activeToolName = toolCallSoFar?.name || currThreadStreamState?.toolInfo?.toolName || aboutToActTool?.toolName;
+	// Priority: 1) toolCallSoFar (streaming), 2) toolInfo (executing), 3) XML generating
+	const activeToolName = toolCallSoFar?.name || currThreadStreamState?.toolInfo?.toolName;
 	const activeToolParams = toolCallSoFar?.rawParams || currThreadStreamState?.toolInfo?.rawParams;
 
 	// Helper to check if tool should show EditToolSoFar component
@@ -4074,6 +4148,14 @@ export const SidebarChat = () => {
 			name === 'outline_file';
 	};
 
+	// ReAct Phase Indicator - show when we have a detected ReAct phase
+	const reactPhaseIndicator = (isReActThoughtPhase || isReActActionPhase || isReActObservationPhase) ? (
+		<ReActPhaseIndicator
+			phase={isReActThoughtPhase ? 'thought' : isReActActionPhase ? 'action' : 'observation'}
+			phaseContent={reactPhase?.content}
+		/>
+	) : null;
+
 	// Check if last message is already a tool message (to avoid showing duplicate)
 	const lastMessage = previousMessages[previousMessages.length - 1];
 	const lastMessageIsTool = lastMessage?.role === 'tool';
@@ -4081,10 +4163,10 @@ export const SidebarChat = () => {
 	// Show tool UI when:
 	// 1. Tool is being generated (toolIsGenerating) AND not already in messages
 	// 2. Tool is executing (isRunning === 'tool') AND not already in messages
-	// Note: aboutToActTool is handled separately below with simpler UI
-	const shouldShowToolUI = (toolIsGenerating || isRunning === 'tool') && !lastMessageIsTool;
 
-	const generatingTool = shouldShowToolUI && activeToolName ? (
+	const shouldShowToolUI = (toolIsGenerating || isRunning === 'tool' || isReActActionPhase) && !lastMessageIsTool;
+
+	const generatingTool = shouldShowToolUI && (activeToolName || isReActActionPhase) ? (
 		<>
 			{/* Show EditToolSoFar for ALL file-related tools */}
 			{isFileRelatedTool(activeToolName) ? (
@@ -4101,7 +4183,7 @@ export const SidebarChat = () => {
 			) : (
 				<ProseWrapper>
 					<ToolLoadingIndicator
-						toolName={activeToolName}
+						toolName={activeToolName || (isReActActionPhase ? 'detecting...' : undefined)}
 						toolParams={activeToolParams}
 					/>
 				</ProseWrapper>
@@ -4113,14 +4195,6 @@ export const SidebarChat = () => {
 			<div className="flex items-center gap-2 py-2 text-void-fg-3">
 				<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
 				<span className="text-sm">Parsing tool call...</span>
-			</div>
-		</ProseWrapper>
-	) : aboutToActTool && isRunning === 'LLM' ? (
-		// Show simple anticipatory UI when LLM announces it will act (before actual tool call)
-		<ProseWrapper>
-			<div className="flex items-center gap-2 py-2 text-void-fg-3 bg-void-bg-2 rounded-lg px-3 border border-void-border-3">
-				<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
-				<span className="text-sm capitalize">{aboutToActTool.intent}...</span>
 			</div>
 		</ProseWrapper>
 	) : null
@@ -4152,6 +4226,9 @@ export const SidebarChat = () => {
 		{/* previous messages */}
 		{previousMessagesHTML}
 		{currStreamingMessageHTML}
+
+		{/* ReAct Phase Indicator - show when we have a detected ReAct phase */}
+		{reactPhaseIndicator}
 
 		{/* Inline Task Plan View - rendered within chat stream */}
 		{taskPlanView}

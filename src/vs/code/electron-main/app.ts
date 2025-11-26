@@ -136,6 +136,11 @@ import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChanne
 import { CodeExecutionChannel } from '../../workbench/contrib/void/electron-main/codeExecutionChannel.js';
 import { MorphChannel } from '../../workbench/contrib/void/electron-main/morphChannel.js';
 import { TokenCountingChannel } from '../../workbench/contrib/void/electron-main/tokenCountingChannel.js';
+import { MainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
+import { IMainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
+import { MainProcessSettingsService, IMainProcessSettingsService } from '../../workbench/contrib/void/electron-main/mainProcessSettingsService.js';
+import { MainProcessApiAuthService, IMainProcessApiAuthService } from '../../workbench/contrib/void/electron-main/mainProcessApiAuthService.js';
+import { SettingsChannel } from '../../workbench/contrib/void/electron-main/settingsChannel.js';
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -1122,6 +1127,11 @@ export class CodeApplication extends Disposable {
 		// MCP
 		services.set(INativeMcpDiscoveryHelperService, new SyncDescriptor(NativeMcpDiscoveryHelperService));
 
+		// API Service
+		services.set(IMainProcessApiIntegration, new SyncDescriptor(MainProcessApiIntegration, undefined, false));
+		services.set(IMainProcessSettingsService, new SyncDescriptor(MainProcessSettingsService, undefined, false));
+		services.set(IMainProcessApiAuthService, new SyncDescriptor(MainProcessApiAuthService, undefined, false));
+
 
 		// Dev Only: CSS service (for ESM)
 		services.set(ICSSDevelopmentService, new SyncDescriptor(CSSDevelopmentService, undefined, true));
@@ -1268,6 +1278,23 @@ export class CodeApplication extends Disposable {
 		// Void - Token Counting
 		const tokenCountingChannel = new TokenCountingChannel();
 		mainProcessElectronServer.registerChannel('void-channel-token-counting', tokenCountingChannel);
+
+		// Void - Settings Channel
+		const settingsChannel = new SettingsChannel(
+			accessor.get(IMainProcessSettingsService),
+			accessor.get(IMainProcessApiAuthService)
+		);
+		mainProcessElectronServer.registerChannel('void-channel-settings', settingsChannel);
+
+		// Void - Mobile API
+		// The API server is now managed by MainProcessApiIntegration service
+		const apiIntegration = accessor.get(IMainProcessApiIntegration);
+		const apiServiceManager = apiIntegration.getApiServiceManager();
+		if (apiServiceManager) {
+			const apiChannel = apiServiceManager.getChannel();
+			(apiChannel as any).setApiServiceManager(apiServiceManager); // Allow IPC control of API server
+			mainProcessElectronServer.registerChannel('void-channel-api', apiChannel);
+		}
 
 		// Extension Host Debug Broadcasting
 		const electronExtensionHostDebugBroadcastChannel = new ElectronExtensionHostDebugBroadcastChannel(accessor.get(IWindowsMainService));

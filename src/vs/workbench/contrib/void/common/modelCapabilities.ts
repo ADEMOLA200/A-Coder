@@ -449,14 +449,67 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 	// Handle Ollama Cloud models first (before generic matches)
 	// All Ollama Cloud models end with :cloud or -cloud and support native OpenAI-style tool calling
 	if (lower.includes('cloud')) {
-		// Specific model mappings
+		// Specific model mappings based on Ollama docs:
+		// - gpt-oss: uses Ollama's native `thinking` field (think levels: low/medium/high), NOT <think> tags
+		// - kimi-k2: instruct model, no thinking (kimi-k2-thinking is separate)
+		// - kimi-k2-thinking: thinking agent with reasoning
+		// - qwen3-coder: instruct/coder model, no thinking mode
+		// - glm-4.6: uses <think> tags for reasoning
+		// - minimax-m2: uses extended thinking with <think> tags
+
 		if (lower.includes('deepseek') && lower.includes('v3')) return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'deepseekCoderV3'), specialToolFormat: 'openai-style' }
-		if (lower.includes('gpt-oss')) return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'), specialToolFormat: 'openai-style' } // gpt-oss is based on Qwen
-		if (lower.includes('kimi')) return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'), specialToolFormat: 'openai-style' } // kimi-k2 is based on Qwen
-		if (lower.includes('qwen') && lower.includes('coder')) return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen2.5coder'), specialToolFormat: 'openai-style' }
-		if (lower.includes('qwen')) return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'), specialToolFormat: 'openai-style' }
-		// Generic fallback for any other cloud model
-		return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'), specialToolFormat: 'openai-style' }
+
+		// gpt-oss uses Ollama's native thinking field (delta.thinking), NOT <think> tags
+		if (lower.includes('gpt-oss')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: false, canIOReasoning: true } // no openSourceThinkTags - uses native field
+		}
+
+		// kimi-k2-thinking is a thinking agent with reasoning
+		if (lower.includes('kimi') && lower.includes('thinking')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: false, canIOReasoning: true } // uses native thinking field
+		}
+
+		// kimi-k2 (non-thinking) is a reflex-grade instruct model without long thinking
+		if (lower.includes('kimi')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: false // no reasoning support
+		}
+
+		// qwen3-coder is an instruct/coder model without thinking mode
+		if (lower.includes('qwen') && lower.includes('coder')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen2.5coder'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: false // coder model, no thinking
+		}
+
+		// qwen3 (non-coder) supports thinking with <think> tags
+		if (lower.includes('qwen')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] as [string, string] }
+		}
+
+		// GLM models use <think> tags for reasoning
+		if (lower.includes('glm')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] as [string, string] }
+		}
+
+		// minimax-m2 uses extended thinking with <think> tags
+		if (lower.includes('minimax')) return {
+			...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+			specialToolFormat: 'openai-style',
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] as [string, string] }
+		}
+
+		// Generic fallback for any other cloud model - assume no thinking
+		return { ...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'), specialToolFormat: 'openai-style', reasoningCapabilities: false }
 	}
 
 	if (lower.includes('deepseek-r1') || lower.includes('deepseek-reasoner')) return toFallback(openSourceModelOptions_assumingOAICompat, 'deepseekR1')
@@ -486,6 +539,23 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 	if (lower.includes('openhands')) return toFallback(openSourceModelOptions_assumingOAICompat, 'openhands-lm-32b') // max output uncler
 
 	if (lower.includes('quasar') || lower.includes('quaser')) return toFallback(openSourceModelOptions_assumingOAICompat, 'quasar')
+
+	// gpt-oss (local via lmStudio/vLLM) - uses native reasoning field, no think tags
+	if (lower.includes('gpt-oss') || lower.includes('gpt_oss')) return {
+		...toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3'),
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			}
+			// no openSourceThinkTags - uses native delta.reasoning field
+		}
+	}
 
 	if (lower.includes('gpt') && lower.includes('mini') && (lower.includes('4.1') || lower.includes('4-1'))) return toFallback(openAIModelOptions, 'gpt-4.1-mini')
 	if (lower.includes('gpt') && lower.includes('nano') && (lower.includes('4.1') || lower.includes('4-1'))) return toFallback(openAIModelOptions, 'gpt-4.1-nano')
@@ -751,6 +821,14 @@ const openAICompatIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningI
 	}
 	return null
 
+}
+
+// Ollama uses `think: true` to enable thinking mode
+// https://ollama.com/blog/thinking
+const ollamaIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningInfo) => {
+	if (!reasoningInfo?.isReasoningEnabled) return null
+	// Ollama uses a simple boolean `think` parameter
+	return { think: true }
 }
 
 const openAISettings: VoidStaticProviderInfo = {
@@ -1291,7 +1369,7 @@ const ollamaModelOptions = {
 				values: ['low', 'medium', 'high'],
 				default: 'medium'
 			},
-			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
+			// NO openSourceThinkTags - gpt-oss uses native delta.reasoning field
 		},
 	},
 	'gpt-oss:120b-cloud': {
@@ -1311,7 +1389,7 @@ const ollamaModelOptions = {
 				values: ['low', 'medium', 'high'],
 				default: 'medium'
 			},
-			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
+			// NO openSourceThinkTags - gpt-oss uses native delta.reasoning field
 		},
 	},
 	'kimi-k2:1t-cloud': {
@@ -1345,7 +1423,7 @@ const ollamaModelOptions = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 1.0,
-		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['</think>', '</think>'] },
+		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
 	},
 	'qwen3-coder:480b-cloud': {
 		contextWindow: 128_000,
@@ -1354,7 +1432,9 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		// NOTE: Native tool calling disabled - Ollama Cloud returns empty responses with finish_reason: "stop"
+		// instead of tool calls. Using XML tool calling fallback instead.
+		// specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
 	},
 	'minimax-m2:cloud': {
@@ -1378,6 +1458,26 @@ const ollamaModelOptions = {
 			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
 		},
 	},
+	'gemini-3-pro-preview:cloud': {
+		contextWindow: 1_000_000, // 1M context window as per Ollama documentation
+		reservedOutputTokenSpace: 64_000, // 64K token output capacity
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style', // All Ollama Cloud models use OpenAI-style tool calling (but Gemini 3 Pro has enhanced tool capabilities with thought signatures)
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true, // Can set thinking_level to "low" to minimize reasoning
+			canIOReasoning: true, // Exposes thoughtSignature field containing encrypted reasoning
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'high'], // medium not supported at launch
+				default: 'high' // Defaults to high if not specified
+			},
+		},
+		defaultTemperature: 1.0, // Strongly recommended to keep at default for Gemini 3
+	},
 
 } as const satisfies Record<string, VoidStaticModelInfo>
 
@@ -1399,7 +1499,8 @@ const lmStudioSettings: VoidStaticProviderInfo = {
 	modelOptions: {},
 	providerReasoningIOSettings: {
 		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
-		output: { needsManualParse: true },
+		// gpt-oss and other models may use 'reasoning' field in delta, also support manual <think> tag parsing
+		output: { nameOfFieldInDelta: 'reasoning', needsManualParse: true },
 	},
 }
 
@@ -1407,11 +1508,11 @@ const ollamaSettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } }),
 	modelOptions: ollamaModelOptions,
 	providerReasoningIOSettings: {
-		// reasoning: we need to filter out reasoning <think> tags manually from the normal text stream
-		// Ollama's OpenAI-compatible endpoint does not expose a separate `reasoning` field in the delta
-		// so we rely entirely on manual parsing of <think> ... </think> tags.
-		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
-		output: { needsManualParse: true },
+		// Ollama exposes reasoning in a `thinking` field when think=true is set
+		// https://ollama.com/blog/thinking - response.message.thinking contains the reasoning
+		// We also keep needsManualParse for models that output <think> tags in content
+		input: { includeInPayload: ollamaIncludeInPayloadReasoning },
+		output: { nameOfFieldInDelta: 'thinking', needsManualParse: true },
 	},
 }
 

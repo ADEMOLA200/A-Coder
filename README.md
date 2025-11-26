@@ -24,6 +24,73 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 
 ## Recent Features & Fixes
 
+### 🎛️ Chat Modes: Chat, Plan & Code (NEW!)
+**Feature:** Three distinct chat modes that control AI behavior and tool access for focused, efficient interactions.
+
+**Modes:**
+- **💬 Chat** - Pure conversation mode, no tool access. For quick questions and discussions.
+- **📋 Plan** - Research and planning mode with read-only tools. AI can search, read files, and create implementation plans.
+- **⚡ Code** - Full execution mode with all tools. AI can edit files, run commands, and execute tasks.
+
+**Implementation Plan Workflow:**
+1. Switch to **Plan** mode
+2. Describe what you want to build
+3. AI researches codebase and creates an implementation plan
+4. Review the plan with the **Open** button to see full details
+5. Click **Approve Plan** to switch to Code mode and begin execution
+6. Or click **Request Changes** to revise the plan
+
+**API Support:**
+- `GET /api/v1/settings/mode` - Get current mode with display names
+- `PUT /api/v1/settings/mode` - Set mode (`normal`, `gather`, `agent`)
+- Mobile apps can switch modes and monitor AI behavior
+
+**Benefits:**
+- ✅ Focused AI behavior per task type
+- ✅ Reduced token usage in Chat mode (no tool definitions)
+- ✅ Safe planning phase before code changes
+- ✅ Clear approval workflow for implementation plans
+
+---
+
+### 📋 Implementation Planning Tools (NEW!)
+**Feature:** A suite of AI tools for structured project planning before code execution.
+
+**Available Tools:**
+- **`create_implementation_plan`** - Create a detailed implementation plan with steps, file changes, and dependencies
+- **`preview_implementation_plan`** - Preview and refine the plan before execution
+- **`execute_implementation_plan`** - Execute plan steps one at a time
+- **`update_implementation_step`** - Update step status (pending, in_progress, completed)
+- **`get_implementation_status`** - Check overall plan progress
+
+**Plan Structure:**
+```
+Implementation Plan: Add User Authentication
+├── Step 1: Create auth service (pending)
+│   └── Files: src/services/auth.ts
+├── Step 2: Add login component (pending)
+│   └── Files: src/components/Login.tsx
+├── Step 3: Update routes (pending)
+│   └── Files: src/App.tsx
+└── Step 4: Add tests (pending)
+    └── Files: src/__tests__/auth.test.ts
+```
+
+**UI Features:**
+- Collapsible plan preview in chat
+- **Open** button to view full plan in dedicated preview panel
+- **Approve Plan** button to begin execution
+- **Request Changes** button to revise the plan
+- Real-time step status updates
+
+**Benefits:**
+- ✅ Structured approach to complex tasks
+- ✅ Review before any code changes
+- ✅ Track progress through multi-step implementations
+- ✅ Easy to pause, modify, or restart plans
+
+---
+
 ### 🎯 MCP Server Modal (NEW!)
 **Feature:** Custom React modal for managing MCP (Model Context Protocol) servers, replacing the native VS Code QuickPick.
 
@@ -57,7 +124,7 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 - **Chat/Threads:** Create threads, send messages, get status, cancel agent
 - **Workspace:** List files, read files, search, get diagnostics
 - **Planning:** Get current plan, create plans, update task status
-- **Settings:** Get settings and available models (read-only)
+- **Settings:** Get/set current model, get/set chat mode, list available models
 
 **Security:**
 - API disabled by default (must be enabled in settings)

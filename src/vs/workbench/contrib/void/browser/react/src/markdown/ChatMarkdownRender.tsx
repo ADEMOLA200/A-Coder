@@ -346,25 +346,45 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 	}
 
 	if (t.type === 'table') {
-
 		return (
-			<div>
-				<table>
+			<div className="overflow-x-auto my-4 rounded-lg border border-void-border-2">
+				<table className="min-w-full border-collapse">
 					<thead>
-						<tr>
+						<tr className="bg-void-bg-2">
 							{t.header.map((h, hIdx: number) => (
-								<th key={hIdx}>
-									{h.text}
+								<th
+									key={hIdx}
+									className="px-4 py-3 text-left text-sm font-semibold text-void-fg-1 border-b border-void-border-2"
+									style={{ textAlign: (t.align?.[hIdx] as any) || 'left' }}
+								>
+									<ChatMarkdownRender
+										chatMessageLocation={chatMessageLocation}
+										string={h.text}
+										inPTag={true}
+										{...options}
+									/>
 								</th>
 							))}
 						</tr>
 					</thead>
 					<tbody>
 						{t.rows.map((row, rowIdx: number) => (
-							<tr key={rowIdx}>
+							<tr
+								key={rowIdx}
+								className={rowIdx % 2 === 0 ? 'bg-void-bg-1' : 'bg-void-bg-2/50'}
+							>
 								{row.map((r, rIdx: number) => (
-									<td key={rIdx} >
-										{r.text}
+									<td
+										key={rIdx}
+										className="px-4 py-3 text-sm text-void-fg-2 border-b border-void-border-2"
+										style={{ textAlign: (t.align?.[rIdx] as any) || 'left' }}
+									>
+										<ChatMarkdownRender
+											chatMessageLocation={chatMessageLocation}
+											string={r.text}
+											inPTag={true}
+											{...options}
+										/>
 									</td>
 								))}
 							</tr>
@@ -544,8 +564,9 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 
 
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
-	string = string.replaceAll('\n•', '\n\n•')
-	const tokens = marked.lexer(string); // https://marked.js.org/using_pro#renderer
+	// Safety check: ensure string is defined
+	const safeString = string?.replaceAll('\n•', '\n\n•') || '';
+	const tokens = marked.lexer(safeString); // https://marked.js.org/using_pro#renderer
 	return (
 		<>
 			{tokens.map((token, index) => (

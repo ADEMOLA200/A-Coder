@@ -39,12 +39,10 @@ export class ApiServiceManager {
 		const settings = this.getSettings();
 
 		if (!settings.enabled) {
-			console.log('[API Service] API is disabled in settings');
 			return;
 		}
 
 		if (this.apiServer?.isRunning()) {
-			console.log('[API Service] API server is already running');
 			return;
 		}
 
@@ -70,9 +68,6 @@ export class ApiServiceManager {
 
 			// Start server
 			await this.apiServer.start();
-
-			const url = settings.tunnelUrl || `http://127.0.0.1:${settings.port}`;
-			console.log(`[API Service] Mobile API started at ${url}`);
 		} catch (err) {
 			console.error('[API Service] Failed to start:', err);
 			throw err;
@@ -87,7 +82,6 @@ export class ApiServiceManager {
 			await this.apiServer.stop();
 			this.apiServer = null;
 			this.router = null;
-			console.log('[API Service] Mobile API stopped');
 		}
 	}
 

@@ -4,12 +4,16 @@
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { URI } from '../../../../base/common/uri.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { ILiteModeService } from './liteMode.contribution.js';
 import { IWebviewWorkbenchService } from '../../../contrib/webviewPanel/browser/webviewWorkbenchService.js';
 import { ACTIVE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
+import { IChatThreadService } from './chatThreadService.js';
 
 export class LiteModeService extends Disposable implements ILiteModeService {
     private _webviewPanel: any = null;
@@ -20,6 +24,7 @@ export class LiteModeService extends Disposable implements ILiteModeService {
         @IWebviewWorkbenchService private readonly _webviewWorkbenchService: IWebviewWorkbenchService,
         @IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,
         @IWorkbenchLayoutService private readonly _layoutService: IWorkbenchLayoutService,
+        @IInstantiationService private readonly _instantiationService: IInstantiationService,
     ) {
         super();
     }
@@ -134,6 +139,1076 @@ export class LiteModeService extends Disposable implements ILiteModeService {
             // Fallback to alert if webview creation fails
             this._showFallbackAlert();
         }
+    }
+
+    async openWalkthroughPreview(filePath: string, preview: string): Promise<void> {
+        try {
+            // Read the full walkthrough file content instead of using the truncated preview
+            const fullContent = await this._readWalkthroughFile(filePath);
+
+            this._metricsService.capture('Lite Mode', { action: 'open_walkthrough_attempt' });
+
+            // Create webview panel with walkthrough content
+            const walkthroughHtml = this._getWalkthroughHtml(filePath, fullContent);
+
+            const webviewInitInfo = {
+                providedViewType: 'void-walkthrough-preview',
+                title: `Walkthrough: ${filePath.split('/').pop()}`,
+                options: {
+                    retainContextWhenHidden: true,
+                    enableScripts: true
+                },
+                contentOptions: {
+                    allowScripts: true,
+                    localResourceRoots: []
+                },
+                extension: undefined
+            };
+
+            const showOptions = {
+                group: ACTIVE_GROUP,
+                preserveFocus: false
+            };
+
+            const webviewInput = this._webviewWorkbenchService.openWebview(
+                webviewInitInfo,
+                'void-walkthrough-preview',
+                `Walkthrough: ${filePath.split('/').pop()}`,
+                showOptions
+            );
+
+            const webview = webviewInput.webview;
+            webview.setHtml(walkthroughHtml);
+
+            // Handle messages from the webview
+            webview.onMessage(
+                async (event: any) => {
+                    const message = event.message;
+                    switch (message.type) {
+                        case 'closeWalkthrough':
+                            // Close the webview panel
+                            if (this._webviewPanel) {
+                                this._webviewPanel.dispose();
+                                this._webviewPanel = undefined;
+                            }
+                            this._isOpen = false;
+                            break;
+                        case 'requestChanges':
+                            // Send walkthrough content to chat for processing
+                            const fullContent = await this._readWalkthroughFile(filePath);
+                            this._sendWalkthroughToChat(filePath, fullContent, message.requestedChanges);
+                            break;
+                        case 'approveWalkthrough':
+                            // User approved the walkthrough
+                            this._metricsService.capture('Walkthrough', { action: 'approved', filePath });
+                            break;
+                    }
+                },
+                undefined,
+                this._store
+            );
+
+            this._webviewPanel = webviewInput;
+            this._isOpen = true;
+
+            this._metricsService.capture('Lite Mode', { action: 'open_walkthrough_success' });
+
+        } catch (error) {
+            console.error('Failed to open walkthrough preview:', error);
+            this._showFallbackAlert();
+        }
+    }
+
+    async openContentPreview(title: string, content: string): Promise<void> {
+        try {
+            this._metricsService.capture('Lite Mode', { action: 'open_content_preview_attempt' });
+
+            // Create webview panel with the content
+            const contentHtml = this._getContentPreviewHtml(title, content);
+
+            const webviewInitInfo = {
+                providedViewType: 'void-content-preview',
+                title: title,
+                options: {
+                    retainContextWhenHidden: true,
+                    enableScripts: true
+                },
+                contentOptions: {
+                    allowScripts: true,
+                    localResourceRoots: []
+                },
+                extension: undefined
+            };
+
+            const showOptions = {
+                group: ACTIVE_GROUP,
+                preserveFocus: false
+            };
+
+            const webviewInput = this._webviewWorkbenchService.openWebview(
+                webviewInitInfo,
+                'void-content-preview',
+                title,
+                showOptions
+            );
+
+            const webview = webviewInput.webview;
+            webview.setHtml(contentHtml);
+
+            // Handle messages from the webview
+            webview.onMessage(
+                async (event: any) => {
+                    const message = event.message;
+                    switch (message.type) {
+                        case 'closePreview':
+                            if (this._webviewPanel) {
+                                this._webviewPanel.dispose();
+                                this._webviewPanel = undefined;
+                            }
+                            this._isOpen = false;
+                            break;
+                    }
+                },
+                undefined,
+                this._store
+            );
+
+            this._webviewPanel = webviewInput;
+            this._isOpen = true;
+
+            this._metricsService.capture('Lite Mode', { action: 'open_content_preview_success' });
+
+        } catch (error) {
+            console.error('Failed to open content preview:', error);
+            this._showFallbackAlert();
+        }
+    }
+
+    private _getContentPreviewHtml(title: string, content: string): string {
+        // Escape HTML in content for safe rendering
+        const escapedContent = content
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #d4d4d4;
+            --heading-color: #ffffff;
+            --link-color: #4fc3f7;
+            --code-bg: #2d2d2d;
+            --border-color: #404040;
+            --accent-color: #4fc3f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 24px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            color: var(--heading-color);
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: var(--border-color);
+        }
+
+        .content {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .content h1, .content h2, .content h3 {
+            color: var(--heading-color);
+            margin-top: 24px;
+            margin-bottom: 12px;
+        }
+
+        .content h1:first-child, .content h2:first-child {
+            margin-top: 0;
+        }
+
+        .content p {
+            margin-bottom: 16px;
+        }
+
+        .content ul, .content ol {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+
+        .content li {
+            margin-bottom: 8px;
+        }
+
+        .content code {
+            background: var(--bg-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        .content pre {
+            background: var(--bg-color);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+
+        .content pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .content strong {
+            color: var(--heading-color);
+        }
+
+        .content a {
+            color: var(--link-color);
+            text-decoration: none;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>${title}</h1>
+        <button class="close-btn" onclick="closePreview()">Close</button>
+    </div>
+    <div class="content" id="content"></div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        // Render markdown content
+        const rawContent = ${JSON.stringify(escapedContent)};
+        // Unescape HTML entities for markdown parsing
+        const content = rawContent
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'");
+
+        document.getElementById('content').innerHTML = marked.parse(content);
+
+        function closePreview() {
+            vscode.postMessage({ type: 'closePreview' });
+        }
+    </script>
+</body>
+</html>`;
+    }
+
+    private _sendWalkthroughToChat(filePath: string, preview: string, requestedChanges?: string): void {
+        if (!requestedChanges) {
+            console.log('No changes requested');
+            return;
+        }
+
+        try {
+            // Get the chat service lazily to avoid circular dependency
+            const chatService = this._instantiationService.invokeFunction((accessor) => {
+                return accessor.get(IChatThreadService);
+            });
+
+            if (!chatService) {
+                console.error('Chat service not available');
+                return;
+            }
+
+            // Create a user message requesting changes to the codebase
+            const changeRequest = `Please make the following changes to the codebase:
+
+${requestedChanges}`;
+
+            // Get the current thread
+            const currentThreadId = chatService.state.currentThreadId;
+            const currentThread = chatService.state.allThreads[currentThreadId];
+
+            if (!currentThread) {
+                console.error('No current chat thread found');
+                return;
+            }
+
+            // Add the user message to the current thread and stream response
+            chatService.addUserMessageAndStreamResponse({
+                userMessage: changeRequest,
+                threadId: currentThreadId
+            });
+
+            console.log('Codebase change request sent to chat:', { filePath, requestedChanges });
+
+            // Track the interaction
+            this._metricsService.capture('Codebase Changes', {
+                action: 'changes_requested',
+                filePath,
+                hasContent: !!preview
+            });
+
+        } catch (error) {
+            console.error('Failed to send codebase changes to chat:', error);
+            this._metricsService.capture('Codebase Changes', {
+                action: 'changes_request_failed',
+                filePath,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    private async _readWalkthroughFile(filePath: string): Promise<string> {
+        try {
+            // Use the file service to read the full walkthrough file
+            const fileService = this._instantiationService.invokeFunction((accessor) =>
+                accessor.get(IFileService)
+            );
+
+            const uri = URI.file(filePath);
+            const fileContent = await fileService.readFile(uri);
+            return fileContent.value.toString();
+        } catch (error) {
+            console.error('Failed to read walkthrough file:', error);
+            // Fallback to empty string if file can't be read
+            return '';
+        }
+    }
+
+    private _getWalkthroughHtml(filePath: string, preview: string): string {
+        // Process markdown content for better rendering
+        const processedPreview = this._processMarkdownContent(preview);
+
+        return `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Walkthrough Preview</title>
+                    <style>
+                        * {
+                            box-sizing: border-box;
+                        }
+
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: var(--vscode-editor-background);
+                            color: var(--vscode-editor-foreground);
+                            line-height: 1.6;
+                            font-size: 14px;
+                        }
+
+                        .container {
+                            display: flex;
+                            flex-direction: column;
+                            height: 100vh;
+                        }
+
+                        .header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: flex-start;
+                            padding: 24px 24px 16px 24px;
+                            border-bottom: 1px solid var(--vscode-panel-border);
+                            background-color: var(--vscode-editor-background);
+                            flex-shrink: 0;
+                        }
+
+                        .header-left {
+                            flex: 1;
+                            min-width: 0;
+                        }
+
+                        .header h2 {
+                            margin: 0 0 8px 0;
+                            font-size: 18px;
+                            font-weight: 600;
+                            color: var(--vscode-foreground);
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        }
+
+                        .header h2::before {
+                            content: "📋";
+                            font-size: 16px;
+                        }
+
+                        .file-path {
+                            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+                            color: var(--vscode-descriptionForeground);
+                            font-size: 12px;
+                            background-color: var(--vscode-editor-lineHighlightBackground);
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            border: 1px solid var(--vscode-panel-border);
+                            display: inline-block;
+                            word-break: break-all;
+                        }
+
+                        .actions {
+                            display: flex;
+                            gap: 8px;
+                            flex-shrink: 0;
+                        }
+
+                        .btn {
+                            padding: 8px 16px;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 13px;
+                            font-weight: 500;
+                            transition: all 0.15s ease;
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 6px;
+                            white-space: nowrap;
+                            min-height: 32px;
+                        }
+
+                        .btn:hover {
+                            transform: translateY(-1px);
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        }
+
+                        .btn:active {
+                            transform: translateY(0);
+                        }
+
+                        .btn-primary {
+                            background-color: var(--vscode-button-background);
+                            color: var(--vscode-button-foreground);
+                            border: 1px solid var(--vscode-button-background);
+                        }
+
+                        .btn-primary:hover {
+                            background-color: var(--vscode-button-hoverBackground);
+                        }
+
+                        .btn-secondary {
+                            background-color: var(--vscode-button-secondaryBackground);
+                            color: var(--vscode-button-secondaryForeground);
+                            border: 1px solid var(--vscode-panel-border);
+                        }
+
+                        .btn-secondary:hover {
+                            background-color: var(--vscode-button-secondaryHoverBackground);
+                        }
+
+                        .btn-success {
+                            background-color: #28a745;
+                            color: white;
+                            border: 1px solid #28a745;
+                        }
+
+                        .btn-success:hover {
+                            background-color: #218838;
+                        }
+
+                        .content-wrapper {
+                            flex: 1;
+                            overflow: hidden;
+                            display: flex;
+                            flex-direction: column;
+                        }
+
+                        .content {
+                            flex: 1;
+                            padding: 24px;
+                            overflow-y: auto;
+                            background-color: var(--vscode-editor-background);
+                        }
+
+                        .content::-webkit-scrollbar {
+                            width: 8px;
+                        }
+
+                        .content::-webkit-scrollbar-track {
+                            background: var(--vscode-editor-background);
+                        }
+
+                        .content::-webkit-scrollbar-thumb {
+                            background: var(--vscode-scrollbarSlider-background);
+                            border-radius: 4px;
+                        }
+
+                        .content::-webkit-scrollbar-thumb:hover {
+                            background: var(--vscode-scrollbarSlider-hoverBackground);
+                        }
+
+                        /* Enhanced markdown styles */
+                        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+                            color: var(--vscode-foreground);
+                            margin-top: 32px;
+                            margin-bottom: 16px;
+                            font-weight: 600;
+                            line-height: 1.25;
+                        }
+
+                        .content h1:first-child,
+                        .content h2:first-child,
+                        .content h3:first-child {
+                            margin-top: 0;
+                        }
+
+                        .content h1 {
+                            font-size: 2em;
+                            border-bottom: 2px solid var(--vscode-panel-border);
+                            padding-bottom: 0.3em;
+                        }
+                        .content h2 {
+                            font-size: 1.5em;
+                            border-bottom: 1px solid var(--vscode-panel-border);
+                            padding-bottom: 0.3em;
+                        }
+                        .content h3 { font-size: 1.25em; }
+                        .content h4 { font-size: 1em; }
+                        .content h5 { font-size: 0.875em; }
+                        .content h6 { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+
+                        .content p {
+                            margin-bottom: 16px;
+                            color: var(--vscode-editor-foreground);
+                        }
+
+                        .content ul, .content ol {
+                            margin-bottom: 16px;
+                            padding-left: 2em;
+                        }
+
+                        .content li {
+                            margin-bottom: 6px;
+                            color: var(--vscode-editor-foreground);
+                        }
+
+                        .content blockquote {
+                            margin: 0 0 16px 0;
+                            padding: 16px 20px;
+                            color: var(--vscode-descriptionForeground);
+                            border-left: 4px solid var(--vscode-textBlockQuote-border);
+                            background-color: var(--vscode-textBlockQuote-background);
+                            border-radius: 0 6px 6px 0;
+                        }
+
+                        .content code {
+                            background-color: var(--vscode-textCodeBlock-background);
+                            color: var(--vscode-textCodeBlock-foreground);
+                            padding: 0.2em 0.4em;
+                            border-radius: 4px;
+                            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+                            font-size: 0.85em;
+                            border: 1px solid var(--vscode-panel-border);
+                        }
+
+                        .content pre {
+                            background-color: var(--vscode-textCodeBlock-background);
+                            color: var(--vscode-textCodeBlock-foreground);
+                            padding: 20px;
+                            border-radius: 8px;
+                            overflow-x: auto;
+                            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+                            font-size: 0.9em;
+                            line-height: 1.5;
+                            margin-bottom: 20px;
+                            border: 1px solid var(--vscode-panel-border);
+                        }
+
+                        .content pre code {
+                            background: none;
+                            padding: 0;
+                            font-size: inherit;
+                            border: none;
+                        }
+
+                        /* Code block wrapper with language label */
+                        .code-block-wrapper {
+                            position: relative;
+                            margin-bottom: 20px;
+                        }
+
+                        .code-block-wrapper .code-lang {
+                            position: absolute;
+                            top: 0;
+                            right: 0;
+                            background-color: var(--vscode-badge-background);
+                            color: var(--vscode-badge-foreground);
+                            padding: 4px 10px;
+                            font-size: 11px;
+                            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+                            border-radius: 0 8px 0 6px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            font-weight: 500;
+                        }
+
+                        .code-block-wrapper pre {
+                            margin: 0;
+                        }
+
+                        /* Table wrapper for horizontal scroll on small screens */
+                        .table-wrapper {
+                            overflow-x: auto;
+                            margin-bottom: 20px;
+                            border-radius: 8px;
+                            border: 1px solid var(--vscode-panel-border);
+                        }
+
+                        .table-wrapper table {
+                            margin-bottom: 0;
+                            border: none;
+                            border-radius: 0;
+                        }
+
+                        .content table {
+                            border-spacing: 0;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                            width: 100%;
+                            border: 1px solid var(--vscode-panel-border);
+                            border-radius: 6px;
+                            overflow: hidden;
+                        }
+
+                        .content table th, .content table td {
+                            border: 1px solid var(--vscode-panel-border);
+                            padding: 12px 16px;
+                            text-align: left;
+                        }
+
+                        .content table th {
+                            background-color: var(--vscode-editor-lineHighlightBackground);
+                            font-weight: 600;
+                            color: var(--vscode-foreground);
+                        }
+
+                        .content table tr:nth-child(even) {
+                            background-color: var(--vscode-editor-lineHighlightBackground);
+                        }
+
+                        .content a {
+                            color: var(--vscode-textLink-foreground);
+                            text-decoration: none;
+                            border-bottom: 1px solid transparent;
+                            transition: border-color 0.15s ease;
+                        }
+
+                        .content a:hover {
+                            border-bottom-color: var(--vscode-textLink-foreground);
+                        }
+
+                        .content img {
+                            max-width: 100%;
+                            height: auto;
+                            border-radius: 6px;
+                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        }
+
+                        .content hr {
+                            height: 1px;
+                            border: none;
+                            background-color: var(--vscode-panel-border);
+                            margin: 32px 0;
+                        }
+
+                        .changes-section {
+                            margin: 24px;
+                            padding: 20px;
+                            background-color: var(--vscode-textBlockQuote-background);
+                            border-left: 4px solid var(--vscode-button-background);
+                            border-radius: 0 8px 8px 0;
+                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        }
+
+                        .changes-section h3 {
+                            margin: 0 0 16px 0;
+                            color: var(--vscode-foreground);
+                            font-size: 16px;
+                            font-weight: 600;
+                        }
+
+                        .changes-section textarea {
+                            width: 100%;
+                            min-height: 120px;
+                            background-color: var(--vscode-input-background);
+                            color: var(--vscode-input-foreground);
+                            border: 2px solid var(--vscode-input-border);
+                            border-radius: 6px;
+                            padding: 12px;
+                            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+                            font-size: 13px;
+                            resize: vertical;
+                            transition: border-color 0.15s ease;
+                        }
+
+                        .changes-section textarea:focus {
+                            outline: none;
+                            border-color: var(--vscode-focusBorder);
+                        }
+
+                        .changes-section .actions {
+                            margin-top: 16px;
+                            display: flex;
+                            gap: 8px;
+                            justify-content: flex-end;
+                        }
+
+                        /* Loading state */
+                        .loading {
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 40px;
+                            color: var(--vscode-descriptionForeground);
+                        }
+
+                        .loading::after {
+                            content: "";
+                            width: 16px;
+                            height: 16px;
+                            border: 2px solid var(--vscode-descriptionForeground);
+                            border-top-color: transparent;
+                            border-radius: 50%;
+                            animation: spin 1s linear infinite;
+                            margin-left: 8px;
+                        }
+
+                        @keyframes spin {
+                            to { transform: rotate(360deg); }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <div class="header-left">
+                                <h2>Walkthrough Preview</h2>
+                                <div class="file-path">${filePath}</div>
+                            </div>
+                            <div class="actions">
+                                <button class="btn btn-secondary" onclick="requestChanges()">
+                                    <span>✏️</span> Request Changes
+                                </button>
+                                <button class="btn btn-success" onclick="approveWalkthrough()">
+                                    <span>✅</span> Approve
+                                </button>
+                                <button class="btn btn-secondary" onclick="closeWalkthrough()">
+                                    <span>✕</span> Close
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="content-wrapper">
+                            <div class="content">
+                                ${processedPreview}
+                            </div>
+                        </div>
+
+                        <div class="changes-section" id="changesSection" style="display: none;">
+                            <h3>What changes would you like?</h3>
+                            <textarea id="changesTextarea" placeholder="Describe the changes you'd like to make to this walkthrough..."></textarea>
+                            <div class="actions">
+                                <button class="btn btn-secondary" onclick="cancelChanges()">Cancel</button>
+                                <button class="btn btn-primary" onclick="submitChanges()">Submit Changes</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <script>
+            const vscode = acquireVsCodeApi();
+
+            function closeWalkthrough() {
+                vscode.postMessage({
+                    type: 'closeWalkthrough'
+                });
+            }
+
+            function approveWalkthrough() {
+                vscode.postMessage({
+                    type: 'approveWalkthrough'
+                });
+                closeWalkthrough();
+            }
+
+            function requestChanges() {
+                document.getElementById('changesSection').style.display = 'block';
+                document.getElementById('changesTextarea').focus();
+            }
+
+            function submitChanges() {
+                const requestedChanges = document.getElementById('changesTextarea').value;
+                if (!requestedChanges.trim()) {
+                    showNotification('Please describe the changes you would like to make.', 'warning');
+                    return;
+                }
+
+                vscode.postMessage({
+                    type: 'requestChanges',
+                    requestedChanges: requestedChanges
+                });
+                closeWalkthrough();
+            }
+
+            function cancelChanges() {
+                document.getElementById('changesSection').style.display = 'none';
+                document.getElementById('changesTextarea').value = '';
+            }
+
+            function showNotification(message, type = 'info') {
+                // Create a modern notification instead of alert
+                const notification = document.createElement('div');
+                const bgColor = type === 'warning' ? 'var(--vscode-inputValidation-warningBackground)' : 'var(--vscode-notifications-background)';
+                const textColor = type === 'warning' ? 'var(--vscode-inputValidation-warningForeground)' : 'var(--vscode-notifications-foreground)';
+                const borderColor = type === 'warning' ? 'var(--vscode-inputValidation-warningBorder)' : 'var(--vscode-notifications-border)';
+
+                notification.style.position = 'fixed';
+                notification.style.top = '20px';
+                notification.style.right = '20px';
+                notification.style.backgroundColor = bgColor;
+                notification.style.color = textColor;
+                notification.style.border = '1px solid ' + borderColor;
+                notification.style.borderRadius = '6px';
+                notification.style.padding = '12px 16px';
+                notification.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+                notification.style.zIndex = '1000';
+                notification.style.maxWidth = '300px';
+                notification.style.fontSize = '13px';
+                notification.textContent = message;
+
+                document.body.appendChild(notification);
+
+                // Auto remove after 3 seconds
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 3000);
+            }
+
+            // Handle keyboard shortcuts
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey || e.metaKey) {
+                    switch (e.key) {
+                        case 'Enter':
+                            e.preventDefault();
+                            approveWalkthrough();
+                            break;
+                        case 'w':
+                            e.preventDefault();
+                            closeWalkthrough();
+                            break;
+                    }
+                }
+
+                // Escape key closes changes section
+                if (e.key === 'Escape') {
+                    const changesSection = document.getElementById('changesSection');
+                    if (changesSection.style.display !== 'none') {
+                        cancelChanges();
+                    } else {
+                        closeWalkthrough();
+                    }
+                }
+            });
+
+            // Auto-resize textarea
+            const textarea = document.getElementById('changesTextarea');
+            if (textarea) {
+                textarea.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = Math.max(120, this.scrollHeight) + 'px';
+                });
+            }
+            </script>
+                </body>
+                </html>`;
+    }
+
+    private _processMarkdownContent(content: string): string {
+        if (!content) return '';
+
+        let processed = content;
+
+        // Escape HTML to prevent XSS
+        const escapeHtml = (text: string) => text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        // Process code blocks FIRST (before other processing) to protect their content
+        const codeBlocks: string[] = [];
+        processed = processed.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+            const index = codeBlocks.length;
+            const escapedCode = escapeHtml(code.trim());
+            const langClass = lang ? ` class="language-${lang}"` : '';
+            const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
+            codeBlocks.push(`<div class="code-block-wrapper">${langLabel}<pre><code${langClass}>${escapedCode}</code></pre></div>`);
+            return `%%CODEBLOCK_${index}%%`;
+        });
+
+        // Process tables
+        processed = processed.replace(/^\|(.+)\|\s*\n\|[-:\s|]+\|\s*\n((?:\|.+\|\s*\n?)+)/gm, (match, headerRow, bodyRows) => {
+            const headers = headerRow.split('|').map((h: string) => h.trim()).filter((h: string) => h);
+            const rows = bodyRows.trim().split('\n').map((row: string) => {
+                return row.split('|').map((cell: string) => cell.trim()).filter((cell: string) => cell !== '');
+            });
+
+            let tableHtml = '<div class="table-wrapper"><table>';
+            tableHtml += '<thead><tr>';
+            headers.forEach((h: string) => {
+                tableHtml += `<th>${this._processInlineMarkdown(h)}</th>`;
+            });
+            tableHtml += '</tr></thead>';
+            tableHtml += '<tbody>';
+            rows.forEach((row: string[]) => {
+                tableHtml += '<tr>';
+                row.forEach((cell: string) => {
+                    tableHtml += `<td>${this._processInlineMarkdown(cell)}</td>`;
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table></div>';
+            return tableHtml;
+        });
+
+        // Headers (process from h6 to h1 to avoid conflicts)
+        processed = processed.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+        processed = processed.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+        processed = processed.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+        processed = processed.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+        processed = processed.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+        processed = processed.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+        // Blockquotes
+        processed = processed.replace(/^> (.*)$/gim, '<blockquote>$1</blockquote>');
+        // Merge consecutive blockquotes
+        processed = processed.replace(/<\/blockquote>\s*<blockquote>/g, '<br>');
+
+        // Horizontal rules
+        processed = processed.replace(/^---+$/gim, '<hr>');
+        processed = processed.replace(/^\*\*\*+$/gim, '<hr>');
+
+        // Unordered lists
+        processed = processed.replace(/^[\*\-] (.*)$/gim, '<li>$1</li>');
+
+        // Ordered lists
+        processed = processed.replace(/^\d+\. (.*)$/gim, '<li class="ordered">$1</li>');
+
+        // Wrap consecutive list items
+        processed = processed.replace(/(<li>[\s\S]*?<\/li>)(?=\s*(?:<li>|$))/g, (match) => {
+            return match;
+        });
+        // Wrap unordered lists
+        processed = processed.replace(/(<li>(?:(?!<li class="ordered">)[\s\S])*?<\/li>(?:\s*<li>(?:(?!<li class="ordered">)[\s\S])*?<\/li>)*)/g, '<ul>$1</ul>');
+        // Wrap ordered lists
+        processed = processed.replace(/(<li class="ordered">[\s\S]*?<\/li>(?:\s*<li class="ordered">[\s\S]*?<\/li>)*)/g, '<ol>$1</ol>');
+        processed = processed.replace(/<li class="ordered">/g, '<li>');
+
+        // Process inline markdown
+        processed = this._processInlineMarkdown(processed);
+
+        // Line breaks - convert double newlines to paragraph breaks
+        processed = processed.replace(/\n\n+/g, '</p><p>');
+        processed = '<p>' + processed + '</p>';
+
+        // Clean up empty paragraphs and fix nesting
+        processed = processed.replace(/<p><\/p>/g, '');
+        processed = processed.replace(/<p>\s*(<(?:h[1-6]|ul|ol|table|pre|blockquote|hr|div))/g, '$1');
+        processed = processed.replace(/(<\/(?:h[1-6]|ul|ol|table|pre|blockquote|hr|div)>)\s*<\/p>/g, '$1');
+        processed = processed.replace(/<p>(<div class="table-wrapper">)/g, '$1');
+        processed = processed.replace(/(<\/div>)<\/p>/g, '$1');
+
+        // Restore code blocks
+        codeBlocks.forEach((block, index) => {
+            processed = processed.replace(`%%CODEBLOCK_${index}%%`, block);
+        });
+
+        // Clean up any remaining paragraph issues around code blocks
+        processed = processed.replace(/<p>(<div class="code-block-wrapper">)/g, '$1');
+        processed = processed.replace(/(<\/div>)<\/p>/g, '$1');
+
+        return processed;
+    }
+
+    private _processInlineMarkdown(text: string): string {
+        let processed = text;
+
+        // Bold (must come before italic)
+        processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        processed = processed.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+
+        // Italic
+        processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        processed = processed.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+        // Strikethrough
+        processed = processed.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+        // Inline code
+        processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Links
+        processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+        // Images
+        processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+
+        return processed;
     }
 
     private _showFallbackAlert(): void {

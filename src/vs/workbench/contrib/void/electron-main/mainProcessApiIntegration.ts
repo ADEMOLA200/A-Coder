@@ -4,21 +4,31 @@
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { ApiServiceManager } from './apiServiceManager.js';
-import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { IApiAuthService } from '../common/apiAuthService.js';
+import { IMainProcessSettingsService } from './mainProcessSettingsService.js';
+import { IMainProcessApiAuthService } from './mainProcessApiAuthService.js';
+
+export const IMainProcessApiIntegration = createDecorator<IMainProcessApiIntegration>('mainProcessApiIntegration');
+
+export interface IMainProcessApiIntegration {
+	readonly _serviceBrand: undefined;
+	getApiServiceManager(): ApiServiceManager | null;
+}
 
 /**
  * Main Process API Integration
  * Manages the API server lifecycle in the main process
  */
-export class MainProcessApiIntegration extends Disposable {
+export class MainProcessApiIntegration extends Disposable implements IMainProcessApiIntegration {
+
+	declare readonly _serviceBrand: undefined;
 
 	private apiServiceManager: ApiServiceManager | null = null;
 
 	constructor(
-		@IVoidSettingsService private readonly settingsService: IVoidSettingsService,
-		@IApiAuthService private readonly apiAuthService: IApiAuthService,
+		@IMainProcessSettingsService private readonly settingsService: IMainProcessSettingsService,
+		@IMainProcessApiAuthService private readonly apiAuthService: IMainProcessApiAuthService,
 	) {
 		super();
 
@@ -26,27 +36,21 @@ export class MainProcessApiIntegration extends Disposable {
 		this.initializeApiServer();
 
 		// Listen for settings changes
-		this._register(this.settingsService.onDidChangeState(() => {
+		this._register(this.settingsService.onDidChangeSettings(() => {
 			this.handleSettingsChange();
 		}));
 	}
 
 	private async initializeApiServer() {
-		const settings = this.settingsService.state.globalSettings;
-
-		// Create API service manager
+		// Create API service manager with dynamic settings function
 		this.apiServiceManager = new ApiServiceManager(
-			() => ({
-				enabled: settings.apiEnabled,
-				port: settings.apiPort,
-				tokens: settings.apiTokens,
-				tunnelUrl: settings.apiTunnelUrl,
-			}),
+			() => this.settingsService.getApiSettings(),
 			(token: string) => this.apiAuthService.validateToken(token)
 		);
 
 		// Start if enabled
-		if (settings.apiEnabled) {
+		const settings = this.settingsService.getApiSettings();
+		if (settings.enabled) {
 			try {
 				await this.apiServiceManager.start();
 			} catch (err) {
@@ -60,11 +64,21 @@ export class MainProcessApiIntegration extends Disposable {
 			return;
 		}
 
-		// Restart server if settings changed
-		try {
-			await this.apiServiceManager.restart();
-		} catch (err) {
-			console.error('[API Integration] Failed to restart API server:', err);
+		const settings = this.settingsService.getApiSettings();
+
+		if (settings.enabled) {
+			try {
+				// Restart server to pick up new settings
+				await this.apiServiceManager.restart();
+			} catch (err) {
+				console.error('[API Integration] Failed to restart API server:', err);
+			}
+		} else {
+			try {
+				await this.apiServiceManager.stop();
+			} catch (err) {
+				console.error('[API Integration] Failed to stop API server:', err);
+			}
 		}
 	}
 
@@ -73,5 +87,9 @@ export class MainProcessApiIntegration extends Disposable {
 			this.apiServiceManager.stop();
 		}
 		super.dispose();
+	}
+
+	getApiServiceManager(): ApiServiceManager | null {
+		return this.apiServiceManager;
 	}
 }

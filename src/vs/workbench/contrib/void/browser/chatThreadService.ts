@@ -40,6 +40,7 @@ import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
+import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 
 
 // related to retrying when LLM message has error
@@ -104,318 +105,6 @@ export interface TaskPlan {
 	dependencies?: string[]
 	created_at: number
 	completed_at?: number
-}
-
-export interface AgentContext {
-	taskPlan?: TaskPlan[]
-	currentTaskId?: string
-	completionSignals: string[]
-	stuckPatterns: string[]
-}
-
-// Helper to detect if LLM has naturally completed a task or is waiting for user input
-const isTaskCompleteOrNeedsInput = (text: string, context?: {
-	hasToolCall?: boolean,
-	iterationCount?: number,
-	previousMessages?: Array<{ role: string, content?: string }>
-	agentContext?: AgentContext
-}): boolean => {
-	const trimmedText = text.trim()
-	const lowerText = trimmedText.toLowerCase()
-
-	// Early exit for empty or very short responses
-	if (trimmedText.length === 0) return false
-	if (trimmedText.length < 5 && !context?.hasToolCall) return false
-
-	// Special case: empty messages with "(empty message)" prefix
-	if (trimmedText.startsWith('(empty message)') && trimmedText.length > 15) {
-		console.log(`[chatThreadService] Empty message with content detected, treating as completion`)
-		return true
-	}
-
-	// 1. STRONG SIGNALS: Explicit completion or user input needed
-	// First, check for exclusion patterns that indicate this is NOT a completion
-	const exclusionPatterns = [
-		// Technical descriptions that aren't completion signals
-		/(should now be|should be|will be).*(functional|working|available|ready)/i,
-		/(is now|are now).*(functional|working|available|ready|accessible)/i,
-		/(application|app|script|code|program).*(should|will|is|are).*(work|function|run)/i,
-		/(desktop|window|icon|button).*(should|will|is|are).*(work|function|open|respond)/i,
-		/(error|issue|problem|bug).*(has been|was|is).*(fixed|resolved|solved)/i,
-		/(feature|functionality|capability).*(has been|was|is).*(added|implemented|enabled)/i,
-
-		// Additional patterns for technical progress updates
-		/(now|now feel|now provide|now offer).*(much more|more|better|enhanced|improved)/i,
-		/(windows|animations|transitions|effects).*(now|now feel|now provide|now offer).*(much more|more|better|enhanced|improved)/i,
-		/(enhanced|improved|better|upgraded).*(performance|functionality|experience|behavior)/i,
-		/(feel much more|feel more|are now more).*(fluid|responsive|natural|smooth)/i,
-
-		// Coding task completion descriptions
-		/(key improvements|enhancements|changes|updates).*(made|added|implemented)/i,
-		/(the|these).*(windows|animations|effects|features).*(now|now feel|now provide)/i,
-		/(added|implemented|created|built).*(proper|better|enhanced|improved).*(handling|management|support)/i,
-	]
-
-	// If any exclusion pattern matches, this is NOT a completion signal
-	if (exclusionPatterns.some(pattern => pattern.test(lowerText))) {
-		console.log(`[chatThreadService] Exclusion pattern matched, NOT treating as completion: "${trimmedText.substring(0, 100)}..."`)
-		return false
-	}
-
-	const strongCompletionSignals = [
-		// Explicit completion statements - more precise patterns
-		/(i've|we have).*(complete|completed|finished|done)(?:\.$|\!$|\s*$)/i,
-		/(that's|this is).*(complete|completed|finished|done)(?:\.|!|\?|$)/i, // Must end with punctuation or be at end
-		/(task|project|work|implementation|feature).*(is|has been).*(complete|completed|finished|done)(?:\.|!|\?|$)/i,
-		/(there you go|here you are|that should do it|that's it|all set|ready to go)(?:\.|!|\?|$)/i,
-
-		// Summary/conclusion patterns
-		/^(in summary|to summarize|in conclusion|to wrap up)/i,
-		/## (summary|conclusion|overview|recap)/i,
-		/(that covers|that addresses|that solves).*(everything|all|the)/i,
-
-		// Informative overview patterns (NEW)
-		/^(here's|here is).*(quick|brief|detailed|comprehensive).*(overview|summary|description|breakdown)/i,
-		/^(the|this).*(project|codebase|application|app).*(contains|includes|has|consists of)/i,
-		/^(what's|what is).*(in|inside).*(this|the).*(project|codebase|folder|directory)/i,
-		/^(let me|i'll|i will).*(give you|provide|show you).*(a|an).*(overview|summary|breakdown|tour)/i,
-		/^(this is|that's).*(a|an).*(overview|summary|description|breakdown).*(of|about)/i,
-		/^(the|this).*(following|below).*(is|are).*(the|a).*(key|main|important).*(parts|components|sections|files)/i,
-		/(let me know|feel free to|don't hesitate to).*(if you|would|need)/i,
-
-		// Explanatory patterns that indicate completion
-		/^(in short|in essence|simply put|to put it simply)/i,
-		/^(basically|essentially|fundamentally)/i,
-		/^(the main|key|important).*(thing|point|aspect|takeaway).*(is|are)/i,
-
-		// Direct questions to user (clear waiting for input)
-		...(() => {
-			if (trimmedText.includes('?') && trimmedText.length < 200) {
-				const userQuestionPatterns = [
-					/(would you|do you|should i|can i|are you|is this|what do|how do)/i,
-					/(any|anything|something else|more|additional)/i,
-					/(confirm|ready|sure|okay|good)/i,
-				]
-				return userQuestionPatterns.filter(pattern => pattern.test(lowerText))
-			}
-			return []
-		})(),
-
-		// Greeting/help offering patterns
-		/^(hi|hello|hey|greetings)[!,.]?\s*(how can|what can|how may)/i,
-		/how can i (help|assist) you/i,
-		/what (can|would|should) i (help|do|assist)/i,
-		/what would you like me to/i,
-		/is there anything.*i can/i,
-		/^(hi|hello|hey)[!,.]?\s*$/i,
-	]
-
-	if (strongCompletionSignals.some(pattern => pattern.test(lowerText))) {
-		// Find which pattern matched for debugging
-		const matchingPattern = strongCompletionSignals.find(pattern => pattern.test(lowerText))
-		console.log(`[chatThreadService] Strong completion signal detected: "${trimmedText.substring(0, 100)}..."`)
-		console.log(`[chatThreadService] Matching pattern: ${matchingPattern}`)
-		return true
-	}
-
-	// 2. CONTEXTUAL ANALYSIS: Look at the broader conversation context
-	if (context?.previousMessages && context.previousMessages.length > 2) {
-		const recentMessages = context.previousMessages.slice(-3)
-		const assistantMessages = recentMessages.filter(m => m.role === 'assistant')
-
-		// If assistant has been giving multiple short responses without tools, likely stuck
-		if (assistantMessages.length >= 2 && !context.hasToolCall) {
-			const allShort = assistantMessages.every(m => (m.content || '').trim().length < 100)
-			if (allShort && context.iterationCount && context.iterationCount > 3) {
-				console.log(`[chatThreadService] Multiple short responses detected, likely stuck`)
-				return true
-			}
-		}
-
-		// If the same completion pattern is repeated, stop to prevent loops
-		const lastAssistantMsg = assistantMessages[assistantMessages.length - 2]?.content || ''
-		if (lastAssistantMsg && trimmedText.length > 20) {
-			const similarity = calculateTextSimilarity(trimmedText, lastAssistantMsg.trim())
-			if (similarity > 0.8) {
-				console.log(`[chatThreadService] Repetitive response detected, stopping loop`)
-				return true
-			}
-		}
-	}
-
-	// 3. TASK-SPECIFIC PATTERNS: Code, files, and implementation work
-	const taskSpecificPatterns = [
-		// Code completion without continuation indicators
-		...(() => {
-			const codePatterns = [
-				/(the code|this code|your code).*(should now|will now|is now).*(work|function|compile|run)/i,
-				/(you can now|you should now).*(test|run|use|try)/i,
-				/(implementation|feature|function).*(is|has been).*(added|implemented|created)/i,
-				/(the|your).*(code|file|project|app).*(is|has been).*(updated|modified|changed|created)/i,
-				/(i've|we have).*(successfully).*(implemented|added|created|fixed)/i,
-				/(everything|all).*(is|has been).*(set up|configured|ready)/i,
-			]
-
-			// Only match if no continuation indicators
-			const hasContinuation = /(next|now|then|after that|following this|let me|i'll|i will)/i.test(lowerText)
-			return hasContinuation ? [] : codePatterns.filter(pattern => pattern.test(lowerText))
-		})(),
-	]
-
-	if (taskSpecificPatterns.length > 0) {
-		console.log(`[chatThreadService] Task-specific completion detected`)
-		return true
-	}
-
-	// 4. STRUCTURAL ANALYSIS: Look at sentence structure and flow
-	const sentences = trimmedText.split(/[.!?]+/).filter(s => s.trim().length > 0)
-	if (sentences.length >= 2) {
-		const lastSentence = sentences[sentences.length - 1].trim()
-		const secondLastSentence = sentences[sentences.length - 2]?.trim() || ''
-
-		// Final statement patterns without continuation
-		const finalStatementPatterns = [
-			/(you can|you should|feel free to|go ahead and)/i,
-			/(the result|the outcome|this will|this should)/i,
-			/(that's all|that's it|that should be)/i,
-			/(let me know|feel free to|don't hesitate to).*(if you|would|need)/i,
-			/(is there anything else|anything else|more|additional)/i,
-		]
-
-		const continuationIndicators = [
-			/(now|next|then|after that|following this)/i,
-			/(let me|i'll|i'll now|i will)/i,
-			/(the next step|the next thing|moving on)/i,
-		]
-
-		const hasFinalStatement = finalStatementPatterns.some(pattern => pattern.test(lastSentence))
-		const hasContinuation = continuationIndicators.some(pattern =>
-			pattern.test(lastSentence) || pattern.test(secondLastSentence)
-		)
-
-		if (hasFinalStatement && !hasContinuation) {
-			console.log(`[chatThreadService] Structural completion detected`)
-			return true
-		}
-	}
-
-	// 5. ITERATION SAFEGUARD: Stop if too many iterations without progress
-	// Check if we've had tool calls in recent messages, not just current one
-	const recentToolCalls = context?.previousMessages?.slice(-3).some(m => {
-		// Look for tool call indicators in message content
-		const content = (m as any).displayContent || (m as any).content || ''
-		return content.includes('tool_call') || content.includes('Tool call detected')
-	})
-
-	if (context?.iterationCount && context.iterationCount > 8 && !context.hasToolCall && !recentToolCalls) {
-		console.log(`[chatThreadService] Too many iterations without tool calls, stopping`)
-		return true
-	}
-
-	// 6. OFFER OF HELP: Clear signals the task is done and offering next steps
-	const offerHelpPatterns = [
-		/(let me know if you need anything else|feel free to ask if you need more)/i,
-		/(is there anything else.*i can (help|do|assist))/i,
-		/(would you like me to|do you want me to)/i,
-	]
-
-	if (offerHelpPatterns.some(pattern => pattern.test(lowerText))) {
-		console.log(`[chatThreadService] Offer of help detected, task likely complete`)
-		return true
-	}
-
-	// 7. CONFIDENCE SCORE: Calculate overall completion confidence
-	const completionScore = calculateCompletionScore(trimmedText, context)
-	if (completionScore > 0.7) {
-		console.log(`[chatThreadService] High completion confidence (${completionScore.toFixed(2)}), stopping loop`)
-		return true
-	}
-
-	return false
-}
-
-// Calculate completion confidence score (0-1)
-const calculateCompletionScore = (text: string, context?: {
-	hasToolCall?: boolean,
-	iterationCount?: number,
-	previousMessages?: Array<{ role: string, content?: string }>
-	agentContext?: AgentContext
-}): number => {
-	let score = 0
-	const lowerText = text.toLowerCase()
-
-	// Strong completion signals (+0.3 each)
-	const strongSignals = [
-		/(complete|completed|finished|done)/i,
-		/(that's it|all set|ready to go)/i,
-		/(in summary|to summarize|in conclusion)/i,
-		/(let me know if you need anything else)/i,
-	]
-	score += strongSignals.filter(pattern => pattern.test(lowerText)).length * 0.3
-
-	// Question patterns (+0.4)
-	if (text.includes('?') && text.length < 200) {
-		const questionPatterns = [
-			/(would you|do you|should i|can i)/i,
-			/(any|anything|something else|more)/i,
-		]
-		if (questionPatterns.some(pattern => pattern.test(lowerText))) {
-			score += 0.4
-		}
-	}
-
-	// Task-specific completion (+0.2 each)
-	const taskSignals = [
-		/(should now|will now|is now).*(work|function|run)/i,
-		/(you can now|you should now).*(test|run|use)/i,
-		/(successfully).*(implemented|added|created|fixed)/i,
-	]
-	score += taskSignals.filter(pattern => pattern.test(lowerText)).length * 0.2
-
-	// Contextual factors
-	if (context) {
-		// Iteration count penalty (too many iterations = likely stuck)
-		if (context.iterationCount && context.iterationCount > 8) {
-			score += 0.3
-		}
-
-		// Repetition penalty
-		if (context.previousMessages && context.previousMessages.length > 2) {
-			const recentMessages = context.previousMessages.slice(-3)
-			const assistantMessages = recentMessages.filter(m => m.role === 'assistant')
-
-			if (assistantMessages.length >= 2) {
-				const lastAssistantMsg = assistantMessages[assistantMessages.length - 2]?.content || ''
-				if (lastAssistantMsg && text.length > 20) {
-					const similarity = calculateTextSimilarity(text, lastAssistantMsg.trim())
-					if (similarity > 0.8) {
-						score += 0.4 // Strong penalty for repetition
-					}
-				}
-			}
-		}
-
-		// No tool calls for multiple iterations
-		if (!context.hasToolCall && context.iterationCount && context.iterationCount > 3) {
-			score += 0.2
-		}
-	}
-
-	// Cap at 1.0
-	return Math.min(score, 1.0)
-}
-
-// Helper function to calculate text similarity for repetition detection
-const calculateTextSimilarity = (text1: string, text2: string): number => {
-	const words1 = text1.toLowerCase().split(/\s+/).filter(w => w.length > 2)
-	const words2 = text2.toLowerCase().split(/\s+/).filter(w => w.length > 2)
-
-	if (words1.length === 0 || words2.length === 0) return 0
-
-	const intersection = words1.filter(word => words2.includes(word))
-	const union = [...new Set([...words1, ...words2])]
-
-	return intersection.length / union.length
 }
 
 const partitionReasoningContent = (fullText: string, existingReasoning?: string | null): { displayText: string, reasoningText: string } => {
@@ -560,6 +249,7 @@ export type ThreadStreamState = {
 			reasoningSoFar: string;
 			toolCallSoFar: RawToolCallObj | null;
 			_rawTextBeforeStripping?: string; // For XML tool call detection in UI
+			reactPhase?: ReActPhase | null; // Current ReAct phase for UI
 		};
 		toolInfo?: undefined;
 		interrupt: Promise<() => void>; // calling this should have no effect on state - would be too confusing. it just cancels the tool
@@ -701,7 +391,7 @@ export interface IChatThreadService {
 	clearTaskPlan(threadId: string): void;
 }
 
-export const IChatThreadService = createDecorator<IChatThreadService>('voidChatThreadService');
+export const IChatThreadService = createDecorator<IChatThreadService>('chatThreadService');
 class ChatThreadService extends Disposable implements IChatThreadService {
 	_serviceBrand: undefined;
 
@@ -1260,6 +950,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				return
 			}
 
+			// Initialize ReAct parser for this iteration
+			const reactParser = new StreamingXMLParser();
+			let currentReActPhase: ReActPhase | null = null;
+			let lastParsedLength = 0;
+
 			let shouldRetryLLM = true
 			let nAttempts = 0
 			while (shouldRetryLLM) {
@@ -1291,6 +986,23 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					onText: ({ fullText, fullReasoning, toolCall, _rawTextBeforeStripping }) => {
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
 
+						// Parse ReAct phases for enhanced UI detection
+						const textToParse = _rawTextBeforeStripping || fullText;
+						const newChunk = textToParse.slice(lastParsedLength);
+						lastParsedLength = textToParse.length;
+
+						// Parse ReAct phases and XML tool calls together
+						const reactResult = reactParser.parseReAct(newChunk);
+						if (reactResult) {
+							currentReActPhase = reactResult.phase;
+							console.log(`[chatThreadService] ReAct phase detected: ${reactResult.phase.type}`, {
+								content: reactResult.phase.content,
+								hasToolCall: !!reactResult.toolCall,
+								toolName: reactResult.toolCall?.name,
+								isComplete: reactResult.isComplete
+							});
+						}
+
 						// Detect repetition: ONLY check text content, NOT tool calls
 						// Tool calls can legitimately repeat (e.g., reading same file multiple times)
 						// Also skip if XML tool call is in progress (detected in raw text before stripping)
@@ -1318,13 +1030,21 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							lastChunks = [];
 						}
 
+						// Use tool call from ReAct parser if available, otherwise use native tool call
+						// Note: parseReAct already handles XML parsing internally, no need to call parse() separately
+						let parsedToolCall = toolCall;
+						if (!parsedToolCall && reactResult?.toolCall) {
+							parsedToolCall = reactResult.toolCall;
+						}
+
 						this._setStreamState(threadId, {
 							isRunning: 'LLM',
 							llmInfo: {
 								displayContentSoFar: parsed.displayText,
 								reasoningSoFar: parsed.reasoningText,
-								toolCallSoFar: toolCall ?? null,
+								toolCallSoFar: parsedToolCall ?? null,
 								_rawTextBeforeStripping, // For XML tool call detection in UI
+								reactPhase: currentReActPhase, // Current ReAct phase for UI
 							},
 							interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }),
 							tokenUsage, // Preserve token usage during streaming
@@ -1350,7 +1070,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					break
 				}
 
-				this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallSoFar: null }, interrupt: Promise.resolve(() => this._llmMessageService.abort(llmCancelToken)) })
+				this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallSoFar: null, reactPhase: null }, interrupt: Promise.resolve(() => this._llmMessageService.abort(llmCancelToken)) })
 				const llmRes = await messageIsDonePromise // wait for message to complete
 
 				// if something else started running in the meantime
@@ -1479,76 +1199,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				}
 				// Auto-extract tasks from any LLM response with text content
 				else if (!isEmptyResponse && info.fullText.trim().length > 0) {
-					// In agent mode, check if task is complete or needs continuation
+					// In agent mode: Pure ReAct loop - if LLM responds with text and no tool call, it's done
 					if (chatMode === 'agent') {
-
-						// Check if LLM has naturally completed the task or is waiting for user input
-						// Enhanced completion detection with context
-						const thread = this.state.allThreads[threadId]
-						const previousMessages = thread?.messages || []
-						const completionContext = {
-							hasToolCall: !!toolCall,
-							iterationCount: nMessagesSent,
-							previousMessages: previousMessages.map((m: ChatMessage) => ({
-								role: m.role,
-								content: m.role === 'assistant' ? m.displayContent : (m as any).displayContent || (m as any).content
-							}))
-						}
-
-						// Only check for completion if there's NO tool call
-						// If LLM called a tool, it's actively working and should continue
-						if (!toolCall && isTaskCompleteOrNeedsInput(info.fullText, completionContext)) {
-							console.log(`[chatThreadService] Agent mode: Task appears complete or user input needed, stopping loop naturally`)
-							// Don't continue - let the task end naturally or wait for user input
-						} else {
-							// If there's a tool call, continue the loop to execute it
-							// If no tool call and task not complete, continue to prompt for action
-							if (toolCall) {
-								console.log(`[chatThreadService] Agent mode: LLM called tool, continuing loop to execute`)
-							} else {
-								// Additional safeguard: don't auto-continue on very short responses (likely incomplete or errors)
-								const textLength = info.fullText.trim().length
-								if (textLength < 10) {
-									console.warn(`[chatThreadService] Agent mode: LLM response too short (${textLength} chars), treating as potential error`)
-									// Treat very short responses as potential errors for retry
-									if (nAttempts < CHAT_RETRIES) {
-										shouldRetryLLM = true
-										console.log(`[chatThreadService] Short response, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
-										// Show retry message briefly
-										this._setStreamState(threadId, {
-											isRunning: undefined,
-											error: { message: `Response too short, retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
-										})
-										await timeout(RETRY_DELAY)
-										if (interruptedWhenIdle) {
-											this._setStreamState(threadId, undefined)
-											return
-										}
-										else {
-											// Clear error before retry
-											this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
-											continue // retry
-										}
-									}
-									// Too many retries for short response
-									else {
-										console.error(`[chatThreadService] Agent mode: Too many short responses, stopping loop`)
-										this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
-										this._setStreamState(threadId, {
-											isRunning: undefined,
-											error: {
-												message: `LLM consistently returned very short responses. The task may be unclear or the model may be having issues.`,
-												fullError: null
-											}
-										})
-										break
-									}
-								} else {
-									console.log(`[chatThreadService] Agent mode: LLM responded with text but no tool call, task appears incomplete, continuing loop (message ${nMessagesSent}/${MAX_AGENT_ITERATIONS})`)
-								}
-							}
-							shouldSendAnotherMessage = true
-						}
+						// ReAct principle: LLM either calls a tool (action) or responds with text (done)
+						// No regex pattern matching needed - the LLM's behavior is the signal
+						console.log(`[chatThreadService] Agent mode: LLM responded with text, no tool call - task complete`)
+						shouldSendAnotherMessage = false
+						break
 					}
 
 				} // end while (attempts)

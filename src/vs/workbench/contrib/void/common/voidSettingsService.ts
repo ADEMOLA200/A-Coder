@@ -234,7 +234,7 @@ const defaultState = () => {
 
 
 export const IVoidSettingsService = createDecorator<IVoidSettingsService>('VoidSettingsService');
-class VoidSettingsService extends Disposable implements IVoidSettingsService {
+export class VoidSettingsService extends Disposable implements IVoidSettingsService {
 	_serviceBrand: undefined;
 
 	private readonly _onDidChangeState = new Emitter<void>();

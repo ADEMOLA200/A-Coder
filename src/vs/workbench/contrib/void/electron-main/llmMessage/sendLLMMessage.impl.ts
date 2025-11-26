@@ -383,14 +383,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		manuallyParseReasoning
 	})
 
-	// Use manual parsing only if we have tags but no direct reasoning field
-	if (manuallyParseReasoning && openSourceThinkTags && !nameOfReasoningFieldInDelta) {
+	// Use manual parsing if we have tags AND needsManualParse is true
+	// This can work alongside nameOfReasoningFieldInDelta (e.g., Ollama supports both)
+	if (manuallyParseReasoning && openSourceThinkTags) {
 		console.log(`[sendLLMMessage] ✅ Enabling reasoning extraction with tags:`, openSourceThinkTags)
 		const { newOnText, newOnFinalMessage } = extractReasoningWrapper(onText, onFinalMessage, openSourceThinkTags)
 		onText = newOnText
 		onFinalMessage = newOnFinalMessage
-	} else if (nameOfReasoningFieldInDelta) {
-		console.log(`[sendLLMMessage] ✅ Enabling direct reasoning extraction from field:`, nameOfReasoningFieldInDelta)
+	}
+	if (nameOfReasoningFieldInDelta) {
+		console.log(`[sendLLMMessage] ✅ Also checking direct reasoning field:`, nameOfReasoningFieldInDelta)
 	}
 
 	const toText = (content: unknown): string => {
@@ -421,19 +423,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			return
 		}
 
-		// Skip if we already have a tool call (only process the first one)
-		if (toolName) {
-			return
-		}
-
 		const fn = toolCall.function ?? {}
-		if (fn.name) {
-			// Only process the first tool call to avoid concatenation issues
+
+		// Set tool name if we don't have one yet
+		if (fn.name && !toolName) {
 			toolName = fn.name
 			console.log(`[sendLLMMessage] Tool call detected: ${toolName}`)
 		}
+
+		// Process arguments (can come in subsequent chunks after tool name)
 		if (typeof fn.arguments === 'string') {
-			// Only process arguments if we haven't set a tool name yet (first tool call)
 			if (isFinal) {
 				toolParamsStr = fn.arguments
 				console.log(`[sendLLMMessage] Tool arguments (final): ${toolParamsStr.substring(0, 200)}${toolParamsStr.length > 200 ? '...' : ''}`)
@@ -443,7 +442,6 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 		} else if (fn.arguments && typeof fn.arguments === 'object') {
 			// Some models might return arguments as object instead of string
-			// Only process if we haven't set a tool name yet (first tool call)
 			console.log(`[sendLLMMessage] ⚠️ Tool arguments received as object, converting to JSON string`)
 			const argsStr = JSON.stringify(fn.arguments)
 			if (isFinal) {
@@ -452,8 +450,9 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				toolParamsStr += argsStr
 			}
 		}
-		if (toolCall.id) {
-			// Only set the first tool ID
+
+		// Set tool ID if provided
+		if (toolCall.id && !toolId) {
 			toolId = toolCall.id
 		}
 	}
@@ -517,8 +516,18 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 
 				if (nameOfReasoningFieldInDelta) {
-					// @ts-ignore reading provider-specific reasoning delta
-					const reasoningDelta = (delta?.[nameOfReasoningFieldInDelta] || '') + ''
+					// Check configured field first, then fallback to common alternatives
+					// Different providers use different field names for reasoning content
+					const deltaAny = delta as any
+					const reasoningDelta = (
+						deltaAny?.[nameOfReasoningFieldInDelta] ||
+						deltaAny?.reasoning ||  // Ollama Cloud uses 'reasoning' for some models
+						deltaAny?.thinking ||   // Ollama uses 'thinking' for local models
+						''
+					) + ''
+					if (reasoningDelta && chunkCount <= 5) {
+						console.log(`[sendLLMMessage] Chunk ${chunkCount} reasoning delta:`, reasoningDelta.substring(0, 100))
+					}
 					fullReasoningSoFar += reasoningDelta
 				}
 
@@ -982,6 +991,22 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 			return
 		} catch (error) {
 			console.warn(`[sendOllamaChatWithFallback] ⚠️ OpenAI-compatible endpoint failed:`, error)
+
+			// Check if it's a transient server error (5xx) that might be worth retrying
+			const isTransientServerError = error?.status >= 500 && error?.status < 600
+			if (isTransientServerError) {
+				console.log(`[sendOllamaChatWithFallback] 🔄 Detected transient server error (${error.status}), retrying once...`)
+				try {
+					// Wait a moment before retry
+					await new Promise(resolve => setTimeout(resolve, 1000))
+					await _sendOpenAICompatibleChat(params)
+					console.log(`[sendOllamaChatWithFallback] ✅ Retry succeeded`)
+					return
+				} catch (retryError) {
+					console.warn(`[sendOllamaChatWithFallback] ⚠️ Retry also failed:`, retryError)
+				}
+			}
+
 			console.log(`[sendOllamaChatWithFallback] 🔄 Retrying without native tool format`)
 		}
 	}
@@ -994,8 +1019,23 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 			await _sendOpenAICompatibleChat(params)
 			console.log(`[sendOllamaChatWithFallback] ✅ Fallback succeeded`)
 		} catch (error) {
+			// Check if it's a transient server error that might be worth retrying
+			const isTransientServerError = error?.status >= 500 && error?.status < 600
+			if (isTransientServerError) {
+				console.log(`[sendOllamaChatWithFallback] 🔄 Detected transient server error in fallback (${error.status}), retrying once...`)
+				try {
+					// Wait a moment before retry
+					await new Promise(resolve => setTimeout(resolve, 2000))
+					await _sendOpenAICompatibleChat(params)
+					console.log(`[sendOllamaChatWithFallback] ✅ Fallback retry succeeded`)
+					return
+				} catch (retryError) {
+					console.warn(`[sendOllamaChatWithFallback] ⚠️ Fallback retry also failed:`, retryError)
+				}
+			}
+
 			console.error(`[sendOllamaChatWithFallback] ❌ Both attempts failed:`, error)
-			params.onError({ message: `Ollama tool calling failed: ${error}`, fullError: error })
+			params.onError({ message: `Model produced a result A-Coder couldn't apply`, fullError: error })
 		}
 	} else {
 		// No tools needed, use standard OpenAI-compatible chat

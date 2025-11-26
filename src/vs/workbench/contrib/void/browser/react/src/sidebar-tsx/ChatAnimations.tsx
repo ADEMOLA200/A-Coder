@@ -227,6 +227,119 @@ export const TypingIndicator = ({
 };
 
 /**
+ * ReAct phase indicator for showing Thought/Action/Observation phases
+ */
+export const ReActPhaseIndicator = ({
+	phase,
+	phaseContent
+}: {
+	phase?: 'thought' | 'action' | 'observation' | null;
+	phaseContent?: string;
+}) => {
+	if (!phase) return null;
+
+	const phaseConfig = {
+		thought: {
+			icon: '🧠',
+			color: 'var(--vscode-charts-purple, #652d90)',
+			bgColor: 'rgba(101, 45, 144, 0.1)',
+			text: 'Thinking',
+			description: 'A-Coder is reasoning about the next steps'
+		},
+		action: {
+			icon: '⚡',
+			color: 'var(--vscode-void-accent, #007acc)',
+			bgColor: 'rgba(0, 122, 204, 0.1)',
+			text: 'Taking Action',
+			description: 'A-Coder is executing tools to complete the task'
+		},
+		observation: {
+			icon: '👁️',
+			color: 'var(--vscode-charts-green, #388a34)',
+			bgColor: 'rgba(56, 138, 52, 0.1)',
+			text: 'Observing Results',
+			description: 'A-Coder is analyzing the tool execution results'
+		}
+	};
+
+	const config = phaseConfig[phase];
+
+	return (
+		<div
+			className="flex items-center gap-2 px-3 py-2 rounded-md border transition-all duration-300"
+			style={{
+				borderColor: config.color,
+				backgroundColor: config.bgColor,
+			}}
+		>
+			{/* Phase icon */}
+			<span className="text-lg">{config.icon}</span>
+
+			{/* Phase info */}
+			<div className="flex-1">
+				<div className="flex items-center gap-2">
+					<span
+						className="text-sm font-medium"
+						style={{ color: config.color }}
+					>
+						{config.text}
+					</span>
+					{/* Thinking dots for thought phase */}
+					{phase === 'thought' && (
+						<div className="flex gap-1">
+							<div
+								className="w-1 h-1 rounded-full animate-pulse"
+								style={{
+									backgroundColor: config.color,
+									animationDelay: '0s'
+								}}
+							/>
+							<div
+								className="w-1 h-1 rounded-full animate-pulse"
+								style={{
+									backgroundColor: config.color,
+									animationDelay: '0.2s'
+								}}
+							/>
+							<div
+								className="w-1 h-1 rounded-full animate-pulse"
+								style={{
+									backgroundColor: config.color,
+									animationDelay: '0.4s'
+								}}
+							/>
+						</div>
+					)}
+					{/* Spinner for action phase */}
+					{phase === 'action' && (
+						<div
+							className="w-3 h-3 border border-current rounded-full"
+							style={{
+								borderColor: config.color,
+								borderTopColor: 'transparent',
+								animation: 'spin 0.8s linear infinite',
+							}}
+						/>
+					)}
+				</div>
+
+				{/* Phase description */}
+				<div className="text-xs text-void-fg-4 mt-0.5">
+					{config.description}
+				</div>
+
+				{/* Phase content if available */}
+				{phaseContent && (
+					<div className="text-xs text-void-fg-3 mt-1 italic truncate" title={phaseContent}>
+						{phaseContent}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+};
+
+/**
  * Enhanced tool loading indicator with progress states and smooth transitions
  */
 export const ToolLoadingIndicator = ({
@@ -343,7 +456,7 @@ export const ToolLoadingIndicator = ({
 					</div>
 				) : toolName ? (
 					<span className="text-void-fg-3 text-sm">
-						{toolName.replace(/_/g, ' ')}
+						{toolName === 'detecting...' ? 'Detecting tool...' : toolName.replace(/_/g, ' ')}
 					</span>
 				) : null}
 

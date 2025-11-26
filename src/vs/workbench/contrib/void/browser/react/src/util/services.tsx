@@ -55,6 +55,7 @@ import { IMCPService } from '../../../../common/mcpService.js';
 import { IMCPModalService } from '../../../mcpModalService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
+import { ILiteModeService } from '../../../liteMode.contribution.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -229,6 +230,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IExtensionTransferService: accessor.get(IExtensionTransferService),
 		IMCPService: accessor.get(IMCPService),
 		IMCPModalService: accessor.get(IMCPModalService),
+		ILiteModeService: accessor.get(ILiteModeService),
 
 		IStorageService: accessor.get(IStorageService),
 

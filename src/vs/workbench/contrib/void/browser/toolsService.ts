@@ -1,5 +1,6 @@
 import { CancellationToken } from '../../../../base/common/cancellation.js'
 import { URI } from '../../../../base/common/uri.js'
+import { VSBuffer } from '../../../../base/common/buffer.js'
 import { IFileService } from '../../../../platform/files/common/files.js'
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js'
 import { createDecorator, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js'
@@ -23,6 +24,8 @@ import { generateUuid } from '../../../../base/common/uuid.js'
 import { IMorphService } from './morphService.js'
 import { ToonService } from '../common/toonService.js'
 import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
+import { ImplementationPlanningService, ImplementationPlan, StepStatus as ImplStepStatus } from '../common/implementationPlanningService.js'
+import { LiteModeService } from './liteModeService.js'
 
 
 // tool use for AI
@@ -129,6 +132,17 @@ const checkIfIsFolder = (uriStr: string) => {
 	return false
 }
 
+// Helper functions for stringOfResult
+const nextPageStr = (hasNextPage: boolean) => hasNextPage ? '\n\n(more on next page...)' : ''
+
+const stringifyLintErrors = (lintErrors: LintErrorItem[]) => {
+	return lintErrors
+		.map((e, i) => `Error ${i + 1}:\nLines Affected: ${e.startLineNumber}-${e.endLineNumber}\nError message:${e.message}`)
+		.join('\n\n')
+		.substring(0, MAX_FILE_CHARS_PAGE)
+}
+
+
 export interface IToolsService {
 	readonly _serviceBrand: undefined;
 	validateParams: ValidateBuiltinParams;
@@ -149,6 +163,9 @@ export class ToolsService implements IToolsService {
 
 	private readonly toonService: ToonService;
 	private readonly planningService: PlanningService;
+	private readonly implementationPlanningService: ImplementationPlanningService;
+	private readonly _fileService: IFileService;
+	private readonly _instantiationService: IInstantiationService;
 
 	constructor(
 		@IFileService fileService: IFileService,
@@ -168,6 +185,9 @@ export class ToolsService implements IToolsService {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
 		this.toonService = new ToonService();
 		this.planningService = new PlanningService();
+		this.implementationPlanningService = new ImplementationPlanningService();
+		this._fileService = fileService;
+		this._instantiationService = instantiationService;
 
 		this.validateParams = {
 			read_file: (params: RawToolParamsObj) => {
@@ -403,6 +423,111 @@ export class ToolsService implements IToolsService {
 				});
 
 				return { tasks };
+			},
+
+			update_walkthrough: (params: RawToolParamsObj) => {
+				const { content: contentUnknown, mode: modeUnknown, title: titleUnknown, include_plan_status: includePlanStatusUnknown } = params;
+				const content = validateStr('content', contentUnknown);
+				const mode = validateStr('mode', modeUnknown) as 'create' | 'append' | 'replace';
+				const title = titleUnknown !== undefined && titleUnknown !== null ? validateStr('title', titleUnknown) : undefined;
+				const includePlanStatus = validateBoolean(includePlanStatusUnknown, { default: false });
+
+				// Validate mode
+				const validModes = ['create', 'append', 'replace'];
+				if (!validModes.includes(mode)) {
+					throw new Error(`Invalid mode: "${mode}". Must be one of: ${validModes.join(', ')}`);
+				}
+
+				return { content, mode, title, includePlanStatus };
+			},
+
+			open_walkthrough_preview: (params: RawToolParamsObj) => {
+				const { file_path: filePathUnknown } = params;
+				const filePath = validateStr('file_path', filePathUnknown);
+				return { file_path: filePath };
+			},
+
+			// --- Implementation Planning tools ---
+
+			create_implementation_plan: (params: RawToolParamsObj) => {
+				const { goal: goalUnknown, steps: stepsUnknown } = params;
+				const goal = validateStr('goal', goalUnknown);
+
+				// Validate steps array - handle both array and JSON string
+				let stepsParsed: any;
+				if (typeof stepsUnknown === 'string') {
+					try {
+						stepsParsed = JSON.parse(stepsUnknown);
+					} catch (e) {
+						throw new Error(`Invalid LLM output: steps parameter is a string but not valid JSON: ${stepsUnknown}`);
+					}
+				} else {
+					stepsParsed = stepsUnknown;
+				}
+
+				if (!Array.isArray(stepsParsed)) {
+					throw new Error(`Invalid LLM output: steps must be an array of step objects. Received: ${typeof stepsParsed}`);
+				}
+
+				const steps = stepsParsed.map((step: any, idx: number) => {
+					if (typeof step !== 'object' || step === null) {
+						throw new Error(`Invalid LLM output: step at index ${idx} must be an object`);
+					}
+					const id = validateStr('step.id', step.id);
+					const title = validateStr('step.title', step.title);
+					const description = validateStr('step.description', step.description);
+
+					// Validate complexity
+					const validComplexities = ['simple', 'medium', 'complex'];
+					const complexity = validateStr('step.complexity', step.complexity);
+					if (!validComplexities.includes(complexity)) {
+						throw new Error(`Invalid complexity at step ${idx}: "${complexity}". Must be one of: ${validComplexities.join(', ')}`);
+					}
+
+					// Validate files array
+					const files = Array.isArray(step.files) ? step.files.map((file: any) => validateStr('step.file', file)) : [];
+
+					// Validate dependencies
+					const dependencies = Array.isArray(step.dependencies) ? step.dependencies.map((dep: any) => validateStr('step.dependency', dep)) : [];
+
+					// Optional estimated_time - convert null to undefined for optional parameter
+					const estimated_time: number | undefined = step.estimated_time !== undefined && step.estimated_time !== null
+						? (typeof step.estimated_time === 'number' ? step.estimated_time : Number.parseInt(step.estimated_time + ''))
+						: undefined;
+
+					return { id, title, description, complexity: complexity as 'simple' | 'medium' | 'complex', files, dependencies, estimated_time };
+				});
+
+				return { goal, steps };
+			},
+
+			preview_implementation_plan: (params: RawToolParamsObj) => {
+				return {};
+			},
+
+			execute_implementation_plan: (params: RawToolParamsObj) => {
+				const { step_id: stepIdUnknown } = params;
+				const step_id = stepIdUnknown !== undefined && stepIdUnknown !== null ? validateStr('step_id', stepIdUnknown) : undefined;
+				return { step_id };
+			},
+
+			update_implementation_step: (params: RawToolParamsObj) => {
+				const { step_id: stepIdUnknown, status: statusUnknown, notes: notesUnknown } = params;
+				const step_id = validateStr('step_id', stepIdUnknown);
+				const status = validateStr('status', statusUnknown);
+				const notes = validateOptionalStr('notes', notesUnknown);
+
+				// Validate status is one of the allowed values
+				const validStatuses: ImplStepStatus[] = ['pending', 'in_progress', 'complete', 'failed', 'skipped'];
+				if (!validStatuses.includes(status as ImplStepStatus)) {
+					throw new Error(`Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`);
+				}
+
+				return { step_id, status, notes };
+			},
+
+			get_implementation_status: (params: RawToolParamsObj) => {
+				return {};
 			},
 
 		}
@@ -704,16 +829,179 @@ export class ToolsService implements IToolsService {
 				const summary = this.planningService.formatPlanStatus(plan);
 				return { result: { summary } };
 			},
-		}
 
+			update_walkthrough: async ({ content, mode, title, includePlanStatus }) => {
+				// Get workspace root
+				const workspaceRoot = workspaceContextService.getWorkspace().folders[0]?.uri
+				if (!workspaceRoot) {
+					throw new Error('No workspace folder found. Please open a folder in VS Code to use the walkthrough feature.')
+				}
 
-		const nextPageStr = (hasNextPage: boolean) => hasNextPage ? '\n\n(more on next page...)' : ''
+				// Construct file URI
+				const walkthroughUri = workspaceRoot.with({ path: `${workspaceRoot.path}/walkthrough.md` })
 
-		const stringifyLintErrors = (lintErrors: LintErrorItem[]) => {
-			return lintErrors
-				.map((e, i) => `Error ${i + 1}:\nLines Affected: ${e.startLineNumber}-${e.endLineNumber}\nError message:${e.message}`)
-				.join('\n\n')
-				.substring(0, MAX_FILE_CHARS_PAGE)
+				// Handle different modes
+				let finalContent = content
+				let action: 'created' | 'updated' | 'appended'
+
+				// Check if file exists
+				let existingContent = ''
+				try {
+					const existingFile = await fileService.readFile(walkthroughUri)
+					existingContent = existingFile.value.toString()
+				} catch (error) {
+					// File doesn't exist, that's ok for create mode
+				}
+
+				if (mode === 'append') {
+					if (existingContent.length > 0) {
+						finalContent = existingContent + '\n\n' + content
+					} else {
+						finalContent = content
+					}
+					action = existingContent.length > 0 ? 'appended' : 'created'
+				} else if (mode === 'replace') {
+					finalContent = content
+					action = existingContent.length > 0 ? 'updated' : 'created'
+				} else { // create
+					if (existingContent.length > 0) {
+						throw new Error('walkthrough.md already exists. Use mode="append" to add content or mode="replace" to overwrite.')
+					}
+					// Only add title heading if content doesn't already start with a heading
+					if (title && !content.trimStart().startsWith('#')) {
+						finalContent = `# ${title}\n\n${content}`
+					}
+					action = 'created'
+				}
+
+				// Include plan status if requested
+				if (includePlanStatus) {
+					const plan = this.planningService.getPlanStatus()
+					if (plan) {
+						const planSection = this.planningService.formatPlanStatus(plan)
+						finalContent = finalContent + '\n\n## Current Plan Status\n' + planSection
+					}
+				}
+
+				// Write file
+				await fileService.writeFile(walkthroughUri, VSBuffer.fromString(finalContent))
+
+				// Return preview (first 500 chars)
+				const preview = finalContent.substring(0, 500) + (finalContent.length > 500 ? '...' : '')
+
+				return {
+					result: {
+						success: true,
+						filePath: walkthroughUri.fsPath,
+						action,
+						preview
+					}
+				}
+			},
+
+			open_walkthrough_preview: async ({ file_path: filePath }) => {
+				// Validate the file path
+				if (!filePath || typeof filePath !== 'string') {
+					throw new Error('Invalid file path provided for walkthrough preview');
+				}
+
+				try {
+					// Get the Lite Mode service
+					const liteModeService = this._instantiationService.createInstance(LiteModeService);
+
+					// Read the file content to provide as preview
+					const fileContent = await this._fileService.readFile(URI.file(filePath));
+					const preview = fileContent.value.toString();
+
+					// Open the walkthrough preview
+					await liteModeService.openWalkthroughPreview(filePath, preview);
+
+					return {
+						result: {
+							success: true,
+							message: `Walkthrough preview opened successfully for: ${filePath}`
+						}
+					};
+				} catch (error) {
+					throw new Error(`Failed to open walkthrough preview: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+
+			// --- Implementation Planning tools ---
+
+			create_implementation_plan: async ({ goal, steps }) => {
+				const plan = this.implementationPlanningService.createImplementationPlan(goal, steps);
+				const summary = this.formatImplementationPlanSummary(plan);
+				return { result: { planId: plan.id, summary } };
+			},
+
+			preview_implementation_plan: async () => {
+				const plan = this.implementationPlanningService.getCurrentPlan();
+				if (!plan) {
+					return { result: { planId: '', goal: '', steps: [], summary: 'No active implementation plan. Create one using create_implementation_plan.' } };
+				}
+				const summary = this.formatImplementationPlanSummary(plan);
+				return { result: { planId: plan.id, goal: plan.goal, steps: plan.steps, summary } };
+			},
+
+			execute_implementation_plan: async ({ step_id }) => {
+				const plan = this.implementationPlanningService.getCurrentPlan();
+				if (!plan) {
+					throw new Error('No active implementation plan. Create one using create_implementation_plan.');
+				}
+
+				if (!plan.approved) {
+					throw new Error('Implementation plan must be approved before execution. Use preview_implementation_plan to review and approve the plan.');
+				}
+
+				// If step_id is provided, execute that specific step
+				if (step_id) {
+					const step = plan.steps.find(s => s.id === step_id);
+					if (!step) {
+						throw new Error(`Step with ID '${step_id}' not found in current plan.`);
+					}
+
+					// Mark step as in progress
+					this.implementationPlanningService.updateStepStatus(step_id, 'in_progress');
+					const updatedPlan = this.implementationPlanningService.getCurrentPlan()!;
+					const summary = this.formatImplementationPlanSummary(updatedPlan);
+
+					return { result: { stepId: step_id, status: 'in_progress', summary } };
+				} else {
+					// Execute next available step
+					const nextStep = this.implementationPlanningService.getNextExecutableStep();
+					if (!nextStep) {
+						throw new Error('No executable steps found. All steps are either complete, in progress, or have unmet dependencies.');
+					}
+
+					// Mark step as in progress
+					this.implementationPlanningService.updateStepStatus(nextStep.id, 'in_progress');
+					const updatedPlan = this.implementationPlanningService.getCurrentPlan()!;
+					const summary = this.formatImplementationPlanSummary(updatedPlan);
+
+					return { result: { stepId: nextStep.id, status: 'in_progress', summary } };
+				}
+			},
+
+			update_implementation_step: async ({ step_id, status, notes }) => {
+				const step = this.implementationPlanningService.updateStepStatus(step_id, status as ImplStepStatus, notes ?? undefined);
+				if (!step) {
+					throw new Error(`Failed to update step with ID "${step_id}"`);
+				}
+				const plan = this.implementationPlanningService.getCurrentPlan();
+				const summary = plan ? this.formatImplementationPlanSummary(plan) : 'No active plan';
+				return { result: { stepId: step.id, newStatus: step.status, summary } };
+			},
+
+			get_implementation_status: async () => {
+				const plan = this.implementationPlanningService.getCurrentPlan();
+				if (!plan) {
+					return { result: { planExists: false, summary: null } };
+				}
+				const summary = this.formatImplementationPlanSummary(plan);
+				return { result: { planExists: true, summary } };
+			},
+
 		}
 
 		// given to the LLM after the call for successful tool calls
@@ -863,10 +1151,145 @@ export class ToolsService implements IToolsService {
 			add_tasks_to_plan: (params, result) => {
 				return `✅ Tasks added to plan!\n\n${result.summary}`;
 			},
+
+			update_walkthrough: (params, result) => {
+				const actionEmoji = result.action === 'created' ? '📝' : result.action === 'updated' ? '✏️' : '➕'
+				const actionText = result.action === 'created' ? 'created' : result.action === 'updated' ? 'updated' : 'appended to'
+				return `${actionEmoji} Walkthrough ${actionText} successfully!\n\n📁 File: ${result.filePath}\n\n📄 Preview:\n${result.preview}`;
+			},
+
+			open_walkthrough_preview: (params, result) => {
+				if (result.success) {
+					return `👀 Walkthrough preview opened!\n\n${result.message}`;
+				} else {
+					return `❌ Failed to open walkthrough preview: ${result.message}`;
+				}
+			},
+
+			// --- Implementation Planning tools ---
+
+			create_implementation_plan: (params, result) => {
+				return `📋 Implementation plan created!\n\nPlan ID: ${result.planId}\n\n${result.summary}\n\n💡 Next: Use preview_implementation_plan to review the plan before execution.`;
+			},
+
+			preview_implementation_plan: (params, result) => {
+				if (!result.planId) {
+					return `❌ No active implementation plan to preview.\n\n💡 Create a plan first using create_implementation_plan.`;
+				}
+				return `📋 Implementation Plan Preview\n\n${result.summary}\n\n💡 To approve this plan for execution, use execute_implementation_plan.`;
+			},
+
+			execute_implementation_plan: (params, result) => {
+				const statusEmoji = result.status === 'in_progress' ? '🔄' : result.status === 'complete' ? '✅' : '⏳';
+				return `${statusEmoji} Step execution started!\n\nStep ID: ${result.stepId}\nStatus: ${result.status}\n\n${result.summary}`;
+			},
+
+			update_implementation_step: (params, result) => {
+				const statusEmoji = result.newStatus === 'complete' ? '✅' : result.newStatus === 'in_progress' ? '🔄' : result.newStatus === 'failed' ? '❌' : '⏭️';
+				return `${statusEmoji} Step updated!\n\nStep ID: ${result.stepId}\nNew Status: ${result.newStatus}\n\n${result.summary}`;
+			},
+
+			get_implementation_status: (params, result) => {
+				if (!result.planExists) {
+					return `❌ No active implementation plan.\n\n💡 Create a plan first using create_implementation_plan.`;
+				}
+				return `📊 Implementation Status\n\n${result.summary}`;
+			},
+		}
+	}
+
+	// Helper method to format implementation plan summary
+	private formatImplementationPlanSummary(plan: ImplementationPlan): string {
+		const { steps } = plan;
+		const completed = steps.filter(s => s.status === 'complete').length;
+		const total = steps.length;
+		const progress = Math.round((completed / total) * 100);
+
+		let output = `📋 Implementation Plan: \"${plan.goal}\"\n`;
+		output += `Progress: ${completed}/${total} steps (${progress}%)\n\n`;
+
+		// Group steps by status
+		const stepsByStatus = this.implementationPlanningService.getStepsByStatus();
+
+		// Show in-progress steps first
+		if (stepsByStatus.in_progress.length > 0) {
+			output += `### 🔄 In Progress\n`;
+			for (const step of stepsByStatus.in_progress) {
+				const complexity = this.getComplexityEmoji(step.complexity);
+				const files = step.files.length > 0 ? ` (${step.files.length} files)` : '';
+				output += `- [${step.id}] ${step.title} ${complexity}${files}\n`;
+				if (step.notes) {
+					output += `  Notes: ${step.notes}\n`;
+				}
+			}
+			output += '\n';
 		}
 
+		// Then pending steps
+		if (stepsByStatus.pending.length > 0) {
+			output += `### ⏳ Pending\n`;
+			for (const step of stepsByStatus.pending) {
+				const complexity = this.getComplexityEmoji(step.complexity);
+				const deps = step.dependencies.length > 0 ? ` (depends on: ${step.dependencies.join(', ')})` : '';
+				const files = step.files.length > 0 ? ` (${step.files.length} files)` : '';
+				const time = step.estimated_time ? ` (~${step.estimated_time}min)` : '';
+				output += `- [${step.id}] ${step.title} ${complexity}${files}${time}${deps}\n`;
+				output += `  ${step.description}\n`;
+			}
+			output += '\n';
+		}
 
+		// Then completed steps (collapsed)
+		if (stepsByStatus.complete.length > 0) {
+			output += `### ✅ Complete (${stepsByStatus.complete.length})\n`;
+			for (const step of stepsByStatus.complete) {
+				const complexity = this.getComplexityEmoji(step.complexity);
+				output += `- [${step.id}] ${step.title} ${complexity}\n`;
+				if (step.notes) {
+					output += `  Notes: ${step.notes}\n`;
+				}
+			}
+			output += '\n';
+		}
 
+		// Show failed steps
+		if (stepsByStatus.failed.length > 0) {
+			output += `### ❌ Failed\n`;
+			for (const step of stepsByStatus.failed) {
+				const complexity = this.getComplexityEmoji(step.complexity);
+				output += `- [${step.id}] ${step.title} ${complexity}\n`;
+				if (step.notes) {
+					output += `  Error: ${step.notes}\n`;
+				}
+			}
+			output += '\n';
+		}
+
+		// Show skipped steps
+		if (stepsByStatus.skipped.length > 0) {
+			output += `### ⏭️ Skipped\n`;
+			for (const step of stepsByStatus.skipped) {
+				const complexity = this.getComplexityEmoji(step.complexity);
+				output += `- [${step.id}] ${step.title} ${complexity}\n`;
+				if (step.notes) {
+					output += `  Reason: ${step.notes}\n`;
+				}
+			}
+		}
+
+		// Show approval status
+		output += `\n${plan.approved ? '✅ Plan approved for execution' : '⏸️ Plan pending approval'}`;
+
+		return output;
+	}
+
+	private getComplexityEmoji(complexity: 'simple' | 'medium' | 'complex'): string {
+		switch (complexity) {
+			case 'simple': return '🟢';
+			case 'medium': return '🟡';
+			case 'complex': return '🔴';
+			default: return '⚪';
+		}
 	}
 
 
@@ -949,12 +1372,15 @@ export class ToolsService implements IToolsService {
 		}
 	}
 
-
 	/**
 	 * Get the planning service for UI access
 	 */
 	public getPlanningService(): PlanningService {
 		return this.planningService;
+	}
+
+	public getImplementationPlanningService(): ImplementationPlanningService {
+		return this.implementationPlanningService;
 	}
 }
 

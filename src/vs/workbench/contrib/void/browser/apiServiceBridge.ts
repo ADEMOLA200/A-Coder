@@ -10,12 +10,28 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { URI } from '../../../../base/common/uri.js';
+import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
+
+// console.log('[Void] Loading apiServiceBridge.ts');
+
+export const IApiServiceBridge = createDecorator<IApiServiceBridge>('apiServiceBridge');
+
+export interface IApiServiceBridge {
+	readonly _serviceBrand: undefined;
+	handleApiCall(method: string, params: any): Promise<any>;
+}
 
 /**
  * API Service Bridge (Renderer Process)
  * Handles API requests from the main process and forwards them to actual services
  */
-export class ApiServiceBridge extends Disposable {
+export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
+
+	declare readonly _serviceBrand: undefined;
 
 	constructor(
 		@IChatThreadService private readonly chatThreadService: IChatThreadService,
@@ -23,8 +39,11 @@ export class ApiServiceBridge extends Disposable {
 		@IVoidSettingsService private readonly settingsService: IVoidSettingsService,
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+		@IEditorService private readonly editorService: IEditorService,
 	) {
 		super();
+		this.initializeApiServer();
 	}
 
 	/**
@@ -64,6 +83,9 @@ export class ApiServiceBridge extends Disposable {
 			case 'getFileTree':
 				return this.getFileTree();
 
+			case 'getFolderContents':
+				return this.getFolderContents(params.path);
+
 			case 'readFile':
 				return this.readFile(params.path);
 
@@ -93,8 +115,106 @@ export class ApiServiceBridge extends Disposable {
 			case 'getModels':
 				return this.getModels();
 
+			case 'getCurrentModel':
+				return this.getCurrentModel();
+
+			case 'setCurrentModel':
+				return this.setCurrentModel(params.providerName, params.modelName);
+
+			case 'getChatMode':
+				return this.getChatMode();
+
+			case 'setChatMode':
+				return this.setChatMode(params.mode);
+
 			default:
 				throw new Error(`Unknown API method: ${method}`);
+		}
+	}
+
+	/**
+	 * Initialize API server and set up IPC communication
+	 */
+	private async initializeApiServer() {
+		// console.log('[ApiServiceBridge] Initializing...');
+		// Get API channel from main process
+		const apiChannel = this.mainProcessService.getChannel('void-channel-api');
+
+		// Listen for API requests from main process using the event system
+		this._register((apiChannel.listen('onApiRequest'))(async (e: unknown) => {
+			const request = e as { method: string, params: any, requestId: string };
+			try {
+				// console.log(`[ApiServiceBridge] Handling API request: ${request.method}`);
+				const result = await this.handleApiCall(request.method, request.params);
+
+				// Send response back to main process
+				await apiChannel.call('apiResponse', { requestId: request.requestId, result });
+			} catch (error) {
+				console.error(`[ApiServiceBridge] Error handling ${request.method}:`, error);
+
+				// Send error back to main process
+				await apiChannel.call('apiResponse', {
+					requestId: request.requestId,
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+		}));
+
+		// Register with the main process
+		await apiChannel.call('registerRenderer', {});
+		// console.log('[ApiServiceBridge] Registered with main process');
+		// Check if API is enabled and start server
+		const settings = this.settingsService.state.globalSettings;
+		// console.log('[ApiServiceBridge] Current settings:', JSON.stringify(settings));
+
+		// Send initial settings to main process
+		await this.updateMainProcessSettings(settings);
+
+		if (settings.apiEnabled) {
+			// console.log('[ApiServiceBridge] API enabled, sending start command...');
+			await apiChannel.call('startApiServer', {}).catch(err => {
+				console.error('[API Bridge] Failed to start API server:', err);
+			});
+		} else {
+			// console.log('[ApiServiceBridge] API disabled by default');
+		}
+
+		// Listen for settings changes
+		this._register(this.settingsService.onDidChangeState(() => {
+			const newSettings = this.settingsService.state.globalSettings;
+			// console.log('[ApiServiceBridge] Settings changed:', newSettings.apiEnabled);
+
+			// Update main process settings first
+			this.updateMainProcessSettings(newSettings);
+
+			if (newSettings.apiEnabled) {
+				// console.log('[ApiServiceBridge] Starting API server...');
+				apiChannel.call('startApiServer', {}).catch(err => {
+					console.error('[API Bridge] Failed to start API server:', err);
+				});
+			} else {
+				// console.log('[ApiServiceBridge] Stopping API server...');
+				apiChannel.call('stopApiServer', {}).catch(err => {
+					console.error('[API Bridge] Failed to stop API server:', err);
+				});
+			}
+		}));
+	}
+
+	/**
+	 * Update main process settings via IPC
+	 */
+	private async updateMainProcessSettings(settings: any) {
+		try {
+			const settingsChannel = this.mainProcessService.getChannel('void-channel-settings');
+			await settingsChannel.call('updateApiSettings', {
+				enabled: settings.apiEnabled,
+				port: settings.apiPort,
+				tokens: settings.apiTokens,
+				tunnelUrl: settings.apiTunnelUrl,
+			});
+		} catch (err) {
+			console.error('[API Bridge] Failed to update main process settings:', err);
 		}
 	}
 
@@ -103,12 +223,22 @@ export class ApiServiceBridge extends Disposable {
 	private async getThreads() {
 		const allThreads = this.chatThreadService.state.allThreads;
 		if (!allThreads) return [];
-		return Object.values(allThreads).map((thread: any) => ({
-			id: thread.id,
-			createdAt: thread.createdAt,
-			lastModified: thread.lastModified,
-			messageCount: thread.messages?.length || 0,
-		}));
+		return Object.values(allThreads).map((thread: any) => {
+			// Get thread title from first user message (matches desktop UI behavior)
+			let title = '';
+			const firstUserMsg = thread.messages?.find((msg: any) => msg.role === 'user');
+			if (firstUserMsg) {
+				title = firstUserMsg.displayContent || firstUserMsg.content || '';
+			}
+
+			return {
+				id: thread.id,
+				title,
+				createdAt: thread.createdAt,
+				lastModified: thread.lastModified,
+				messageCount: thread.messages?.length || 0,
+			};
+		});
 	}
 
 	private async getThread(threadId: string) {
@@ -122,11 +252,46 @@ export class ApiServiceBridge extends Disposable {
 			id: thread.id,
 			createdAt: thread.createdAt,
 			lastModified: thread.lastModified,
-			messages: thread.messages.map((msg: any) => ({
-				role: msg.role,
-				content: msg.content,
-				timestamp: msg.timestamp,
-			})),
+			messages: thread.messages.map((msg: any) => {
+				// Base message fields
+				const message: any = {
+					role: msg.role,
+					timestamp: msg.timestamp,
+				};
+
+				// Handle different message types
+				if (msg.role === 'user') {
+					message.content = msg.content || '';
+					message.displayContent = msg.displayContent || '';
+					message.selections = msg.selections || null;
+					message.images = msg.images || [];
+					message.visionAnalysis = msg.visionAnalysis || undefined;
+				} else if (msg.role === 'assistant') {
+					message.content = msg.displayContent || '';
+					message.displayContent = msg.displayContent || '';
+					message.reasoning = msg.reasoning || '';
+					message.anthropicReasoning = msg.anthropicReasoning || null;
+				} else if (msg.role === 'tool') {
+					// Tool messages contain planning/walkthrough results
+					message.name = msg.name;
+					message.content = msg.content || '';
+					message.type = msg.type;
+					message.params = msg.params || null;
+					message.result = msg.result || null;
+					message.id = msg.id || '';
+					message.rawParams = msg.rawParams || {};
+					message.mcpServerName = msg.mcpServerName || undefined;
+				} else if (msg.role === 'interrupted_streaming_tool') {
+					message.name = msg.name;
+					message.mcpServerName = msg.mcpServerName || undefined;
+				} else if (msg.role === 'checkpoint') {
+					message.type = msg.type;
+					message.voidFileSnapshotOfURI = msg.voidFileSnapshotOfURI || {};
+					message.userModifications = msg.userModifications || { voidFileSnapshotOfURI: {} };
+				}
+
+				return message;
+			}),
 		};
 	}
 
@@ -188,22 +353,95 @@ export class ApiServiceBridge extends Disposable {
 	private async getWorkspace() {
 		// Get workspace root folders
 		const workspace = this.workspaceContextService.getWorkspace();
+
+		// Get open editors/files
+		const openEditors = this.editorService.editors.map(editor => {
+			const resource = editor.resource;
+			return resource ? {
+				uri: resource.toString(),
+				path: resource.fsPath,
+				name: resource.path.split('/').pop() || resource.path,
+			} : null;
+		}).filter(Boolean);
+
+		// Get active editor
+		const activeEditor = this.editorService.activeEditor;
+		const activeFile = activeEditor?.resource ? {
+			uri: activeEditor.resource.toString(),
+			path: activeEditor.resource.fsPath,
+			name: activeEditor.resource.path.split('/').pop() || activeEditor.resource.path,
+		} : null;
+
 		return {
 			folders: workspace.folders.map((folder: any) => ({
 				uri: folder.uri.toString(),
 				name: folder.name,
+				path: folder.uri.fsPath,
 			})),
+			openFiles: openEditors,
+			activeFile,
 		};
 	}
 
 	private async getFiles(page: number = 1, limit: number = 50, filter?: string) {
-		// This is a simplified implementation
-		// In a real implementation, you'd traverse the workspace and filter files
+		const workspace = this.workspaceContextService.getWorkspace();
+		const allFiles: Array<{ uri: string; name: string; path: string; type: 'file' | 'folder'; size?: number }> = [];
+
+		// Recursively collect files from workspace folders
+		const collectFiles = async (folderUri: URI, depth: number = 0): Promise<void> => {
+			if (depth > 10) return; // Limit recursion depth
+			try {
+				const contents = await this.fileService.resolve(folderUri);
+				if (contents.children) {
+					for (const child of contents.children) {
+						// Skip hidden files and common non-essential directories
+						if (child.name.startsWith('.') ||
+							child.name === 'node_modules' ||
+							child.name === '__pycache__' ||
+							child.name === 'dist' ||
+							child.name === 'build') {
+							continue;
+						}
+
+						const fileInfo = {
+							uri: child.resource.toString(),
+							name: child.name,
+							path: child.resource.path,
+							type: (child.isDirectory ? 'folder' : 'file') as 'file' | 'folder',
+							size: child.isDirectory ? undefined : child.size,
+						};
+
+						// Apply filter if provided
+						if (!filter || child.name.toLowerCase().includes(filter.toLowerCase())) {
+							allFiles.push(fileInfo);
+						}
+
+						// Recurse into directories
+						if (child.isDirectory) {
+							await collectFiles(child.resource, depth + 1);
+						}
+					}
+				}
+			} catch (e) {
+				console.error(`[apiServiceBridge] Error reading folder ${folderUri.toString()}:`, e);
+			}
+		};
+
+		// Collect files from all workspace folders
+		for (const folder of workspace.folders) {
+			await collectFiles(folder.uri);
+		}
+
+		// Paginate results
+		const startIdx = (page - 1) * limit;
+		const endIdx = startIdx + limit;
+		const paginatedFiles = allFiles.slice(startIdx, endIdx);
+
 		return {
-			files: [],
+			files: paginatedFiles,
 			page,
 			limit,
-			total: 0,
+			total: allFiles.length,
 		};
 	}
 
@@ -216,6 +454,52 @@ export class ApiServiceBridge extends Disposable {
 				name: folder.name,
 			})),
 		};
+	}
+
+	private async getFolderContents(folderPath: string) {
+		try {
+			// If no path provided, return root folders
+			if (!folderPath) {
+				const workspace = this.workspaceContextService.getWorkspace();
+				return {
+					path: '',
+					name: 'workspace',
+					type: 'folder',
+					children: workspace.folders.map((folder: any) => ({
+						name: folder.name,
+						path: folder.name,
+						type: 'folder',
+						uri: folder.uri.toString(),
+					})),
+				};
+			}
+
+			// Parse the folder path and get contents
+			const uri = URI.file(folderPath);
+			const folderContents = await this.fileService.resolve(uri);
+
+			const children = [];
+			if (folderContents.children) {
+				for (const child of folderContents.children) {
+					children.push({
+						name: child.name,
+						path: child.resource.path,
+						type: child.isDirectory ? 'folder' : 'file',
+						uri: child.resource.toString(),
+						size: child.isDirectory ? undefined : child.size,
+					});
+				}
+			}
+
+			return {
+				path: folderPath,
+				name: folderContents.name || folderPath.split('/').pop() || 'folder',
+				type: 'folder',
+				children,
+			};
+		} catch (err) {
+			throw new Error(`Failed to get folder contents: ${err}`);
+		}
 	}
 
 	private async readFile(path: string) {
@@ -295,4 +579,90 @@ export class ApiServiceBridge extends Disposable {
 			models: state._modelOptions,
 		};
 	}
+
+	private async getCurrentModel() {
+		const state = this.settingsService.state;
+		const modelSelection = state.modelSelectionOfFeature?.['Chat'] || state.modelSelectionOfFeature?.['Ctrl+K'];
+
+		if (!modelSelection) {
+			return {
+				providerName: null,
+				modelName: null,
+				available: false,
+			};
+		}
+
+		return {
+			providerName: modelSelection.providerName,
+			modelName: modelSelection.modelName,
+			available: true,
+		};
+	}
+
+	private async setCurrentModel(providerName: string, modelName: string) {
+		const modelSelection = { providerName, modelName } as any;
+		// Update model selection for Chat (main chat) and Ctrl+K (inline)
+		this.settingsService.setModelSelectionOfFeature('Chat', modelSelection);
+		this.settingsService.setModelSelectionOfFeature('Ctrl+K', modelSelection);
+
+		return {
+			providerName,
+			modelName,
+			success: true,
+		};
+	}
+
+	private async getChatMode() {
+		const state = this.settingsService.state;
+		const mode = state.globalSettings?.chatMode || 'normal';
+
+		// Map internal mode names to display names for API consumers
+		const modeInfo = {
+			'normal': { mode: 'normal', displayName: 'Chat', description: 'Conversation only, no tools' },
+			'gather': { mode: 'gather', displayName: 'Plan', description: 'Research, plan & document' },
+			'agent': { mode: 'agent', displayName: 'Code', description: 'Edit files & run commands' },
+		};
+
+		return {
+			...modeInfo[mode as keyof typeof modeInfo] || modeInfo['normal'],
+			availableModes: [
+				{ mode: 'normal', displayName: 'Chat', description: 'Conversation only, no tools' },
+				{ mode: 'gather', displayName: 'Plan', description: 'Research, plan & document' },
+				{ mode: 'agent', displayName: 'Code', description: 'Edit files & run commands' },
+			],
+		};
+	}
+
+	private async setChatMode(mode: 'normal' | 'gather' | 'agent') {
+		this.settingsService.setGlobalSetting('chatMode', mode);
+
+		const modeInfo = {
+			'normal': { displayName: 'Chat', description: 'Conversation only, no tools' },
+			'gather': { displayName: 'Plan', description: 'Research, plan & document' },
+			'agent': { displayName: 'Code', description: 'Edit files & run commands' },
+		};
+
+		return {
+			mode,
+			...modeInfo[mode],
+			success: true,
+		};
+	}
 }
+
+registerSingleton(IApiServiceBridge, ApiServiceBridge, InstantiationType.Eager);
+
+/**
+ * Workbench Contribution to ensure ApiServiceBridge is instantiated on startup
+ */
+export class ApiServiceBridgeContribution implements IWorkbenchContribution {
+	static readonly ID = 'workbench.contrib.apiServiceBridge';
+
+	constructor(
+		@IApiServiceBridge _apiServiceBridge: IApiServiceBridge,
+	) {
+		// console.log('[ApiServiceBridgeContribution] Initialized, forcing ApiServiceBridge instantiation');
+	}
+}
+
+registerWorkbenchContribution2(ApiServiceBridgeContribution.ID, ApiServiceBridgeContribution, WorkbenchPhase.BlockRestore);

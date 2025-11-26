@@ -8,7 +8,7 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IDirectoryStrService } from '../directoryStrService.js';
 import { StagingSelectionItem } from '../chatThreadServiceTypes.js';
 import { os } from '../helpers/systemInfo.js';
-import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType } from '../toolsServiceTypes.js';
+import { BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType } from '../toolsServiceTypes.js';
 import { ChatMode } from '../voidSettingsTypes.js';
 
 // Triple backtick wrapper used throughout the prompts for code blocks
@@ -608,6 +608,210 @@ Example: [{ id: "task_migrations", description: "Create database migration scrip
 		}
 	},
 
+	// --- Implementation Planning ---
+
+	create_implementation_plan: {
+		name: 'create_implementation_plan',
+		description: `Creates a detailed implementation plan for complex development tasks. This generates a preview that users can review and approve before implementation begins.
+
+**When to use:** For complex requests like:
+- Building complete features (auth systems, APIs, UI components)
+- Major refactors or architecture changes
+- Multi-file implementations
+- Complex bug fixes requiring coordinated changes
+
+**What happens:**
+1. Creates a structured implementation plan with detailed steps
+2. Shows the plan in a preview interface for user review
+3. User can approve, modify, or request changes
+4. Once approved, you can execute the plan automatically
+
+**Best practices:**
+- Break down into logical, sequential steps
+- Include specific files, components, or functions to modify
+- Estimate complexity (simple/medium/complex) for each step
+- Include dependencies between steps
+- Consider testing, documentation, and deployment steps
+
+**Example workflow:**
+1. User: "Build a complete authentication system"
+2. You call create_implementation_plan with detailed steps
+3. User reviews and approves the plan
+4. You execute the approved plan step-by-step`,
+		params: {
+			goal: { description: 'Overall goal this implementation plan accomplishes (e.g., "Build JWT-based authentication system")' },
+			steps: {
+				description: `Array of implementation step objects. Each step must have:
+- id: Unique identifier (e.g., "step1", "auth_service", "add_tests")
+- title: Brief, descriptive title (e.g., "Create AuthService class")
+- description: Detailed description of what this step accomplishes
+- complexity: One of "simple", "medium", "complex" - estimates effort required
+- files: Array of files that will be modified/created in this step
+- dependencies: Array of step IDs this step depends on (empty [] if none)
+- estimated_time: Optional time estimate in minutes
+
+Example: [
+  {
+    id: "step1",
+    title: "Create AuthService class",
+    description: "Implement JWT token generation, validation, and user authentication methods",
+    complexity: "medium",
+    files: ["src/auth/AuthService.ts", "src/auth/types.ts"],
+    dependencies: [],
+    estimated_time: 30
+  },
+  {
+    id: "step2",
+    title: "Add login/logout API endpoints",
+    description: "Create REST endpoints for user authentication using the AuthService",
+    complexity: "medium",
+    files: ["src/api/auth.ts", "src/middleware/auth.ts"],
+    dependencies: ["step1"],
+    estimated_time: 20
+  }
+]`
+			}
+		}
+	},
+
+	preview_implementation_plan: {
+		name: 'preview_implementation_plan',
+		description: `Shows the current implementation plan in a preview interface for user review.
+
+**When to use:**
+- After creating an implementation plan to show it to the user
+- When user wants to review the current plan before execution
+- To display plan progress and next steps
+
+**What happens:** Displays the plan in a walkthrough-style preview with:
+- Plan overview and goal
+- All steps with complexity estimates
+- Dependencies between steps
+- Files that will be modified
+- User can approve, modify, or request changes`,
+		params: {}
+	},
+
+	execute_implementation_plan: {
+		name: 'execute_implementation_plan',
+		description: `Executes an approved implementation plan step by step.
+
+**When to use:** ONLY after the user has reviewed and approved the implementation plan via preview_implementation_plan.
+
+**What happens:**
+1. Executes each step in the correct order (respecting dependencies)
+2. Updates step status as you progress
+3. Handles errors and provides recovery options
+4. Provides progress updates to the user
+
+**Execution process:**
+- Mark step as 'in_progress' when starting
+- Complete the step using appropriate tools
+- Mark step as 'complete' when done
+- Continue with next step
+- Handle any failures gracefully
+
+**Important:** Only call this after user approval. Do not execute plans automatically without user review.`,
+		params: {
+			step_id: { description: 'Optional. Execute a specific step by ID. If not provided, executes the next pending step in order.' }
+		}
+	},
+
+	update_implementation_step: {
+		name: 'update_implementation_step',
+		description: `Updates the status of a step in the current implementation plan.
+
+**When to use:**
+- When starting a step: mark as 'in_progress'
+- When completing a step: mark as 'complete'
+- If a step fails: mark as 'failed' with error details
+- If skipping a step: mark as 'skipped' with reason
+
+**What you'll receive:** Confirmation with step ID, new status, and updated plan progress.
+
+**Best practice:** Always update status when starting and finishing each step during execution.`,
+		params: {
+			step_id: { description: 'The ID of the step to update (must match an ID from create_implementation_plan)' },
+			status: { description: `New status. Must be one of: "pending", "in_progress", "complete", "failed", "skipped"` },
+			notes: { description: 'Optional. Brief notes about this status change (e.g., "Completed AuthService implementation", "Failed: Circular dependency in imports")' }
+		}
+	},
+
+	get_implementation_status: {
+		name: 'get_implementation_status',
+		description: `Retrieves the current state of your implementation plan, showing all steps and their progress.
+
+**When to use:**
+- To check which steps are complete and what's next
+- To resume implementation after an interruption
+- To show overall progress to the user
+- To verify plan status before execution
+
+**What you'll receive:** A formatted summary showing:
+- Implementation goal and overview
+- Progress (X/Y steps completed)
+- Steps grouped by status (in_progress, pending, complete, failed, skipped)
+- Dependencies and next actionable steps
+- Estimated time remaining`,
+		params: {}
+	},
+
+	update_walkthrough: {
+		name: 'update_walkthrough',
+		description: `Creates or updates a walkthrough.md file in the workspace root to document progress on the current task.
+
+**What you'll receive:**
+- Confirmation that the walkthrough was updated
+- File path and action taken (created/updated/appended)
+- Preview of the updated content (first 500 characters)
+
+**When to use:**
+- At the start of a task to create an outline of what you'll be doing
+- When completing major milestones to document progress and decisions
+- At the end of a task to provide a comprehensive summary
+- When you want to document implementation decisions for future reference
+
+**Integration with Planning**: If you're using the planning tools, set include_plan_status=true to automatically include the current plan status in your walkthrough. This creates a comprehensive record of both what was done (plan) and how/why it was done (walkthrough).
+
+**File location:** Always creates/updates 'walkthrough.md' in the workspace root directory.
+
+**Content modes:**
+- 'create': Start a new walkthrough (fails if file exists)
+- 'append': Add content to existing walkthrough with proper spacing
+- 'replace': Overwrite the entire walkthrough
+
+**Examples:**
+- Create initial outline: update_walkthrough(content="## Project Setup\n\n1. Configure build system", mode="create", title="React App Setup")
+- Document milestone: update_walkthrough(content="### Authentication System\n\nImplemented JWT auth with refresh tokens", mode="append")
+- Include plan status: update_walkthrough(content="## Implementation Complete", mode="append", include_plan_status=true)`,
+		params: {
+			content: { description: 'The markdown content to write. Use proper Markdown formatting with headers, lists, code blocks, and links.' },
+			mode: { description: 'How to handle existing content: "create" (new file), "append" (add to existing), or "replace" (overwrite)' },
+			title: { description: 'Optional. A title for the walkthrough (used when mode is "create"). Will be added as a top-level H1 header.' },
+			include_plan_status: { description: 'Optional. If true, automatically includes the current plan status at the end of your walkthrough. Great for documenting progress alongside task tracking.' }
+		}
+	},
+
+	open_walkthrough_preview: {
+		name: 'open_walkthrough_preview',
+		description: `Opens a walkthrough document in a preview tab for user review.
+
+**When to use:**
+- After creating or updating a walkthrough to show it to the user
+- When user wants to review the walkthrough in a clean, dedicated interface
+- To present the walkthrough with approval/change request features
+
+**What happens:** Opens the walkthrough in a dedicated preview tab with:
+- Clean markdown rendering with proper syntax highlighting
+- Approval button for user to accept the walkthrough
+- Request Changes button to send feedback to chat
+- File path and metadata display
+
+**What you'll receive:** Success confirmation with message`,
+		params: {
+			file_path: { description: 'Full path to the walkthrough file to open (e.g., "/path/to/walkthrough.md")' }
+		}
+	},
 
 	// go_to_definition
 	// go_to_usages
@@ -628,20 +832,76 @@ export const isABuiltinToolName = (toolName: string): toolName is BuiltinToolNam
 
 
 
+// Tools organized by mode for efficiency - fewer tools = faster, more focused LLM responses
+const gatherModeTools: BuiltinToolName[] = [
+	// Context/Read tools - research and understand codebase
+	'read_file',
+	'outline_file',
+	'ls_dir',
+	'get_dir_tree',
+	'search_pathnames_only',
+	'search_for_files',
+	'search_in_file',
+	'read_lint_errors',
+	// Implementation planning - create detailed plans for user review
+	'create_implementation_plan',
+	'preview_implementation_plan',
+	'update_implementation_step',
+	'get_implementation_status',
+	// Walkthrough - document findings and plans
+	'update_walkthrough',
+	'open_walkthrough_preview',
+]
+
+const agentModeTools: BuiltinToolName[] = [
+	// Context/Read tools - understand before editing
+	'read_file',
+	'outline_file',
+	'ls_dir',
+	'get_dir_tree',
+	'search_pathnames_only',
+	'search_for_files',
+	'search_in_file',
+	'read_lint_errors',
+	// Edit/Write tools - make changes
+	'create_file_or_folder',
+	'delete_file_or_folder',
+	'edit_file',
+	'rewrite_file',
+	// Terminal tools - run commands
+	'run_command',
+	'run_persistent_command',
+	'open_persistent_terminal',
+	'kill_persistent_terminal',
+	// Task planning - track progress on multi-step tasks
+	'create_plan',
+	'update_task_status',
+	'get_plan_status',
+	'add_tasks_to_plan',
+	// Walkthrough - document progress
+	'update_walkthrough',
+	'open_walkthrough_preview',
+]
+
 export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
 
+	// Select tools based on mode
+	// - normal (Chat): No tools - pure conversation
+	// - gather: Read/search + implementation planning + walkthrough (~14 tools)
+	// - agent: Read/search + edit/write + terminal + task planning + walkthrough (~22 tools)
 	const builtinToolNames: BuiltinToolName[] | undefined = chatMode === 'normal' ? undefined
-		: chatMode === 'gather' ? (Object.keys(builtinTools) as BuiltinToolName[]).filter(toolName => !(toolName in approvalTypeOfBuiltinToolName))
-			: chatMode === 'agent' ? Object.keys(builtinTools) as BuiltinToolName[]
+		: chatMode === 'gather' ? gatherModeTools
+			: chatMode === 'agent' ? agentModeTools
 				: undefined
 
 	// Filter out run_code tool (not working, causes failures and slowdowns)
 	const filteredBuiltinToolNames = builtinToolNames?.filter(toolName => toolName !== 'run_code');
 
 	const effectiveBuiltinTools = filteredBuiltinToolNames?.map(toolName => builtinTools[toolName]) ?? undefined
-	const effectiveMCPTools = chatMode === 'agent' ? mcpTools : undefined
+	// MCP tools available in both gather and agent modes
+	const effectiveMCPTools = (chatMode === 'agent' || chatMode === 'gather') ? mcpTools : undefined
 
-	const tools: InternalToolInfo[] | undefined = !(filteredBuiltinToolNames || mcpTools) ? undefined
+	const tools: InternalToolInfo[] | undefined = !(filteredBuiltinToolNames || effectiveMCPTools) ? undefined
 		: [
 			...effectiveBuiltinTools ?? [],
 			...effectiveMCPTools ?? [],
@@ -681,20 +941,40 @@ ${toolDescriptions}
 }
 
 /**
- * System prompt explaining XML tool calling format
+ * System prompt explaining ReAct-style XML tool calling format
  */
 export const XML_TOOL_CALLING_INSTRUCTIONS = `You have access to a set of functions you can use to answer the user's question.
 
-You can invoke one or more functions by writing a "<function_calls>" block like the following as part of your reply to the user:
+**ReAct FORMAT (Reason + Act):**
+Follow this pattern for complex tasks that require multiple steps:
+1. **Thought:** Explain what you're thinking and why you need to take a specific action
+2. **Action:** Execute the tool call
+3. **Observation:** Review the result and plan the next step
+
+You can structure your response as:
+Thought: [Your reasoning about what needs to be done]
+
 <function_calls>
 <invoke name="$FUNCTION_NAME">
 <parameter name="$PARAMETER_NAME">$PARAMETER_VALUE</parameter>
 ...
 </invoke>
-<invoke name="$FUNCTION_NAME2">
+</function_calls>
+
+The system will provide results automatically, and you can continue with:
+Thought: [What you learned from the result and what to do next]
+
+<function_calls>
+<invoke name="$NEXT_FUNCTION_NAME">
 ...
 </invoke>
 </function_calls>
+
+**STREAMING FORMAT:**
+- Start with "Thought:" to show your reasoning process
+- Use "<function_calls>" blocks for immediate action execution
+- The system detects Action phase as soon as "<function_calls>" appears
+- No need to wait for complete blocks - UI updates in real-time
 
 String and scalar parameters should be specified as is, while lists and objects should use JSON format.
 The output is not expected to be valid XML and is parsed with regular expressions.
@@ -702,10 +982,11 @@ The output is not expected to be valid XML and is parsed with regular expression
 IMPORTANT: When passing code content (HTML, JavaScript, CSS, etc.) in parameters, use the ACTUAL code characters (< > & etc.) - do NOT escape them as HTML entities (&lt; &gt; &amp;). The parser handles raw content correctly.
 
 CRITICAL INSTRUCTIONS:
-1. Do NOT generate <function_results> blocks yourself. The system will automatically execute your function calls and provide the results in the next turn.
-2. After making function calls, STOP your response immediately - do not predict or hallucinate what the results will be.
-3. When you need to use a tool, make the function call IMMEDIATELY instead of just describing what you want to do. For example, instead of saying "Let me check for errors", just call the read_lint_errors function directly.
-4. You can include a brief explanation BEFORE the <function_calls> block, but keep it very short (1-2 sentences max).
+1. Do NOT generate <function_results> blocks yourself. The system will automatically execute your function calls and provide the results.
+2. After making function calls, you can continue reasoning about the results - the system will handle the observation phase.
+3. When you need to use a tool, make the function call IMMEDIATELY after your "Thought:" explanation.
+4. Use "Thought:" prefix to explain your reasoning before each action. This helps the user follow your logic.
+5. For simple tasks, you can skip the "Thought:" prefix and call tools directly.
 
 CONTEXT MARKERS FOR CODE EDITS:
 When using edit_file, always include surrounding context in your ORIGINAL blocks:
@@ -828,26 +1109,64 @@ You're allowed to ask the user for more context like file contents or specificat
 
 	// ============ INFORMATION GATHERING STRATEGY ============
 	let contextGathering = ''
-	if (mode === 'agent' || mode === 'gather') {
-		contextGathering = `<maximize_context_understanding>
-Be THOROUGH when gathering information. Make sure you have the FULL picture before replying. Use additional tool calls or clarifying questions as needed.
+	if (mode === 'gather') {
+		// Plan mode - research, plan, document (no editing)
+		contextGathering = `<plan_mode_behavior>
+You are in PLAN MODE. Your role is to research, analyze, plan, and document - but NOT make code changes.
+
+NATURAL TOOL USAGE - Use tools automatically without being asked:
+- When user asks about code → read relevant files and search the codebase
+- When user asks "how does X work" → explore the codebase to find and explain X
+- When user wants to understand something → gather all relevant context first
+- When user asks for a plan → create an implementation plan they can review
+- When documenting → use walkthrough tools to create clear documentation
+
+YOUR CAPABILITIES:
+✅ Read and search files to understand the codebase
+✅ Create detailed implementation plans for user review
+✅ Document findings and create walkthroughs
+✅ Use MCP tools for external research
+❌ Cannot edit files or run commands (switch to Code mode for that)
+
+WORKFLOW:
+1. When user asks a question, immediately start gathering context with tools
+2. Read files, search code, explore the codebase thoroughly
+3. For complex tasks, create an implementation plan the user can approve
+4. Document your findings clearly with walkthroughs if helpful
+5. Present your analysis with specific file references and line numbers
+
+Be proactive - don't wait for the user to tell you which files to read. Explore the codebase to find answers.
+</plan_mode_behavior>`
+	} else if (mode === 'agent') {
+		// Code mode - full execution capabilities
+		contextGathering = `<code_mode_behavior>
+You are in CODE MODE. You can read, edit, create files, and run commands to complete tasks.
+
+NATURAL TOOL USAGE - Use tools automatically without being asked:
+- When user asks to "fix", "add", "change", "update" → read the file, then edit it
+- When user reports a bug → search for related code, read it, fix it
+- When user wants a feature → explore existing code, then implement it
+- When user asks to run something → use terminal tools
+- When user asks about code → read and search to understand before answering
+
+WORKFLOW FOR CODE CHANGES:
+1. 🔍 SEARCH: Find relevant files with search tools
+2. 📖 READ: Always read files before editing (you need exact content)
+3. ✏️ EDIT: Make changes with edit_file or rewrite_file
+4. ✅ VERIFY: Check your changes worked (read again or check lint errors)
+
+Be THOROUGH when gathering information. Make sure you have the FULL picture before making changes.
 
 TRACE every symbol back to its definitions and usages so you fully understand it.
 
-Look past the first seemingly relevant result. EXPLORE alternative implementations, edge cases, and varied search terms until you have COMPREHENSIVE coverage of the topic.
-
 Search Strategy:
-- Start with broad, high-level queries that capture overall intent (e.g., "authentication flow" or "error-handling policy"), not low-level terms
+- Start with broad queries that capture overall intent
 - Break multi-part questions into focused sub-queries
-- Run multiple searches with different wording; first-pass results often miss key details
-- Keep searching new areas until you're CONFIDENT nothing important remains
+- Run multiple searches with different wording
+- Keep searching until you're CONFIDENT nothing important remains
 
-If you've performed an edit that may partially fulfill the USER's query, but you're not confident, gather more information or use more tools before ending your turn.
-
-Bias towards not asking the user for help if you can find the answer yourself.${mode === 'gather' ? `
-
-You are in Gather mode, so you MUST use tools to gather information, files, and context to help the user answer their query. You should extensively read files, types, content, etc., gathering full context to solve the problem.` : ''}
-</maximize_context_understanding>`
+Bias towards finding answers yourself rather than asking the user.
+</code_mode_behavior>`
 	}
 
 	// ============ CODE CHANGES (Agent mode only) ============
@@ -874,6 +1193,14 @@ For any complex, multi-step, or "planning" style request (e.g. redesigns, refact
 Triggering the plan:
 - If the USER asks you to "plan", "break down", "redesign", "architect", "refactor a large area", or otherwise implies multiple steps, you MUST produce this numbered plan before doing anything else.
 - For these complex requests, DO NOT skip the plan and go straight to tools, even if you think you understand the task.
+
+Approved Implementation Plans:
+When the user approves an implementation plan (you'll see a message like "implementation plan has been approved for execution"):
+1. IMMEDIATELY call \`create_plan\` to create a task plan based on the implementation plan steps
+2. Convert each implementation step into a task with clear dependencies
+3. Begin executing tasks in order, using \`update_task_status\` to track progress
+4. For each task: read files, make changes, verify they work, then mark complete
+5. Continue until all tasks are done - do NOT stop and ask for confirmation between steps
 
 CRITICAL: After the initial numbered plan (when needed), do NOT keep re-explaining what you will do. TAKE ACTION by calling tools to execute the current step. Natural-language explanations should be brief and mainly summarize what you just did or are about to do.
 

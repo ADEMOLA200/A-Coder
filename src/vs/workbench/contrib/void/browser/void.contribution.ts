@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------*/
 
 
+console.log('[Void] Loading void.contribution.ts');
+
 // register inline diffs
 import './editCodeService.js'
 
@@ -66,6 +68,9 @@ import './voidSCMService.js'
 
 // register Lite Mode
 import './liteMode.contribution.js'
+
+// register Mobile API
+import './apiServiceBridge.js'
 
 // ---------- common (unclear if these actually need to be imported, because they're already imported wherever they're used) ----------
 
