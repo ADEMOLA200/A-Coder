@@ -1236,6 +1236,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 10. You do not need to ask for permission to use tools.
 11. Only skip tools if the user is asking a simple question you can answer directly (like "hi" or "what can you do?").
 12. Many tools only work if the user has a workspace open.
+13. NEVER end a response by saying what you're about to do without actually doing it. If you say "Let me...", "I'll...", or "I will...", you MUST include the tool call in the same response.
 </tool_calling>`
 			console.log(`[prompts] Native tool calling enabled (specialToolFormat: ${specialToolFormat})`)
 		}
@@ -1393,6 +1394,8 @@ When the user approves an implementation plan (you'll see a message like "implem
 5. Continue until all tasks are done - do NOT stop and ask for confirmation between steps
 
 CRITICAL: After the initial numbered plan (when needed), do NOT keep re-explaining what you will do. TAKE ACTION by calling tools to execute the current step. Natural-language explanations should be brief and mainly summarize what you just did or are about to do.
+
+ACTION REQUIRED: If you state that you will do something (e.g., "Let me fix...", "I'll update...", "I will..."), you MUST call the appropriate tool in the SAME response. NEVER end a response by describing what you're about to do without actually doing it. Every response that mentions taking an action must include the tool call to perform that action.
 
 Prioritize taking as many steps as you need to complete your request over stopping early.
 

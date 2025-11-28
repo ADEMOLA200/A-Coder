@@ -48,6 +48,7 @@ const CHAT_RETRIES = 3 // Number of retries for LLM errors (including empty resp
 const RETRY_DELAY = 2000 // Delay between retries in milliseconds
 export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
 const MAX_AGENT_ITERATIONS = 50 // Maximum number of iterations in agent mode to prevent infinite loops
+const MAX_TEXT_ONLY_CONTINUES = 3 // Maximum consecutive text-only responses before stopping (prevents LLM from just talking without acting)
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -366,9 +367,10 @@ export interface IChatThreadService {
 	// call to add a message
 	addUserMessageAndStreamResponse({ userMessage, threadId, images, selections }: { userMessage: string, threadId: string, images?: ImageAttachment[], selections?: StagingSelectionItem[] }): Promise<void>;
 
-	// approve/reject
+	// approve/reject/skip
 	approveLatestToolRequest(threadId: string): void;
 	rejectLatestToolRequest(threadId: string): void;
+	skipLatestToolRequest(threadId: string): void;
 
 	// jump to history
 	jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void;
@@ -690,6 +692,31 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this._setStreamState(threadId, undefined)
 	}
 
+	skipLatestToolRequest(threadId: string) {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return // should never happen
+
+		const lastMsg = thread.messages[thread.messages.length - 1]
+
+		let params: ToolCallParams<ToolName>
+		if (lastMsg.role === 'tool' && lastMsg.type !== 'invalid_params') {
+			params = lastMsg.params
+		}
+		else return
+
+		const { name, id, rawParams, mcpServerName } = lastMsg
+
+		// Mark as skipped (similar to rejected but with different message)
+		const skipMessage = 'Tool skipped by user - continuing with next action'
+		this._updateLatestTool(threadId, { role: 'tool', type: 'rejected', params: params, name: name, content: skipMessage, result: null, id, rawParams, mcpServerName })
+
+		// Continue the agent loop instead of stopping
+		this._wrapRunAgentToNotify(
+			this._runChatAgent({ threadId, ...this._currentModelSelectionProps() })
+			, threadId
+		)
+	}
+
 	private _computeMCPServerOfToolName = (toolName: string) => {
 		return this._mcpService.getMCPTools()?.find(t => t.name === toolName)?.mcpServerName
 	}
@@ -903,6 +930,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		let nMessagesSent = 0
 		let shouldSendAnotherMessage = true
 		let isRunningWhenEnd: IsRunningType = undefined
+		let consecutiveTextOnlyResponses = 0 // Track text-only responses for auto-continue limiting
 
 		// before enter loop, call tool
 		if (callThisToolFirst) {
@@ -1203,6 +1231,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 				// call tool if there is one
 				if (toolCall) {
+					// Reset text-only counter since LLM is taking action
+					consecutiveTextOnlyResponses = 0
+
 					const mcpTools = this._mcpService.getMCPTools()
 					console.log(`[chatThreadService] LLM called tool: ${toolCall.name}`)
 					console.log(`[chatThreadService] Tool call params:`, JSON.stringify(toolCall.rawParams))
@@ -1225,12 +1256,30 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// Auto-extract tasks from any LLM response with text content
 				// Use textContent which already excludes "(empty message)" placeholder
 				else if (!isEmptyResponse && textContent.length > 0 && textContent !== '(empty message)') {
-					// Pure ReAct pattern: if LLM responds with text and no tool call, it's done
-					// The LLM's behavior IS the signal - no regex pattern matching needed
 					if (chatMode === 'agent') {
-						console.log(`[chatThreadService] Agent mode: LLM responded with text, no tool call - task complete`)
-						shouldSendAnotherMessage = false
-						break
+						// Count sentences (split by . ! ? followed by space or end)
+						const sentences = textContent.split(/[.!?]+(?:\s|$)/).filter(s => s.trim().length > 0)
+						const sentenceCount = sentences.length
+
+						// Track consecutive text-only responses
+						consecutiveTextOnlyResponses++
+
+						// If response is short (< 3 sentences), LLM might be describing what it's about to do
+						// Auto-continue to prompt it to actually take action (but limit to prevent infinite loops)
+						if (sentenceCount < 3 && consecutiveTextOnlyResponses < MAX_TEXT_ONLY_CONTINUES) {
+							console.log(`[chatThreadService] Agent mode: Short response (${sentenceCount} sentences, attempt ${consecutiveTextOnlyResponses}/${MAX_TEXT_ONLY_CONTINUES}) - auto-continuing to prompt action`)
+							shouldSendAnotherMessage = true
+						} else if (consecutiveTextOnlyResponses >= MAX_TEXT_ONLY_CONTINUES) {
+							// Too many text-only responses - LLM is stuck, stop and let user intervene
+							console.log(`[chatThreadService] Agent mode: Max text-only continues reached (${consecutiveTextOnlyResponses}) - stopping to let user intervene`)
+							shouldSendAnotherMessage = false
+							break
+						} else {
+							// Longer response (3+ sentences) = LLM is done explaining or asking a question
+							console.log(`[chatThreadService] Agent mode: Complete response (${sentenceCount} sentences) - task complete`)
+							shouldSendAnotherMessage = false
+							break
+						}
 					}
 
 				} // end while (attempts)

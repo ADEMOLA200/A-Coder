@@ -415,6 +415,13 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		stream: options.stream
 	}))
 
+	// Debug: Log full payload size and check for issues at position 17371
+	const fullPayload = JSON.stringify(options)
+	console.log(`[sendLLMMessage] Full payload size: ${fullPayload.length} chars`)
+	if (fullPayload.length > 17000) {
+		console.log(`[sendLLMMessage] Payload around position 17371: "${fullPayload.substring(17350, 17400)}"`)
+	}
+
 	// open source models - manually parse think tokens
 	const { needsManualParse: needsManualReasoningParse, nameOfFieldInDelta: nameOfReasoningFieldInDelta } = providerReasoningIOSettings?.output ?? {}
 	const manuallyParseReasoning = needsManualReasoningParse && canIOReasoning && openSourceThinkTags

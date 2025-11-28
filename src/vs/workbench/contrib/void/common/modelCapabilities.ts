@@ -440,11 +440,42 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 
 	if (lower.includes('gemini') && (lower.includes('2.5') || lower.includes('2-5'))) return toFallback(geminiModelOptions, 'gemini-2.5-pro-exp-03-25')
 
+	// Gemini 3 Pro Preview via Ollama Cloud - uses effort_slider for thinking_level
+	if (lower.includes('gemini') && lower.includes('3') && lower.includes('pro')) return {
+		modelName,
+		recognizedModelName: 'gemini-3-pro-preview',
+		contextWindow: 1_000_000, // 1M context window
+		reservedOutputTokenSpace: 64_000, // 64K token output capacity
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role' as const,
+		specialToolFormat: 'openai-style' as const,
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider' as const,
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			},
+		},
+	}
+
 	if (lower.includes('claude-3-5') || lower.includes('claude-3.5')) return toFallback(anthropicModelOptions, 'claude-3-5-sonnet-20241022')
 	if (lower.includes('claude')) return toFallback(anthropicModelOptions, 'claude-3-7-sonnet-20250219')
 
-	if (lower.includes('grok2') || lower.includes('grok2')) return toFallback(xAIModelOptions, 'grok-2')
-	if (lower.includes('grok')) return toFallback(xAIModelOptions, 'grok-3')
+	// Grok models - check specific versions first
+	// Handle :free suffix for OpenRouter free tier
+	if (lower.includes('grok-4.1-fast:free')) return toFallback(xAIModelOptions, 'grok-4.1-fast:free')
+	if (lower.includes('grok-4.1') || lower.includes('grok4.1')) return toFallback(xAIModelOptions, 'grok-4.1-fast')
+	if (lower.includes('grok-4-fast') || lower.includes('grok4-fast')) return toFallback(xAIModelOptions, 'grok-4-fast')
+	if (lower.includes('grok-4') || lower.includes('grok4')) return toFallback(xAIModelOptions, 'grok-4')
+	if (lower.includes('grok-3-mini')) return toFallback(xAIModelOptions, 'grok-3-mini')
+	if (lower.includes('grok-3')) return toFallback(xAIModelOptions, 'grok-3')
+	if (lower.includes('grok-2') || lower.includes('grok2')) return toFallback(xAIModelOptions, 'grok-2')
+	if (lower.includes('grok')) return toFallback(xAIModelOptions, 'grok-4.1-fast') // default to latest
 
 	// Handle Ollama Cloud models first (before generic matches)
 	// All Ollama Cloud models end with :cloud or -cloud and support native OpenAI-style tool calling
@@ -825,9 +856,16 @@ const openAICompatIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningI
 
 // Ollama uses `think: true` to enable thinking mode
 // https://ollama.com/blog/thinking
+// For Gemini models via Ollama Cloud, use `thinking_level` instead
 const ollamaIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningInfo) => {
 	if (!reasoningInfo?.isReasoningEnabled) return null
-	// Ollama uses a simple boolean `think` parameter
+
+	// For effort slider models (like Gemini 3 Pro Preview), use thinking_level
+	if (reasoningInfo.type === 'effort_slider_value') {
+		return { thinking_level: reasoningInfo.reasoningEffort }
+	}
+
+	// For other Ollama models, use simple boolean `think` parameter
 	return { think: true }
 }
 
@@ -902,6 +940,47 @@ const xAIModelOptions = {
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: false, canIOReasoning: false, reasoningSlider: { type: 'effort_slider', values: ['low', 'high'], default: 'low' } },
 	},
+	// Grok 4 models - https://x.ai/news/grok-4-1-fast
+	'grok-4': {
+		contextWindow: 256_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 3.00, output: 15.00 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: false, canIOReasoning: false },
+	},
+	'grok-4-fast': {
+		contextWindow: 2_000_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 1.00, output: 5.00 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: false },
+	},
+	'grok-4.1-fast': {
+		contextWindow: 2_000_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 0, output: 0 }, // free tier available
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: false },
+	},
+	'grok-4.1-fast:free': {
+		contextWindow: 2_000_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: false },
+	},
 } as const satisfies { [s: string]: VoidStaticModelInfo }
 
 const xAISettings: VoidStaticProviderInfo = {
@@ -909,9 +988,18 @@ const xAISettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => {
 		const lower = modelName.toLowerCase()
 		let fallbackName: keyof typeof xAIModelOptions | null = null
-		if (lower.includes('grok-2')) fallbackName = 'grok-2'
-		if (lower.includes('grok-3')) fallbackName = 'grok-3'
-		if (lower.includes('grok')) fallbackName = 'grok-3'
+		// Check specific versions first (more specific to less specific)
+		// Handle :free suffix for OpenRouter free tier
+		if (lower.includes('grok-4.1-fast:free')) fallbackName = 'grok-4.1-fast:free'
+		else if (lower.includes('grok-4.1-fast') || lower.includes('grok-4.1')) fallbackName = 'grok-4.1-fast'
+		else if (lower.includes('grok-4-fast')) fallbackName = 'grok-4-fast'
+		else if (lower.includes('grok-4')) fallbackName = 'grok-4'
+		else if (lower.includes('grok-3-mini-fast')) fallbackName = 'grok-3-mini-fast'
+		else if (lower.includes('grok-3-mini')) fallbackName = 'grok-3-mini'
+		else if (lower.includes('grok-3-fast')) fallbackName = 'grok-3-fast'
+		else if (lower.includes('grok-3')) fallbackName = 'grok-3'
+		else if (lower.includes('grok-2')) fallbackName = 'grok-2'
+		else if (lower.includes('grok')) fallbackName = 'grok-4.1-fast' // default to latest
 		if (fallbackName) return { modelName: fallbackName, recognizedModelName: fallbackName, ...xAIModelOptions[fallbackName] }
 		return null
 	},

@@ -103,6 +103,60 @@ user: ...content, result(id, content)
 
 type AnthropicOrOpenAILLMMessage = AnthropicLLMChatMessage | OpenAILLMChatMessage
 
+// Convert SimpleLLMMessage[] to OpenAI format with proper tool_calls and tool_call_id
+const prepareMessages_openai_tools = (messages: SimpleLLMMessage[]): OpenAILLMChatMessage[] => {
+	const newMessages: OpenAILLMChatMessage[] = []
+
+	for (let i = 0; i < messages.length; i += 1) {
+		const currMsg = messages[i]
+
+		if (currMsg.role === 'assistant') {
+			// Check if next message is a tool - if so, we need to add tool_calls
+			const nextMsg = messages[i + 1]
+			if (nextMsg?.role === 'tool') {
+				newMessages.push({
+					role: 'assistant',
+					content: currMsg.content || '',
+					tool_calls: [{
+						type: 'function',
+						id: nextMsg.id,
+						function: {
+							name: nextMsg.name,
+							arguments: JSON.stringify(nextMsg.rawParams)
+						}
+					}]
+				})
+			} else {
+				newMessages.push({
+					role: 'assistant',
+					content: currMsg.content,
+				})
+			}
+			continue
+		}
+
+		if (currMsg.role === 'user') {
+			newMessages.push({
+				role: 'user',
+				content: currMsg.content,
+			})
+			continue
+		}
+
+		if (currMsg.role === 'tool') {
+			// Convert to OpenAI tool format with tool_call_id
+			newMessages.push({
+				role: 'tool',
+				tool_call_id: currMsg.id,
+				content: currMsg.content,
+			})
+			continue
+		}
+	}
+
+	return newMessages
+}
+
 const prepareMessages_anthropic_tools = (messages: SimpleLLMMessage[], supportsAnthropicReasoning: boolean): AnthropicOrOpenAILLMMessage[] => {
 	const newMessages: (AnthropicLLMChatMessage | (SimpleLLMMessage & { role: 'tool' }))[] = messages;
 
@@ -351,7 +405,8 @@ const prepareOpenAIOrAnthropicMessages = ({
 		llmChatMessages = prepareMessages_anthropic_tools(messages as SimpleLLMMessage[], supportsAnthropicReasoning)
 	}
 	else if (specialToolFormat === 'openai-style') {
-		llmChatMessages = messages as AnthropicOrOpenAILLMMessage[]
+		// Convert to proper OpenAI format with tool_calls and tool_call_id
+		llmChatMessages = prepareMessages_openai_tools(messages as SimpleLLMMessage[])
 	}
 	else {
 		throw new Error(`Model from provider "${providerName}" does not support native tool calling.`)

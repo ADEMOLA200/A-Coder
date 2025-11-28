@@ -2337,6 +2337,14 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 		metricsService.capture('Tool Request Rejected', {})
 	}, [chatThreadsService, metricsService])
 
+	const onSkip = useCallback(() => {
+		try {
+			const threadId = chatThreadsService.state.currentThreadId
+			chatThreadsService.skipLatestToolRequest(threadId)
+		} catch (e) { console.error('Error while skipping tool in chat:', e) }
+		metricsService.capture('Tool Request Skipped', {})
+	}, [chatThreadsService, metricsService])
+
 	const approveButton = (
 		<button
 			onClick={onAccept}
@@ -2350,6 +2358,25 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
             `}
 		>
 			Approve
+		</button>
+	)
+
+	const skipButton = (
+		<button
+			onClick={onSkip}
+			className={`
+                px-2 py-1
+                bg-[var(--vscode-button-secondaryBackground)]
+                text-[var(--vscode-button-secondaryForeground)]
+                hover:bg-[var(--vscode-button-secondaryHoverBackground)]
+                rounded
+                text-sm font-medium
+            `}
+			data-tooltip-id='void-tooltip'
+			data-tooltip-place='top'
+			data-tooltip-content='Skip this command and continue'
+		>
+			Skip
 		</button>
 	)
 
@@ -2376,6 +2403,7 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 
 	return <div className="flex gap-2 mx-0.5 items-center">
 		{approveButton}
+		{skipButton}
 		{cancelButton}
 		{approvalToggle}
 	</div>
@@ -2500,6 +2528,105 @@ const CanceledTool = ({ toolName, mcpServerName }: { toolName: ToolName, mcpServ
 	return <ToolHeaderWrapper {...componentParams} />
 }
 
+// Terminal-style command approval UI (like Cursor)
+const TerminalCommandApproval = ({ command, cwd, threadId }: { command: string, cwd?: string | null, threadId: string }) => {
+	const accessor = useAccessor()
+	const chatThreadsService = accessor.get('IChatThreadService')
+	const metricsService = accessor.get('IMetricsService')
+	const workspaceContextService = accessor.get('IWorkspaceContextService')
+
+	// Get relative path for display
+	const workspaceFolders = workspaceContextService.getWorkspace().folders
+	const firstFolder = workspaceFolders[0]?.uri.fsPath
+	const displayPath = cwd && firstFolder
+		? (cwd.startsWith(firstFolder) ? '~' + cwd.slice(firstFolder.length).replace(/^\//, '/') : cwd)
+		: cwd || '~'
+
+	const onRun = useCallback(() => {
+		try {
+			chatThreadsService.approveLatestToolRequest(threadId)
+			metricsService.capture('Tool Request Accepted', { tool: 'run_command' })
+		} catch (e) { console.error('Error while approving command:', e) }
+	}, [chatThreadsService, metricsService, threadId])
+
+	const onSkip = useCallback(() => {
+		try {
+			chatThreadsService.skipLatestToolRequest(threadId)
+			metricsService.capture('Tool Request Skipped', { tool: 'run_command' })
+		} catch (e) { console.error('Error while skipping command:', e) }
+	}, [chatThreadsService, metricsService, threadId])
+
+	const onCopy = useCallback(() => {
+		navigator.clipboard.writeText(command)
+	}, [command])
+
+	const onCancel = useCallback(() => {
+		try {
+			chatThreadsService.rejectLatestToolRequest(threadId)
+			metricsService.capture('Tool Request Rejected', { tool: 'run_command' })
+		} catch (e) { console.error('Error while rejecting command:', e) }
+	}, [chatThreadsService, metricsService, threadId])
+
+	return (
+		<div className="rounded-lg overflow-hidden border border-void-border-1 bg-[#1e1e1e]">
+			{/* Command display */}
+			<div className="px-3 py-2 font-mono text-sm">
+				<span className="text-void-fg-3">{displayPath}$ </span>
+				<span className="text-void-fg-1">{command}</span>
+			</div>
+
+			{/* Action bar */}
+			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-1">
+				{/* Copy button */}
+				<button
+					onClick={onCopy}
+					className="p-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded transition-colors"
+					data-tooltip-id='void-tooltip'
+					data-tooltip-content='Copy command'
+					data-tooltip-place='top'
+				>
+					<CopyIcon size={14} />
+				</button>
+
+				{/* Cancel button */}
+				<button
+					onClick={onCancel}
+					className="p-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded transition-colors"
+					data-tooltip-id='void-tooltip'
+					data-tooltip-content='Cancel'
+					data-tooltip-place='top'
+				>
+					<X size={14} />
+				</button>
+
+				{/* Run button */}
+				<button
+					onClick={onRun}
+					className="flex items-center gap-1.5 px-3 py-1 bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)] hover:bg-[var(--vscode-button-hoverBackground)] rounded text-sm font-medium"
+				>
+					<Play size={12} />
+					Run
+				</button>
+
+				{/* Skip button */}
+				<button
+					onClick={onSkip}
+					className="px-3 py-1 bg-void-bg-3 text-void-fg-2 hover:bg-void-bg-2 rounded text-sm font-medium border border-void-border-2"
+				>
+					Skip
+				</button>
+
+				{/* Cancel button */}
+				<button
+					onClick={onCancel}
+					className="px-3 py-1 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded text-sm font-medium"
+				>
+					Cancel
+				</button>
+			</div>
+		</div>
+	)
+}
 
 const CommandTool = ({ toolMessage, type, threadId }: { threadId: string } & ({
 	toolMessage: Exclude<ToolMessage<'run_command'>, { type: 'invalid_params' }>
@@ -2596,7 +2723,26 @@ const CommandTool = ({ toolMessage, type, threadId }: { threadId: string } & ({
 		if (type === 'run_command')
 			componentParams.children = <div ref={divRef} className='relative h-[300px] text-sm' />
 	}
-	else if (toolMessage.type === 'rejected' || toolMessage.type === 'tool_request') {
+	else if (toolMessage.type === 'rejected') {
+		// Show rejected state normally
+	}
+	else if (toolMessage.type === 'tool_request') {
+		// Special terminal-style UI for command approval
+		if (type === 'run_command') {
+			const runCommandParams = toolMessage.params as { command: string; cwd: string | null; terminalId: string }
+			return <TerminalCommandApproval
+				command={runCommandParams.command}
+				cwd={runCommandParams.cwd}
+				threadId={threadId}
+			/>
+		} else if (type === 'run_persistent_command') {
+			const persistentCommandParams = toolMessage.params as { command: string; persistentTerminalId: string }
+			return <TerminalCommandApproval
+				command={persistentCommandParams.command}
+				cwd={null}
+				threadId={threadId}
+			/>
+		}
 	}
 
 	return <>
@@ -3200,7 +3346,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 		}
 	},
 	'open_persistent_terminal': {
-		resultWrapper: ({ toolMessage }) => {
+		resultWrapper: ({ toolMessage, threadId }) => {
 			const accessor = useAccessor()
 			const terminalToolsService = accessor.get('ITerminalToolService')
 
@@ -3208,7 +3354,14 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const title = getTitle(toolMessage)
 			const icon = null
 
-			if (toolMessage.type === 'tool_request') return null // do not show past requests
+			if (toolMessage.type === 'tool_request') {
+				// Show terminal approval UI
+				return <TerminalCommandApproval
+					command={`Open persistent terminal`}
+					cwd={toolMessage.params.cwd}
+					threadId={threadId}
+				/>
+			}
 			if (toolMessage.type === 'running_now') return null // do not show running
 
 			const isError = false
@@ -3584,7 +3737,7 @@ const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, me
 						threadId={threadId}
 					/>
 				</div>
-				{chatMessage.type === 'tool_request' ?
+				{chatMessage.type === 'tool_request' && chatMessage.name !== 'run_command' && chatMessage.name !== 'run_persistent_command' && chatMessage.name !== 'open_persistent_terminal' ?
 					<div className={`${isCheckpointGhost ? 'opacity-50 pointer-events-none' : ''}`}>
 						<ToolRequestAcceptRejectButtons toolName={chatMessage.name} />
 					</div> : null}

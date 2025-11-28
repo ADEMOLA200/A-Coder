@@ -196,9 +196,18 @@ export class TokenCountingService {
 	 */
 	public getContextWindowSize(modelName: string): number {
 		// Strip provider prefix if present (e.g., "ollama:minimax-m2:cloud" → "minimax-m2:cloud")
-		const cleanName = modelName.includes(':') && modelName.split(':').length > 2
-			? modelName.split(':').slice(1).join(':')
-			: modelName;
+		// Also handle OpenRouter format (e.g., "openRouter:x-ai/grok-4.1-fast" → "grok-4.1-fast")
+		let cleanName = modelName;
+		if (modelName.includes(':') && modelName.split(':').length > 2) {
+			cleanName = modelName.split(':').slice(1).join(':');
+		} else if (modelName.includes(':')) {
+			// Handle "provider:model" format
+			cleanName = modelName.split(':')[1] || modelName;
+		}
+		// Handle OpenRouter "org/model" format (e.g., "x-ai/grok-4.1-fast" → "grok-4.1-fast")
+		if (cleanName.includes('/')) {
+			cleanName = cleanName.split('/').pop() || cleanName;
+		}
 		const lowerName = cleanName.toLowerCase();
 
 		// Common model context windows
@@ -220,6 +229,18 @@ export class TokenCountingService {
 			'gemini-pro': 32768,
 			'gemini-1.5-pro': 1000000,
 			'gemini-1.5-flash': 1000000,
+			'gemini-3-pro-preview': 1000000,
+			'gemini-3-pro': 1000000,
+			// xAI Grok
+			'grok-2': 131072,
+			'grok-3': 131072,
+			'grok-3-fast': 131072,
+			'grok-3-mini': 131072,
+			'grok-3-mini-fast': 131072,
+			'grok-4': 256000,
+			'grok-4-fast': 2000000,
+			'grok-4.1-fast': 2000000,
+			'grok-4.1-fast:free': 2000000,
 			// Ollama Cloud models
 			'deepseek-v3.1:671b-cloud': 128000,
 			'gpt-oss:20b-cloud': 128000,
