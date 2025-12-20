@@ -120,7 +120,7 @@ const DuplicateButton = ({ threadId }: { threadId: string }) => {
 	const chatThreadsService = accessor.get('IChatThreadService')
 	return <IconShell1
 		Icon={Copy}
-		className='size-[11px]'
+		className='size-3.5'
 		onClick={() => { chatThreadsService.duplicateThread(threadId); }}
 		data-tooltip-id='void-tooltip'
 		data-tooltip-place='top'
@@ -142,7 +142,7 @@ const TrashButton = ({ threadId }: { threadId: string }) => {
 		<div className='flex flex-nowrap text-nowrap gap-1'>
 			<IconShell1
 				Icon={X}
-				className='size-[11px]'
+				className='size-3.5'
 				onClick={() => { setIsTrashPressed(false); }}
 				data-tooltip-id='void-tooltip'
 				data-tooltip-place='top'
@@ -150,7 +150,7 @@ const TrashButton = ({ threadId }: { threadId: string }) => {
 			/>
 			<IconShell1
 				Icon={Check}
-				className='size-[11px]'
+				className='size-3.5'
 				onClick={() => { chatThreadsService.deleteThread(threadId); setIsTrashPressed(false); }}
 				data-tooltip-id='void-tooltip'
 				data-tooltip-place='top'
@@ -159,7 +159,7 @@ const TrashButton = ({ threadId }: { threadId: string }) => {
 		</div>
 		: <IconShell1
 			Icon={Trash2}
-			className='size-[11px]'
+			className='size-3.5'
 			onClick={() => { setIsTrashPressed(true); }}
 			data-tooltip-id='void-tooltip'
 			data-tooltip-place='top'
@@ -233,7 +233,7 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 	return <div
 		key={pastThread.id}
 		className={`
-			py-2 px-0 text-sm cursor-pointer opacity-70 hover:opacity-100 transition-opacity
+			py-2 px-2 text-sm cursor-pointer text-void-fg-2 hover:text-void-fg-1 hover:bg-void-bg-1 rounded-md transition-all duration-200
 		`}
 		onClick={() => {
 			chatThreadsService.switchToThread(pastThread.id);
@@ -244,16 +244,16 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 		<div className="flex items-center justify-between gap-2">
 			<span className="flex items-center gap-2 min-w-0 overflow-hidden">
 				{/* spinner or checkmark */}
-				{isRunning === 'LLM' || isRunning === 'tool' || isRunning === 'idle' ? 
-					<LoaderCircle className="animate-spin text-void-fg-3 flex-shrink-0 flex-grow-0" size={16} />
+				{isRunning === 'LLM' || isRunning === 'tool' || isRunning === 'idle' ?
+					<LoaderCircle className="animate-spin text-void-fg-3 flex-shrink-0 flex-grow-0" size={14} />
 					:
-					isRunning === 'awaiting_user' ? 
-						<MessageCircleQuestion className="text-void-fg-3 flex-shrink-0 flex-grow-0" size={16} />
+					isRunning === 'awaiting_user' ?
+						<MessageCircleQuestion className="text-void-fg-3 flex-shrink-0 flex-grow-0" size={14} />
 						:
-						<Check className="text-void-fg-3 flex-shrink-0 flex-grow-0" size={16} />
+						<Check className="text-void-fg-3 flex-shrink-0 flex-grow-0" size={14} />
 				}
 				{/* name */}
-				<span className="truncate overflow-hidden text-ellipsis text-void-fg-3"
+				<span className="truncate overflow-hidden text-ellipsis font-medium"
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={numMessages + ' messages'}
 					data-tooltip-place='top'
