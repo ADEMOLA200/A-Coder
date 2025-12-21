@@ -6,6 +6,7 @@
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IVoidModelService } from '../common/voidModelService.js';
 
@@ -16,20 +17,28 @@ class ConvertContribWorkbenchContribution extends Disposable implements IWorkben
 	constructor(
 		@IVoidModelService private readonly voidModelService: IVoidModelService,
 		@IWorkspaceContextService private readonly workspaceContext: IWorkspaceContextService,
+		@IFileService private readonly fileService: IFileService,
 	) {
 		super()
 
-		const initializeURI = (uri: URI) => {
+		const initializeURI = async (uri: URI) => {
 			this.workspaceContext.getWorkspace()
 			const voidRulesURI = URI.joinPath(uri, '.a-coder-rules')
-			this.voidModelService.initializeModel(voidRulesURI)
+			try {
+				if (await this.fileService.exists(voidRulesURI)) {
+					await this.voidModelService.initializeModel(voidRulesURI)
+				}
+			}
+			catch (err) {
+				console.log(`[ConvertContribWorkbenchContribution] Skipping .a-coder-rules for ${uri.toString(true)}:`, err)
+			}
 		}
 
 		// call
 		this._register(this.workspaceContext.onDidChangeWorkspaceFolders((e) => {
-			[...e.changed, ...e.added].forEach(w => { initializeURI(w.uri) })
+			[...e.changed, ...e.added].forEach(w => { void initializeURI(w.uri) })
 		}))
-		this.workspaceContext.getWorkspace().folders.forEach(w => { initializeURI(w.uri) })
+		this.workspaceContext.getWorkspace().folders.forEach(w => { void initializeURI(w.uri) })
 	}
 }
 
