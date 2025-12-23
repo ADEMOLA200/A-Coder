@@ -28,7 +28,7 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
 	const chatThreadsService = accessor.get('IChatThreadService')
-	const liteModeService = accessor.get('ILiteModeService') as any
+	const agentManagerService = accessor.get('IAgentManagerService') as any
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 
 	const [refreshKey, setRefreshKey] = useState(0)
@@ -231,8 +231,8 @@ My requested changes:`
 	}
 
 	const handleOpenPreview = async () => {
-		if (!liteModeService) {
-			console.error('LiteModeService not available')
+		if (!agentManagerService) {
+			console.error('AgentManagerService not available')
 			return
 		}
 
@@ -241,7 +241,7 @@ My requested changes:`
 			const planMarkdown = formatPlanAsMarkdown()
 
 			// Use the content preview to display the implementation plan
-			await liteModeService.openContentPreview(
+			await agentManagerService.openContentPreview(
 				`Implementation Plan: ${planInfo.planId || 'New Plan'}`,
 				planMarkdown
 			)

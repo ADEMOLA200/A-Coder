@@ -112,36 +112,45 @@ const prepareMessages_openai_tools = (messages: SimpleLLMMessage[]): OpenAILLMCh
 		const currMsg = messages[i]
 
 		if (currMsg.role === 'assistant') {
-			// Check if next message is a tool - if so, we need to add tool_calls
-			const nextMsg = messages[i + 1]
+			// Find all consecutive tool messages following this assistant message
+			const toolCalls: any[] = []
+			let j = i + 1
+			while (j < messages.length && messages[j].role === 'tool') {
+				const toolMsg = messages[j]
+				if (toolMsg.role === 'tool') {
+					toolCalls.push({
+						type: 'function',
+						id: toolMsg.id,
+						function: {
+							name: toolMsg.name,
+							arguments: JSON.stringify(toolMsg.rawParams),
+							thought_signature: toolMsg.thought_signature,
+						}
+					})
+				}
+				j++
+			}
 
 			// Get signature and reasoning from anthropicReasoning if available
 			const signature = currMsg.anthropicReasoning?.[0]?.type === 'thinking' ? currMsg.anthropicReasoning[0].signature : undefined
 
-			if (nextMsg?.role === 'tool') {
-				newMessages.push({
-					role: 'assistant',
-					content: currMsg.anthropicReasoning || currMsg.content || '',
-					reasoning: currMsg.reasoning,
-					thought_signature: signature || nextMsg.thought_signature,
-					tool_calls: [{
-						type: 'function',
-						id: nextMsg.id,
-						function: {
-							name: nextMsg.name,
-							arguments: JSON.stringify(nextMsg.rawParams),
-							thought_signature: nextMsg.thought_signature,
-						}
-					}]
-				})
-			} else {
-				newMessages.push({
-					role: 'assistant',
-					content: currMsg.anthropicReasoning || currMsg.content || '',
-					reasoning: currMsg.reasoning,
-					thought_signature: signature,
-				})
+			const assistantMsg: any = {
+				role: 'assistant',
+				content: currMsg.content || '', // OpenAI requires content to be a string or null
+				reasoning: currMsg.reasoning,
+				thought_signature: signature,
 			}
+
+			if (toolCalls.length > 0) {
+				assistantMsg.tool_calls = toolCalls
+				// If there are tool calls, the thought_signature might come from the first tool call
+				const firstToolMsg = messages[i + 1]
+				if (!assistantMsg.thought_signature && firstToolMsg.role === 'tool' && firstToolMsg.thought_signature) {
+					assistantMsg.thought_signature = firstToolMsg.thought_signature
+				}
+			}
+
+			newMessages.push(assistantMsg)
 			continue
 		}
 

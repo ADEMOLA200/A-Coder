@@ -66,8 +66,8 @@ import './fileService.js'
 // register source control management
 import './voidSCMService.js'
 
-// register Lite Mode
-import './liteMode.contribution.js'
+// register Agent Manager
+import './agentManager.contribution.js'
 
 // register Mobile API
 import './apiServiceBridge.js'

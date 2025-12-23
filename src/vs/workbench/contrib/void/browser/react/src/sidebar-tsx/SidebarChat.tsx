@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send, Server, Circle, Loader2, SkipForward, Database, Brain } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send, Server, Circle, Loader2, SkipForward, Database, Brain, Zap } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -552,59 +552,78 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 	if (!isOpen) return null
 
 	return (
-		<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-			<div className="bg-void-bg-1 border border-void-border-1 rounded-2xl shadow-2xl max-w-xl w-full max-h-[85vh] overflow-y-auto">
+		<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+			<div className="bg-void-bg-1 border border-void-border-1 rounded-xl shadow-2xl max-w-[500px] w-full max-h-[90vh] overflow-y-auto flex flex-col">
 				{/* Header */}
-				<div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5 text-white rounded-t-2xl">
-					<div className="flex items-center gap-3 mb-2">
-						<span className="text-4xl">🎓</span>
-						<h2 className="text-2xl font-bold">Welcome to Student Mode!</h2>
+				<div className="px-6 py-5 border-b border-void-border-1 flex items-start gap-4">
+					<div className="p-2 bg-void-accent/10 rounded-lg text-void-accent shrink-0">
+						<Brain size={24} />
 					</div>
-					<p className="text-white/90 text-sm">
-						A-Coder will now act as your personal coding tutor, explaining concepts and helping you learn.
-					</p>
+					<div>
+						<h2 className="text-lg font-semibold text-void-fg-1 leading-tight">Student Mode</h2>
+						<p className="text-void-fg-3 text-sm mt-1 leading-relaxed">
+							A-Coder will act as your personal tutor. Select your experience level to customize explanations.
+						</p>
+					</div>
 				</div>
 
 				{/* Content */}
-				<div className="p-4">
-					<h3 className="text-base font-semibold text-void-fg-1 mb-3">What's your coding experience?</h3>
-
-					{/* Horizontal level buttons */}
-					<div className="flex gap-2">
-						{(['beginner', 'intermediate', 'advanced'] as const).map((level) => (
-							<button
-								key={level}
-								onClick={() => onSelectLevel(level)}
-								className="flex-1 p-3 text-center rounded-lg border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-2-hover hover:border-void-accent transition-all group"
-							>
-								<div className="text-xl mb-1">{nameOfStudentLevel[level].split(' ')[0]}</div>
-								<div className="text-xs font-medium text-void-fg-1 group-hover:text-void-accent">
-									{nameOfStudentLevel[level].split(' ').slice(1).join(' ')}
-								</div>
-							</button>
-						))}
+				<div className="p-6 flex-1">
+					<div className="space-y-3">
+						{(['beginner', 'intermediate', 'advanced'] as const).map((level) => {
+							const labels = {
+								'beginner': { title: 'Beginner', desc: 'Simple explanations, no jargon' },
+								'intermediate': { title: 'Intermediate', desc: 'Technical terms with definitions' },
+								'advanced': { title: 'Advanced', desc: 'Deep dives and best practices' }
+							}
+							return (
+								<button
+									key={level}
+									onClick={() => onSelectLevel(level)}
+									className="w-full group flex items-start gap-4 p-4 rounded-lg border border-void-border-2 hover:border-void-accent hover:bg-void-accent/5 text-left transition-all duration-200"
+								>
+									<div className="mt-0.5">
+										<div className="w-4 h-4 rounded-full border border-void-border-3 group-hover:border-void-accent group-hover:bg-void-accent/20 transition-colors" />
+									</div>
+									<div>
+										<div className="font-medium text-void-fg-1 group-hover:text-void-accent transition-colors">
+											{labels[level].title}
+										</div>
+										<div className="text-sm text-void-fg-3 mt-0.5">
+											{labels[level].desc}
+										</div>
+									</div>
+								</button>
+							)
+						})}
 					</div>
 
-					{/* Features */}
-					<div className="mt-4 p-3 bg-void-bg-2 rounded-lg">
-						<h4 className="font-medium text-void-fg-1 mb-2 text-sm">What you'll get:</h4>
-						<ul className="text-xs text-void-fg-3 space-y-1">
-							<li>✅ Line-by-line code explanations</li>
-							<li>✅ Concept teaching with real-world analogies</li>
-							<li>✅ Practice exercises with hints</li>
-							<li>✅ Progressive hints (not immediate answers)</li>
-							<li>✅ Structured lesson plans</li>
-						</ul>
+					<div className="mt-6 pt-5 border-t border-void-border-1">
+						<h4 className="text-xs font-semibold text-void-fg-2 uppercase tracking-wider mb-3">Included Features</h4>
+						<div className="grid grid-cols-2 gap-y-2 gap-x-4">
+							{[
+								'Line-by-line explanations',
+								'Real-world analogies',
+								'Practice exercises',
+								'Progressive hints',
+								'Lesson plans'
+							].map((feature, i) => (
+								<div key={i} className="flex items-center gap-2 text-sm text-void-fg-3">
+									<Check size={12} className="text-void-accent" />
+									<span>{feature}</span>
+								</div>
+							))}
+						</div>
 					</div>
 				</div>
 
 				{/* Footer */}
-				<div className="px-5 pb-5">
+				<div className="px-6 py-4 bg-void-bg-2 border-t border-void-border-1 flex justify-between items-center rounded-b-xl">
 					<button
 						onClick={onClose}
-						className="text-sm text-void-fg-3 hover:text-void-fg-1 transition-colors"
+						className="text-sm text-void-fg-3 hover:text-void-fg-1 transition-colors px-2 py-1"
 					>
-						Skip for now (defaults to Beginner)
+						Skip for now
 					</button>
 				</div>
 			</div>
@@ -1025,6 +1044,10 @@ export const voidOpenFileFn = (
 ) => {
 	const commandService = accessor.get('ICommandService')
 	const editorService = accessor.get('ICodeEditorService')
+	const agentManagerService = accessor.get('IAgentManagerService')
+
+	// Also notify agent manager if it's interested
+	agentManagerService.openFile(uri)
 
 	// Get editor selection from CodeSelection range
 	let editorSelection = undefined;
@@ -1669,7 +1692,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 	let chatbubbleContents: React.ReactNode
 	if (mode === 'display') {
-		chatbubbleContents = <>
+		chatbubbleContents = <div className="flex flex-col gap-2">
 			<SelectedFiles type='past' messageIdx={messageIdx} selections={chatMessage.selections || []} />
 			{/* Show image thumbnails if present */}
 			{chatMessage.images && chatMessage.images.length > 0 && (
@@ -1679,17 +1702,16 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 							key={index}
 							src={`data:${image.mimeType};base64,${image.base64}`}
 							alt={image.name || `Image ${index + 1}`}
-							className="w-20 h-20 object-cover rounded-lg border border-void-border-1/50 cursor-pointer hover:opacity-80 transition-all duration-200 hover:scale-105 shadow-sm"
+							className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
 							onClick={(e) => {
 								e.stopPropagation(); // Prevent triggering edit mode
-								// Could add full-size image viewer here
 							}}
 						/>
 					))}
 				</div>
 			)}
-			<span className='px-1'>{chatMessage.displayContent}</span>
-		</>
+			<div className='text-[13px] leading-relaxed text-void-fg-1 font-medium'>{chatMessage.displayContent}</div>
+		</div>
 	}
 	else if (mode === 'edit') {
 
@@ -1773,50 +1795,45 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 	return <div
 		// align chatbubble accoridng to role
 		className={`
-		relative group
-		${mode === 'edit' ? 'w-full max-w-full'
-				: mode === 'display' ? 'self-end w-fit max-w-[90%] whitespace-pre-wrap' : '' // user words should be pre
-			}
-
-        ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-50' : ''}
+		flex gap-3 mb-6
+		${mode === 'edit' ? 'w-full' : 'self-end max-w-[85%]'}
+        ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}
     `}
 		onMouseEnter={() => setIsHovered(true)}
 		onMouseLeave={() => setIsHovered(false)}
 	>
-		<div
-			// style chatbubble according to role
-			className={`
-            text-left rounded-xl max-w-full transition-colors duration-200
-            ${mode === 'edit' ? ''
-					: mode === 'display' ? 'p-3 flex flex-col bg-void-bg-3 border border-void-border-2 text-void-fg-1 overflow-x-auto cursor-pointer hover:bg-void-bg-2 shadow-sm' : ''
-				}
-        `}
-			onClick={() => { if (mode === 'display') { onOpenEdit() } }}
-		>
-			{chatbubbleContents}
-		</div>
-
-
-
-		<div
-			className="absolute -top-2 -right-2 translate-x-0 -translate-y-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-		>
-			<EditSymbol
-				size={16}
+		<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
+			<div
+				// style chatbubble according to role
 				className={`
-                    cursor-pointer
-                    p-1.5 bg-void-bg-2 border border-void-border-2 rounded-lg shadow-sm hover:bg-void-bg-3 hover:shadow-md transition-all duration-200
-                    text-void-fg-3 hover:text-void-fg-1
-                `}
-				onClick={() => {
-					if (mode === 'display') {
-						onOpenEdit()
-					} else if (mode === 'edit') {
-						onCloseEdit()
+				group relative
+				${mode === 'edit' ? 'w-full'
+						: mode === 'display' ? 'px-4 py-3 bg-void-accent/10 hover:bg-void-accent/15 border border-void-accent/20 rounded-2xl rounded-tr-none text-void-fg-1 cursor-pointer transition-all duration-300 shadow-sm' : ''
 					}
-				}}
-			/>
+			`}
+				onClick={() => { if (mode === 'display') { onOpenEdit() } }}
+			>
+				{chatbubbleContents}
+
+				{mode === 'display' && (
+					<div className="absolute -left-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+						<button
+							onClick={(e) => { e.stopPropagation(); onOpenEdit(); }}
+							className="p-1.5 bg-void-bg-2 border border-void-border-2 rounded-lg hover:bg-void-bg-3 text-void-fg-4 hover:text-void-accent transition-all"
+						>
+							<Pencil size={14} />
+						</button>
+					</div>
+				)}
+			</div>
+			{mode === 'display' && <span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4 opacity-40 px-1">You</span>}
 		</div>
+
+		{mode === 'display' && (
+			<div className="w-8 h-8 rounded-full bg-void-accent flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-void-accent/20 mt-1 ring-2 ring-void-accent/10">
+				U
+			</div>
+		)}
 	</div>
 }
 
@@ -1932,36 +1949,45 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning
 	if (isEmpty) return null
 
-	return <div className={`flex flex-col gap-2 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
-		{/* reasoning token */}
-		{hasReasoning &&
-			<div className="w-full">
-				<ReasoningWrapper isDoneReasoning={isDoneReasoning} isStreaming={!isCommitted}>
-					<SmallProseWrapper>
-						<ChatMarkdownRender
-							string={reasoningStr}
-							chatMessageLocation={chatMessageLocation}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</SmallProseWrapper>
-				</ReasoningWrapper>
-			</div>
-		}
+	return <div className={`flex gap-3 mb-8 ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}>
+		<div className="w-8 h-8 rounded-full bg-void-bg-3 flex-shrink-0 flex items-center justify-center text-void-accent border border-void-border-2 shadow-sm mt-1 ring-2 ring-void-bg-3/50">
+			<Zap className="w-4 h-4 fill-current" />
+		</div>
 
-		{/* assistant message */}
-		{chatMessage.displayContent &&
-			<div className="w-full">
-				<ProseWrapper>
-					<ChatMarkdownRender
-						string={chatMessage.displayContent || ''}
-						chatMessageLocation={chatMessageLocation}
-						isApplyEnabled={true}
-						isLinkDetectionEnabled={true}
-					/>
-				</ProseWrapper>
+		<div className="flex flex-col gap-2 flex-1 min-w-0">
+			<div className="flex flex-col gap-3">
+				{/* reasoning token */}
+				{hasReasoning &&
+					<div className="w-full">
+						<ReasoningWrapper isDoneReasoning={isDoneReasoning} isStreaming={!isCommitted}>
+							<SmallProseWrapper>
+								<ChatMarkdownRender
+									string={reasoningStr}
+									chatMessageLocation={chatMessageLocation}
+									isApplyEnabled={false}
+									isLinkDetectionEnabled={true}
+								/>
+							</SmallProseWrapper>
+						</ReasoningWrapper>
+					</div>
+				}
+
+				{/* assistant message */}
+				{chatMessage.displayContent &&
+					<div className="w-full px-1">
+						<ProseWrapper>
+							<ChatMarkdownRender
+								string={chatMessage.displayContent || ''}
+								chatMessageLocation={chatMessageLocation}
+								isApplyEnabled={true}
+								isLinkDetectionEnabled={true}
+							/>
+						</ProseWrapper>
+					</div>
+				}
 			</div>
-		}
+			<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4 opacity-40 px-1">A-Coder</span>
+		</div>
 	</div>
 
 }
@@ -4648,8 +4674,13 @@ export const SidebarChat = () => {
 		if (value && !isRunning) {
 			const lastNonCheckpointMessage = currentThread?.messages?.slice().reverse().find(msg => msg.role !== 'checkpoint')
 			if (lastNonCheckpointMessage?.role === 'assistant') {
-				console.log(`[AutoContinue] Enabled - sending continue immediately`)
-				onSubmit('continue')
+				const responseLength = lastNonCheckpointMessage.displayContent?.trim().length || 0
+				if (responseLength < AUTO_CONTINUE_CHAR_THRESHOLD) {
+					console.log(`[AutoContinue] Enabled - sending continue immediately (response length: ${responseLength} chars)`)
+					onSubmit('continue')
+				} else {
+					console.log(`[AutoContinue] Enabled but skipping auto-continue (response length: ${responseLength} chars >= ${AUTO_CONTINUE_CHAR_THRESHOLD})`)
+				}
 			}
 		}
 	}, [chatThreadsService, threadId, isRunning, currentThread?.messages, onSubmit])
@@ -4679,14 +4710,19 @@ export const SidebarChat = () => {
 		lastTriggeredMessageIdRef.current = messageId
 
 		const responseLength = lastNonCheckpointMessage.displayContent?.trim().length || 0
-		console.log(`[AutoContinue] Triggering for message ${messageId} (${responseLength} chars)`)
+		
+		if (responseLength < AUTO_CONTINUE_CHAR_THRESHOLD) {
+			console.log(`[AutoContinue] Triggering for message ${messageId} (${responseLength} chars)`)
 
-		// Small delay to let UI settle
-		const timer = setTimeout(() => {
-			onSubmit('continue')
-		}, 500)
+			// Small delay to let UI settle
+			const timer = setTimeout(() => {
+				onSubmit('continue')
+			}, 500)
 
-		return () => clearTimeout(timer)
+			return () => clearTimeout(timer)
+		} else {
+			console.log(`[AutoContinue] Skipping auto-continue (response length: ${responseLength} chars >= ${AUTO_CONTINUE_CHAR_THRESHOLD})`)
+		}
 	}, [isRunning, autoContinueEnabled, currentThread?.messages, onSubmit])
 
 	// resolve mount info

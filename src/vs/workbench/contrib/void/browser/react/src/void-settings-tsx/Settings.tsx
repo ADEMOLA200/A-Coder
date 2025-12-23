@@ -1839,7 +1839,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 								className="text-center"
 							>
 								<div className="py-4">
-									<div className="void-void-icon w-24 h-24 rounded-full mx-auto mb-6 opacity-90 shadow-lg" />
+									<div className="@@void-void-icon w-24 h-24 rounded-full mx-auto mb-6 opacity-90 shadow-lg" />
 									<h2 className="text-2xl font-bold text-void-fg-1 mb-2">A-Coder</h2>
 									<p className="text-sm text-void-fg-3 mb-8 max-w-lg mx-auto leading-relaxed">
 										The open-source, AI-powered code editor built for the next generation of software development.

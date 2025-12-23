@@ -535,6 +535,15 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// Log the actual messages being sent (first 3 for debugging)
 	if (options.messages && options.messages.length > 0) {
+		console.log(`[sendLLMMessage] Message sequence (${options.messages.length} messages):`)
+		options.messages.forEach((m: any, idx: number) => {
+			const contentStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+			const hasTools = !!m.tool_calls
+			const toolCount = m.tool_calls?.length ?? 0
+			const toolId = m.tool_call_id ?? ''
+			console.log(`  [${idx}] role: ${m.role}${toolId ? ` (id: ${toolId})` : ''}${hasTools ? ` (${toolCount} tools)` : ''}, content length: ${contentStr?.length ?? 0}`)
+		})
+
 		console.log(`[sendLLMMessage] First message:`, JSON.stringify(options.messages[0], null, 2).substring(0, 500))
 		if (options.messages.length > 1) {
 			console.log(`[sendLLMMessage] Last message:`, JSON.stringify(options.messages[options.messages.length - 1], null, 2).substring(0, 500))

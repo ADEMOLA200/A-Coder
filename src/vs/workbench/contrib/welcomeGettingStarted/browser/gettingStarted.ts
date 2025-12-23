@@ -868,8 +868,9 @@ export class GettingStartedPage extends EditorPane {
 		}));
 
 		const header = $('.header', {},
-			$('h1.product-name.caption', {}, this.productService.nameLong),
-			$('p.subtitle.description', {}, localize({ key: 'gettingStarted.editingEvolved', comment: ['Shown as subtitle on the Welcome page.'] }, "Editing evolved"))
+			$('div', { class: '@@void-void-icon', style: 'width: 80px; height: 80px; margin-bottom: 16px; background-size: contain; background-repeat: no-repeat; opacity: 0.9;' }),
+			$('h1.product-name.caption', { style: 'font-weight: 600; letter-spacing: -0.02em; margin-bottom: 8px;' }, "A-Coder"),
+			$('p.subtitle.description', { style: 'font-size: 1.2em; opacity: 0.8; font-weight: 400;' }, "The open-source, AI-powered code editor")
 		);
 
 		const leftColumn = $('.categories-column.categories-column-left', {},);
@@ -1046,15 +1047,27 @@ export class GettingStartedPage extends EditorPane {
 	}
 
 	private buildStartList(): GettingStartedIndexList<IWelcomePageStartEntry> {
-		const renderStartEntry = (entry: IWelcomePageStartEntry): HTMLElement =>
-			$('li',
-				{}, $('button.button-link',
+		const renderStartEntry = (entry: IWelcomePageStartEntry): HTMLElement => {
+			const icon = this.iconWidgetFor(entry);
+			icon.style.fontSize = '20px';
+			icon.style.color = 'var(--vscode-textLink-foreground)';
+
+			return $('li',
+				{ style: 'margin-bottom: 8px; width: 100%;' },
+				$('button.getting-started-category', // Reuse walkthrough card style
 					{
 						'x-dispatch': 'selectStartEntry:' + entry.id,
 						title: entry.description + ' ' + this.getKeybindingLabel(entry.command),
+						style: 'display: flex; align-items: center; gap: 12px; padding: 12px; width: 100%; border: 1px solid var(--vscode-welcomePage-tileBorder); background: var(--vscode-welcomePage-tileBackground); border-radius: 6px; cursor: pointer; text-align: left;'
 					},
-					this.iconWidgetFor(entry),
-					$('span', {}, entry.title)));
+					$('div.icon-widget', { style: 'display: flex; align-items: center; justify-content: center;' }, icon),
+					$('div', { style: 'display: flex; flex-direction: column; gap: 2px;' },
+						$('span', { style: 'font-weight: 600; font-size: 13px; color: var(--vscode-foreground);' }, entry.title),
+						$('span', { style: 'font-size: 12px; color: var(--vscode-descriptionForeground); opacity: 0.8;' }, entry.description)
+					)
+				)
+			);
+		};
 
 		if (this.startList) { this.startList.dispose(); }
 

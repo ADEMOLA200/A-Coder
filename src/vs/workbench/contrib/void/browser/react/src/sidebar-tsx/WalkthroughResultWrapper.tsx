@@ -29,7 +29,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
 	const chatThreadsService = accessor.get('IChatThreadService') as any
-	const liteModeService = accessor.get('ILiteModeService') as any
+	const agentManagerService = accessor.get('IAgentManagerService') as any
 
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [latestWalkthrough, setLatestWalkthrough] = useState(toolMessage)
@@ -96,14 +96,14 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	}
 
 	const openWalkthrough = async () => {
-		if (!commandService || !liteModeService) {
-			console.error('Services not available:', { commandService: !!commandService, liteModeService: !!liteModeService })
+		if (!commandService || !agentManagerService) {
+			console.error('Services not available:', { commandService: !!commandService, agentManagerService: !!agentManagerService })
 			return
 		}
 
 		try {
 			// Open walkthrough in Lite preview tab instead of VS Code editor
-			await liteModeService.openWalkthroughPreview(result.filePath, result.preview)
+			await agentManagerService.openWalkthroughPreview(result.filePath, result.preview)
 		} catch (error) {
 			console.error('Failed to open walkthrough preview:', error)
 			// Fallback to regular open if Lite preview fails

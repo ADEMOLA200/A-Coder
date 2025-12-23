@@ -1636,7 +1636,6 @@ const normalizeIndentation = (code: string): string => {
 }
 
 
-const modelOfEditorId: { [id: string]: ITextModel | undefined } = {}
 export type BlockCodeProps = { initValue: string, language?: string, maxHeight?: number, showScrollbars?: boolean }
 export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: BlockCodeProps) => {
 
@@ -1659,17 +1658,34 @@ export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: Bl
 	const initValueRef = useRef(initValue)
 	const languageRef = useRef(language)
 
-	const modelRef = useRef<ITextModel | null>(null)
+	// create the model once on mount
+	const model = useMemo(() => {
+		const languageId = languageRef.current ? languageRef.current : 'plaintext'
+		return modelService.createModel(
+			initValueRef.current, {
+			languageId: languageId,
+			onDidChange: (e) => { return { dispose: () => { } } }
+		})
+	}, [modelService])
+
+	const modelRef = useRef<ITextModel | null>(model)
 
 	// if we change the initial value, don't re-render the whole thing, just set it here. same for language
 	useEffect(() => {
 		initValueRef.current = initValue
-		modelRef.current?.setValue(initValue)
-	}, [initValue])
+		model.setValue(initValue)
+	}, [initValue, model])
 	useEffect(() => {
 		languageRef.current = language
-		if (language) modelRef.current?.setLanguage(language)
-	}, [language])
+		if (language) model.setLanguage(language)
+	}, [language, model])
+
+	// dispose the model on unmount
+	useEffect(() => {
+		return () => {
+			model.dispose()
+		}
+	}, [model])
 
 	return <div ref={divRef} className='relative z-0 px-2 py-1 bg-void-bg-3'>
 		<WidgetComponent
@@ -1733,14 +1749,6 @@ export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: Bl
 			}, [instantiationService])}
 
 			onCreateInstance={useCallback((editor: CodeEditorWidget) => {
-				const languageId = languageRef.current ? languageRef.current : 'plaintext'
-
-				const model = modelOfEditorId[id] ?? modelService.createModel(
-					initValueRef.current, {
-					languageId: languageId,
-					onDidChange: (e) => { return { dispose: () => { } } } // no idea why they'd require this
-				})
-				modelRef.current = model
 				editor.setModel(model);
 
 				const container = editor.getDomNode()
@@ -1758,12 +1766,12 @@ export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: Bl
 				resize()
 				const disposable = editor.onDidContentSizeChange(() => { resize() });
 
-				return [disposable, model]
-			}, [modelService])}
+				return [disposable]
+			}, [model])}
 
 			dispose={useCallback((editor: CodeEditorWidget) => {
 				editor.dispose();
-			}, [modelService])}
+			}, [])}
 
 			propsFn={useCallback(() => { return [] }, [])}
 		/>
@@ -1921,14 +1929,6 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 		[block.final, languageSelection, modelService]
 	);
 
-	// Clean up models on unmount
-	useEffect(() => {
-		return () => {
-			originalModel.dispose();
-			modifiedModel.dispose();
-		};
-	}, [originalModel, modifiedModel]);
-
 	// Imperatively mount the DiffEditorWidget
 	const divRef = useRef<HTMLDivElement | null>(null);
 	const editorRef = useRef<any>(null);
@@ -1997,6 +1997,9 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 			disposable2.dispose();
 			editor.dispose();
 			editorRef.current = null;
+			// Clean up models AFTER editor is disposed
+			originalModel.dispose();
+			modifiedModel.dispose();
 		};
 	}, [originalModel, modifiedModel, instantiationService]);
 

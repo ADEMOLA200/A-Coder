@@ -189,33 +189,59 @@ export class EditorGroupWatermark extends Disposable {
 				buttonContainer.style.display = 'flex';
 				buttonContainer.style.flexDirection = 'column'; // Change to column for vertical stacking
 				buttonContainer.style.alignItems = 'center'; // Center the buttons horizontally
-				buttonContainer.style.gap = '8px'; // Reduce gap between buttons from 16px to 8px
-				buttonContainer.style.marginBottom = '16px';
+				buttonContainer.style.gap = '12px'; // Increased gap for better spacing
+				buttonContainer.style.marginBottom = '24px';
 				voidIconBox.appendChild(buttonContainer);
 
 				// Open a folder
 				const openFolderButton = h('button')
 				openFolderButton.root.classList.add('void-openfolder-button')
-				openFolderButton.root.style.display = 'block'
-				openFolderButton.root.style.width = '124px' // Set width to 124px as requested
+				openFolderButton.root.style.cssText = `
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					gap: 8px;
+					padding: 10px 24px;
+					width: 200px;
+					background-color: var(--vscode-button-background);
+					color: var(--vscode-button-foreground);
+					border: 1px solid transparent;
+					border-radius: 6px;
+					font-size: 13px;
+					font-weight: 600;
+					cursor: pointer;
+					transition: all 0.2s ease;
+				`
 				openFolderButton.root.textContent = 'Open Folder'
+				openFolderButton.root.onmouseover = () => { openFolderButton.root.style.backgroundColor = 'var(--vscode-button-hoverBackground)'; }
+				openFolderButton.root.onmouseout = () => { openFolderButton.root.style.backgroundColor = 'var(--vscode-button-background)'; }
 				openFolderButton.root.onclick = () => {
 					this.commandService.executeCommand(isMacintosh && isNative ? OpenFileFolderAction.ID : OpenFolderAction.ID)
-					// if (this.contextKeyService.contextMatchesRules(ContextKeyExpr.and(WorkbenchStateContext.isEqualTo('workspace')))) {
-					// 	this.commandService.executeCommand(OpenFolderViaWorkspaceAction.ID);
-					// } else {
-					// 	this.commandService.executeCommand(isMacintosh ? 'workbench.action.files.openFileFolder' : 'workbench.action.files.openFolder');
-					// }
 				}
 				buttonContainer.appendChild(openFolderButton.root);
 
 				// Open SSH button
 				const openSSHButton = h('button')
 				openSSHButton.root.classList.add('void-openssh-button')
-				openSSHButton.root.style.display = 'block'
-				openSSHButton.root.style.backgroundColor = '#5a5a5a' // Made darker than the default gray
-				openSSHButton.root.style.width = '124px' // Set width to 124px as requested
-				openSSHButton.root.textContent = 'Open SSH'
+				openSSHButton.root.style.cssText = `
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					gap: 8px;
+					padding: 10px 24px;
+					width: 200px;
+					background-color: var(--vscode-button-secondaryBackground);
+					color: var(--vscode-button-secondaryForeground);
+					border: 1px solid var(--vscode-button-border, transparent);
+					border-radius: 6px;
+					font-size: 13px;
+					font-weight: 600;
+					cursor: pointer;
+					transition: all 0.2s ease;
+				`
+				openSSHButton.root.textContent = 'Connect via SSH'
+				openSSHButton.root.onmouseover = () => { openSSHButton.root.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)'; }
+				openSSHButton.root.onmouseout = () => { openSSHButton.root.style.backgroundColor = 'var(--vscode-button-secondaryBackground)'; }
 				openSSHButton.root.onclick = () => {
 					this.viewsService.openViewContainer(REMOTE_EXPLORER_VIEWLET_ID);
 				}

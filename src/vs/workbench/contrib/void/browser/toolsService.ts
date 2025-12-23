@@ -26,7 +26,7 @@ import { IMorphService } from './morphService.js'
 import { ToonService } from '../common/toonService.js'
 import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
 import { ImplementationPlanningService, ImplementationPlan, StepStatus as ImplStepStatus } from '../common/implementationPlanningService.js'
-import { LiteModeService } from './liteModeService.js'
+import { AgentManagerService } from './agentManagerService.js'
 
 
 // tool use for AI
@@ -1375,14 +1375,14 @@ export class ToolsService implements IToolsService {
 
 				try {
 					// Get the Lite Mode service
-					const liteModeService = this._instantiationService.createInstance(LiteModeService);
+					const agentManagerService = this._instantiationService.createInstance(AgentManagerService);
 
 					// Read the file content to provide as preview
 					const fileContent = await this._fileService.readFile(URI.file(filePath));
 					const preview = fileContent.value.toString();
 
 					// Open the walkthrough preview
-					await liteModeService.openWalkthroughPreview(filePath, preview);
+					await agentManagerService.openWalkthroughPreview(filePath, preview);
 
 					return {
 						result: {

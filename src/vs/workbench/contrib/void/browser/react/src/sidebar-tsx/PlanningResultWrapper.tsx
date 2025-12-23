@@ -118,7 +118,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	threadId
 }) => {
 	const accessor = useAccessor()
-	const liteModeService = accessor.get('ILiteModeService') as any
+	const agentManagerService = accessor.get('IAgentManagerService') as any
 
 	const [isExpanded, setIsExpanded] = useState(false) // Start collapsed like Cascade
 
@@ -185,8 +185,8 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	const hiddenCount = tasks.length - visibleTasks.length
 
 	const openPlanPreview = async () => {
-		if (!liteModeService) {
-			console.error('LiteModeService not available')
+		if (!agentManagerService) {
+			console.error('AgentManagerService not available')
 			return
 		}
 
@@ -202,7 +202,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 				planMarkdown += `- [${marker}] ${task.text}\n`
 			})
 
-			await liteModeService.openContentPreview('Task Plan', planMarkdown)
+			await agentManagerService.openContentPreview('Task Plan', planMarkdown)
 		} catch (error) {
 			console.error('Failed to open plan preview:', error)
 		}
@@ -229,6 +229,21 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 				<span className="text-void-fg-4 text-xs italic ml-1">
 					{getStatusText()}
 				</span>
+				<div className="ml-auto flex items-center gap-2">
+					<button
+						onClick={(e) => {
+							e.stopPropagation()
+							openPlanPreview()
+						}}
+						className="px-2 py-1 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-2 border border-void-border-2 rounded-md text-xs font-medium transition-colors flex items-center gap-1"
+						title="Open in preview"
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						</svg>
+						Open
+					</button>
+				</div>
 			</div>
 
 			{/* Task list - collapsible */}

@@ -10,18 +10,19 @@ import { _registerServices } from './services.js';
 
 import { ServicesAccessor } from '../../../../../../../editor/browser/editorExtensions.js';
 
-export const mountFnGenerator = (Component: (params: any) => React.ReactNode) => (rootElement: HTMLElement, accessor: ServicesAccessor, props?: any) => {
-	if (typeof document === 'undefined') {
-		console.error('index.tsx error: document was undefined')
+export const mountFnGenerator = (Component: (params: any) => React.ReactNode) => (rootElement: HTMLElement, accessor: ServicesAccessor, props?: any, ownerDocument: Document = document) => {
+	if (typeof ownerDocument === 'undefined') {
+		console.error('mountFnGenerator error: document was undefined')
 		return
 	}
 
 	const disposables = _registerServices(accessor)
 
+	// ensure the rootElement is NOT yet in the auxiliary window document if we want to use ownerDocument
 	const root = ReactDOM.createRoot(rootElement)
 
 	const rerender = (props?: any) => {
-		root.render(<Component {...props} />); // tailwind dark theme indicator
+		root.render(<Component accessor={accessor} {...props} />); // tailwind dark theme indicator
 	}
 	const dispose = () => {
 		root.unmount();

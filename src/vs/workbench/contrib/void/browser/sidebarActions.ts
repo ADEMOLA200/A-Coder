@@ -22,7 +22,7 @@ import { VOID_CTRL_L_ACTION_ID } from './actionIDs.js';
 import { localize2 } from '../../../../nls.js';
 import { IChatThreadService } from './chatThreadService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
-import { ILiteModeService } from './liteMode.contribution.js';
+import { IAgentManagerService } from './agentManager.contribution.js';
 
 // ---------- Register commands and keybindings ----------
 
@@ -269,14 +269,14 @@ registerAction2(class extends Action2 {
 	}
 })
 
-// Lite Mode action
-const VOID_OPEN_LITE_MODE_ACTION_ID = 'void.liteMode.open'
+// Agent Manager action
+const VOID_OPEN_AGENT_MANAGER_ACTION_ID = 'void.agentManager.open'
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
-			id: VOID_OPEN_LITE_MODE_ACTION_ID,
-			title: localize2('voidOpenLiteMode', 'Open Lite Mode'),
-			icon: { id: 'layout' },
+			id: VOID_OPEN_AGENT_MANAGER_ACTION_ID,
+			title: localize2('voidOpenAgentManager', 'Open Agent Manager'),
+			icon: { id: 'layout-sidebar-right' },
 			menu: [{
 				id: MenuId.ViewTitle,
 				group: 'navigation',
@@ -286,12 +286,12 @@ registerAction2(class extends Action2 {
 		});
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const liteModeService = accessor.get(ILiteModeService)
+		const agentManagerService = accessor.get(IAgentManagerService)
 
 		try {
-			await liteModeService.openLiteMode()
+			await agentManagerService.openAgentManager()
 		} catch (error) {
-			console.error('Failed to open Lite Mode:', error)
+			console.error('Failed to open Agent Manager:', error)
 		}
 	}
 })

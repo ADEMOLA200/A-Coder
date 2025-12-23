@@ -55,7 +55,7 @@ import { IMCPService } from '../../../../common/mcpService.js';
 import { IMCPModalService } from '../../../mcpModalService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
-import { ILiteModeService } from '../../../liteMode.contribution.js'
+import { IAgentManagerService } from '../../../agentManager.contribution.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -86,9 +86,16 @@ const activeURIListeners: Set<(uri: URI | null) => void> = new Set();
 const mcpListeners: Set<() => void> = new Set()
 
 
+let _isRegistered = false
 // must call this before you can use any of the hooks below
 // this should only be called ONCE! this is the only place you don't need to dispose onDidChange. If you use state.onDidChange anywhere else, make sure to dispose it!
 export const _registerServices = (accessor: ServicesAccessor) => {
+
+	if (_isRegistered) {
+		_registerAccessor(accessor) // Update accessor if needed (e.g. for scoped services)
+		return []
+	}
+	_isRegistered = true
 
 	const disposables: IDisposable[] = []
 
@@ -230,7 +237,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IExtensionTransferService: accessor.get(IExtensionTransferService),
 		IMCPService: accessor.get(IMCPService),
 		IMCPModalService: accessor.get(IMCPModalService),
-		ILiteModeService: accessor.get(ILiteModeService),
+		IAgentManagerService: accessor.get(IAgentManagerService),
 
 		IStorageService: accessor.get(IStorageService),
 
@@ -405,6 +412,80 @@ export const useMCPServiceState = () => {
 		return () => { mcpListeners.delete(listener) };
 	}, []);
 	return s
+}
+
+export const useOnAgentManagerOpenFile = (callback: (uri: URI) => void) => {
+	const accessor = useAccessor()
+	const agentManagerService = accessor.get('IAgentManagerService')
+	useEffect(() => {
+		const disposable = agentManagerService.onDidOpenFile(uri => {
+			callback(uri)
+		})
+		return () => { disposable.dispose() }
+	}, [agentManagerService, callback])
+}
+
+export const useOnAgentManagerOpenWalkthrough = (callback: (data: { filePath: string, preview: string }) => void) => {
+	const accessor = useAccessor()
+	const agentManagerService = accessor.get('IAgentManagerService')
+	useEffect(() => {
+		const disposable = agentManagerService.onDidOpenWalkthrough(data => {
+			callback(data)
+		})
+		return () => { disposable.dispose() }
+	}, [agentManagerService, callback])
+}
+
+export const useOnAgentManagerOpenContent = (callback: (data: { title: string, content: string }) => void) => {
+	const accessor = useAccessor()
+	const agentManagerService = accessor.get('IAgentManagerService')
+	useEffect(() => {
+		const disposable = agentManagerService.onDidOpenContent(data => {
+			callback(data)
+		})
+		return () => { disposable.dispose() }
+	}, [agentManagerService, callback])
+}
+
+export const useWorkspaceFolders = () => {
+	const accessor = useAccessor()
+	const contextService = accessor.get('IWorkspaceContextService')
+	const [folders, setFolders] = useState(contextService.getWorkspace().folders)
+
+	useEffect(() => {
+		const disposable = contextService.onDidChangeWorkspaceFolders(() => {
+			setFolders(contextService.getWorkspace().folders)
+		})
+		return () => { disposable.dispose() }
+	}, [contextService])
+
+	return folders
+}
+
+export const useFileContent = (uri: URI | null) => {
+	const accessor = useAccessor()
+	const fileService = accessor.get('IFileService')
+	const [content, setContent] = useState<string | null>(null)
+	const [loading, setLoading] = useState(false)
+
+	useEffect(() => {
+		if (!uri) {
+			setContent(null)
+			return
+		}
+
+		setLoading(true)
+		fileService.readFile(uri).then(res => {
+			setContent(res.value.toString())
+			setLoading(false)
+		}).catch(err => {
+			console.error('Error reading file:', err)
+			setContent(null)
+			setLoading(false)
+		})
+	}, [uri, fileService])
+
+	return { content, loading }
 }
 
 
