@@ -94,23 +94,33 @@ export class TokenCountingService {
 	 * Helper to extract content from different message formats
 	 */
 	private _extractContent(message: LLMChatMessage): string {
+		let contentStr = '';
+
 		// OpenAI/Anthropic format
 		if ('content' in message) {
 			if (typeof message.content === 'string') {
-				return message.content;
+				contentStr += message.content;
 			}
 			// Handle array content (Anthropic format with reasoning/multi-part)
-			if (Array.isArray(message.content)) {
-				return message.content
+			else if (Array.isArray(message.content)) {
+				contentStr += message.content
 					.map(part => {
 						if (typeof part === 'string') return part;
 						if ('text' in part) return part.text;
 						if ('thinking' in part) return `[thinking]${part.thinking}[/thinking]`;
+						if ('type' in part && part.type === 'tool_use') return `[tool_use:${part.name}:${JSON.stringify(part.input)}]`;
+						if ('type' in part && part.type === 'tool_result') return `[tool_result:${part.content}]`;
 						return '';
 					})
 					.join('');
 			}
-			return '';
+		}
+
+		// OpenAI tool calls (separate property)
+		if ('tool_calls' in message && Array.isArray(message.tool_calls)) {
+			contentStr += message.tool_calls.map(tc =>
+				`[tool_call:${tc.function.name}:${tc.function.arguments}]`
+			).join('');
 		}
 
 		// Gemini format
@@ -118,14 +128,14 @@ export class TokenCountingService {
 			return message.parts
 				.map(part => {
 					if ('text' in part) return part.text;
-					if ('functionCall' in part) return `[function_call:${part.functionCall.name}]`;
-					if ('functionResponse' in part) return `[function_response:${part.functionResponse.name}]`;
+					if ('functionCall' in part) return `[function_call:${part.functionCall.name}:${JSON.stringify(part.functionCall.args)}]`;
+					if ('functionResponse' in part) return `[function_response:${part.functionResponse.name}:${JSON.stringify(part.functionResponse.response)}]`;
 					return '';
 				})
 				.join('');
 		}
 
-		return '';
+		return contentStr;
 	}
 
 	/**

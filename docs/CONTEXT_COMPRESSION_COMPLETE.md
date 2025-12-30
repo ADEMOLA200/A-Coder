@@ -7,6 +7,7 @@
 
 **Features**:
 - ✅ Count tokens in text, messages, and message arrays
+- ✅ **Improved**: Correctly counts tokens for tool calls (inputs) and tool results (outputs)
 - ✅ Support for multiple providers (OpenAI, Anthropic, Gemini)
 - ✅ Automatic model detection and encoding selection
 - ✅ Context window size tracking for all major models
@@ -14,27 +15,27 @@
 - ✅ Encoder caching for performance
 
 **Supported Models**:
-- **OpenAI**: GPT-4 Turbo (128k), GPT-4 (8k/32k), GPT-3.5 Turbo (16k)
-- **Anthropic**: Claude 3 Opus/Sonnet/Haiku (200k)
+- **OpenAI**: GPT-4 Turbo (128k), GPT-4 (8k/32k), GPT-3.5 Turbo (16k), o1/o3-mini
+- **Anthropic**: Claude 3/3.5 Opus/Sonnet/Haiku (200k)
 - **Google**: Gemini Pro (32k), Gemini 1.5 Pro/Flash (1M)
-- **Ollama**: Llama 3.1/3.2 (128k), Llama 3 (8k), Mistral (8k), Mixtral (32k), Qwen (32k), CodeLlama (16k), DeepSeek-Coder (16k), Gemma (8k), Phi (2k)
+- **Ollama**: Llama 3.1/3.3 (128k), Qwen (32k), Mistral (8k), Mixtral (32k), Minimax, DeepSeek, etc.
 - **Fallback**: Unknown local models (8k), Unknown cloud models (4k)
 
 ### 2. Context Compression Service ✅
 **File**: `/src/vs/workbench/contrib/void/common/contextCompressionService.ts`
 
 **Compression Strategies** (applied in order):
-1. **Truncate Tool Results** - Limit large tool outputs to 2000 chars
-2. **Remove Old Messages** - Keep system message + last 6 messages
-3. **Summarize Middle Messages** - Create summary of old conversation
+1. **Truncate Tool Calls & Results** - Limit large tool inputs (e.g., file writes) and outputs to prevent overflow
+2. **Remove Old Messages** - Keep system message + last 10 messages
+3. **Summarize Middle Messages** - Create summary of old conversation (if enabled)
 
 **Configuration Options**:
 ```typescript
 {
-  targetUsage: 0.75,           // Use 75% of context window
-  keepLastNMessages: 6,         // Keep last 6 messages (3 turns)
-  enableSummarization: true,    // Summarize vs remove
-  maxToolResultLength: 2000     // Max chars for tool results
+  targetUsage: 0.85,           // Use 85% of context window
+  keepLastNMessages: 10,       // Keep last 10 messages (5 turns)
+  enableSummarization: true,   // Summarize vs remove
+  maxToolResultLength: 1500    // Max chars for tool inputs/outputs
 }
 ```
 
@@ -109,8 +110,8 @@ if (compressionService.needsCompression(messages, 'gpt-4', 0.8)) {
 1. ✅ Install js-tiktoken
 2. ✅ Create token counting service
 3. ✅ Create compression service
-4. ⏳ Integrate into message preparation flow
-5. ⏳ Add logging for token usage
+4. ✅ Integrate into message preparation flow
+5. ✅ Fix tool call/result token counting & truncation
 
 ### Phase 2: UI Indicators (Recommended)
 1. ⏳ Add token counter to chat UI
@@ -140,6 +141,7 @@ if (compressionService.needsCompression(messages, 'gpt-4', 0.8)) {
 - ✅ Compression preserves system message
 - ✅ Compression keeps recent messages
 - ✅ Tool results are truncated properly
+- ✅ **Tool calls (inputs) are truncated properly**
 - ⏳ Integration with actual LLM calls
 - ⏳ UI displays correct token counts
 

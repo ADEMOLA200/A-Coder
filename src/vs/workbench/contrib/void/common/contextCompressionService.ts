@@ -415,11 +415,48 @@ export class ContextCompressionService {
 	}
 
 	/**
-	 * Truncate large tool results to reduce token usage
+	 * Smart truncate JSON string to avoid context overflow
+	 */
+	private truncateJsonString(jsonStr: string, maxLength: number): string {
+		if (jsonStr.length <= maxLength) return jsonStr;
+
+		try {
+			const obj = JSON.parse(jsonStr);
+			let modified = false;
+
+			const truncateRecursive = (o: any) => {
+				if (!o || typeof o !== 'object') return;
+
+				for (const key in o) {
+					if (typeof o[key] === 'string' && o[key].length > maxLength) {
+						o[key] = o[key].substring(0, maxLength) + `\n... [truncated ${o[key].length - maxLength} chars]`;
+						modified = true;
+					} else if (typeof o[key] === 'object') {
+						truncateRecursive(o[key]);
+					}
+				}
+			};
+
+			truncateRecursive(obj);
+
+			if (modified) {
+				return JSON.stringify(obj);
+			}
+		} catch (e) {
+			// If invalid JSON, fallback to simple truncation if significantly larger
+			if (jsonStr.length > maxLength * 2) {
+				return jsonStr.substring(0, maxLength * 2) + `\n... [truncated raw string]`;
+			}
+		}
+		return jsonStr;
+	}
+
+	/**
+	 * Truncate large tool results and tool calls to reduce token usage
 	 */
 	private truncateToolResults(messages: LLMChatMessage[], maxLength: number): LLMChatMessage[] {
 		return messages.map(msg => {
-			// OpenAI tool format
+			// OpenAI tool format (role: tool)
 			if ('role' in msg && msg.role === 'tool' && 'content' in msg) {
 				if (typeof msg.content === 'string' && msg.content.length > maxLength) {
 					return {
@@ -429,9 +466,27 @@ export class ContextCompressionService {
 				}
 			}
 
-			// Anthropic tool result format
+			// OpenAI tool calls (role: assistant)
+			if ('role' in msg && msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls) {
+				const newToolCalls = msg.tool_calls.map(tc => {
+					if (tc.function.arguments.length > maxLength) {
+						return {
+							...tc,
+							function: {
+								...tc.function,
+								arguments: this.truncateJsonString(tc.function.arguments, maxLength)
+							}
+						};
+					}
+					return tc;
+				});
+				return { ...msg, tool_calls: newToolCalls } as LLMChatMessage;
+			}
+
+			// Anthropic format
 			if ('content' in msg && Array.isArray(msg.content)) {
 				const newContent = msg.content.map(part => {
+					// Tool result
 					if ('type' in part && part.type === 'tool_result' && 'content' in part) {
 						if (part.content.length > maxLength) {
 							return {
@@ -440,14 +495,29 @@ export class ContextCompressionService {
 							};
 						}
 					}
+					// Tool use (assistant)
+					if ('type' in part && part.type === 'tool_use' && 'input' in part) {
+						let modified = false;
+						const newInput = { ...part.input };
+						for (const key in newInput) {
+							if (typeof newInput[key] === 'string' && newInput[key].length > maxLength) {
+								newInput[key] = newInput[key].substring(0, maxLength) + `\n... [truncated]`;
+								modified = true;
+							}
+						}
+						if (modified) {
+							return { ...part, input: newInput };
+						}
+					}
 					return part;
 				});
 				return { ...msg, content: newContent } as LLMChatMessage;
 			}
 
-			// Gemini function response format
+			// Gemini format
 			if ('parts' in msg) {
 				const newParts = msg.parts.map(part => {
+					// Function response
 					if ('functionResponse' in part) {
 						const output = part.functionResponse.response.output;
 						if (output.length > maxLength) {
@@ -459,6 +529,23 @@ export class ContextCompressionService {
 										output: output.substring(0, maxLength) + `\n\n[... truncated for context window]`
 									}
 								}
+							};
+						}
+					}
+					// Function call
+					if ('functionCall' in part) {
+						let modified = false;
+						const newArgs = { ...part.functionCall.args };
+						for (const key in newArgs) {
+							if (typeof newArgs[key] === 'string' && (newArgs[key] as string).length > maxLength) {
+								newArgs[key] = (newArgs[key] as string).substring(0, maxLength) + `\n... [truncated]`;
+								modified = true;
+							}
+						}
+						if (modified) {
+							return {
+								...part,
+								functionCall: { ...part.functionCall, args: newArgs }
 							};
 						}
 					}

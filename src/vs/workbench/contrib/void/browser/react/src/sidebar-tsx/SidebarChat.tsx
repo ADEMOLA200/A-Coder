@@ -4377,6 +4377,16 @@ const CommandBarInChat = () => {
 					{fileDetailsButton}
 				</div>
 				<div className="flex gap-2 items-center">
+					<IconShell1
+						Icon={Server}
+						onClick={() => {
+							const mcpModalService = accessor.get('IMCPModalService');
+							mcpModalService.openModal();
+						}}
+						data-tooltip-id='void-tooltip'
+						data-tooltip-place='top'
+						data-tooltip-content='MCP Servers'
+					/>
 					{acceptRejectAllButtons}
 					{threadStatusHTML}
 				</div>
@@ -5420,11 +5430,11 @@ export const SidebarChat = () => {
 		ref={sidebarRef}
 		className='w-full h-full flex flex-col overflow-hidden'
 	>
-		{/* Top toolbar with MCP Server button */}
-		<ErrorBoundary>
-			<div className='flex-shrink-0 px-4 py-2 flex justify-between items-center border-b border-void-border-1'>
-				{/* Student mode progress indicator */}
-				{currentChatMode === 'learn' && (completedExerciseCount > 0 || activeExerciseCount > 0) ? (
+		{/* Top toolbar */}
+		{currentChatMode === 'learn' && (completedExerciseCount > 0 || activeExerciseCount > 0) && (
+			<ErrorBoundary>
+				<div className='flex-shrink-0 px-4 py-2 flex justify-between items-center border-b border-void-border-1'>
+					{/* Student mode progress indicator */}
 					<div className='flex items-center gap-3 text-xs'>
 						<div className='flex items-center gap-1.5 text-purple-400'>
 							<span>🎯</span>
@@ -5435,24 +5445,12 @@ export const SidebarChat = () => {
 							<span>{completedExerciseCount} completed</span>
 						</div>
 					</div>
-				) : (
-					<div className='flex-1' />
-				)}
-				<div className='flex gap-2 items-center'>
-					{/* MCP Server Button */}
-					<IconShell1
-						Icon={Server}
-						onClick={() => {
-							const mcpModalService = accessor.get('IMCPModalService');
-							mcpModalService.openModal();
-						}}
-						data-tooltip-id='void-tooltip'
-						data-tooltip-place='top'
-						data-tooltip-content='MCP Servers'
-					/>
+					<div className='flex gap-2 items-center'>
+						{/* Buttons moved to CommandBarInChat */}
+					</div>
 				</div>
-			</div>
-		</ErrorBoundary>
+			</ErrorBoundary>
+		)}
 		<ErrorBoundary>
 			<div className='flex-1 overflow-hidden relative'>
 				{/* Checkpoint Timeline on the left */}
