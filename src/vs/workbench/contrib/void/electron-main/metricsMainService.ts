@@ -132,10 +132,21 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		else {
 			this.client.optIn()
 			this.client.identify(identifyMessage)
+			// Capture app_opened for DAU/WAU tracking
+			this.capture('app_opened', { ...this._initProperties })
+			// Start heartbeat to capture active status for long-running sessions
+			this._startHeartbeat()
 		}
 
 
 		console.log('A-Coder posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
+	}
+
+	private _startHeartbeat() {
+		// Send heartbeat every 12 hours (43200000 ms)
+		setInterval(() => {
+			this.capture('heartbeat', { ...this._initProperties })
+		}, 12 * 60 * 60 * 1000)
 	}
 
 
