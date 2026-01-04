@@ -179,11 +179,14 @@ const prepareMessages_openai_tools = (messages: SimpleLLMMessage[]): OpenAILLMCh
 const prepareMessages_anthropic_tools = (messages: SimpleLLMMessage[], supportsAnthropicReasoning: boolean): AnthropicOrOpenAILLMMessage[] => {
 	const newMessages: (AnthropicLLMChatMessage | (SimpleLLMMessage & { role: 'tool' }))[] = messages;
 
+	let lastAssistantIdx = -1
+
 	for (let i = 0; i < messages.length; i += 1) {
 		const currMsg = messages[i]
 
 		// add anthropic reasoning
 		if (currMsg.role === 'assistant') {
+			lastAssistantIdx = i
 			if (currMsg.anthropicReasoning && supportsAnthropicReasoning) {
 				const content = currMsg.content
 				newMessages[i] = {
@@ -211,7 +214,7 @@ const prepareMessages_anthropic_tools = (messages: SimpleLLMMessage[], supportsA
 
 		if (currMsg.role === 'tool') {
 			// add anthropic tools
-			const prevMsg = 0 <= i - 1 && i - 1 <= newMessages.length ? newMessages[i - 1] : undefined
+			const prevMsg = lastAssistantIdx !== -1 ? newMessages[lastAssistantIdx] : undefined
 
 			// make it so the assistant called the tool
 			if (prevMsg?.role === 'assistant') {
@@ -238,7 +241,7 @@ type GeminiUserPart = (GeminiLLMChatMessage & { role: 'user' })['parts'][0]
 type GeminiModelPart = (GeminiLLMChatMessage & { role: 'model' })['parts'][0]
 
 const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
-	let latestToolName: ToolName | undefined = undefined
+	const toolIdToName = new Map<string, string>()
 	const messages2: GeminiLLMChatMessage[] = messages.map((m): GeminiLLMChatMessage | null => {
 		if (m.role === 'assistant') {
 			if (typeof m.content === 'string') {
@@ -253,7 +256,7 @@ const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
 						return { text: c.thinking, thought: true }
 					}
 					else if (c.type === 'tool_use') {
-						latestToolName = c.name
+						if (c.id && c.name) toolIdToName.set(c.id, c.name)
 						return { functionCall: { id: c.id, name: c.name, args: c.input, thought_signature: c.signature } }
 					}
 					else return null
@@ -271,8 +274,9 @@ const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
 						return { text: c.text }
 					}
 					else if (c.type === 'tool_result') {
-						if (!latestToolName) return null
-						return { functionResponse: { id: c.tool_use_id, name: latestToolName, response: { output: c.content } } }
+						const name = toolIdToName.get(c.tool_use_id)
+						if (!name) return null
+						return { functionResponse: { id: c.tool_use_id, name: name, response: { output: c.content } } }
 					}
 					else return null
 				}).filter(m => !!m)
