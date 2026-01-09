@@ -29,7 +29,7 @@ export class VoidPreviewInput extends EditorInput {
 		public readonly title: string,
 		public readonly content: string,
 		public readonly resourceUri: URI,
-		public readonly options?: { isImplementationPlan?: boolean, planId?: string, threadId?: string }
+		public readonly options?: { isImplementationPlan?: boolean, isWalkthrough?: boolean, planId?: string, threadId?: string }
 	) {
 		super();
 	}

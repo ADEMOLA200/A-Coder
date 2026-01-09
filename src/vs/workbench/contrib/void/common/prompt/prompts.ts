@@ -1101,6 +1101,24 @@ Each call advances to the next hint level automatically.`,
 		}
 	},
 
+	display_lesson: {
+		name: 'display_lesson',
+		description: `Displays a formatted markdown lesson in a dedicated preview tab for the student.
+
+**When to use:**
+- ALWAYS use this when responding to teach_concept, explain_code, or create_lesson_plan requests
+- When providing long explanations or tutorials
+- To show rich educational content cleanly
+
+**What happens:**
+- Opens a new tab with your markdown content rendered beautifully
+- Keeps the chat clean and focused on conversation`,
+		params: {
+			title: { description: 'The title of the lesson.' },
+			content: { description: 'The full markdown content of the lesson.' }
+		}
+	},
+
 	load_skill: {
 		name: 'load_skill',
 		description: `Loads a specialized skill to enhance your capabilities with domain-specific instructions and patterns.
@@ -1228,6 +1246,7 @@ const studentModeTools: BuiltinToolName[] = [
 	'check_answer',
 	'give_hint',
 	'create_lesson_plan',
+	'display_lesson',
 	// Limited editing - for exercises and demos
 	'create_file_or_folder',
 	'edit_file',

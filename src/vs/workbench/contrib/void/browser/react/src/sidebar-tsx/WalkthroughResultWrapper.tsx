@@ -37,13 +37,18 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	// Check for newer walkthrough updates in this thread
 	useEffect(() => {
+		// Don't auto-update open_walkthrough_preview messages
+		if (toolMessage.name === 'open_walkthrough_preview') return
+
 		const checkForUpdates = () => {
 			if (!chatThreadsService) return
 			const thread = chatThreadsService.state.allThreads[threadId]
 			if (!thread) return
 
 			const messages = thread.messages || []
-			const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough' || m.name === 'open_walkthrough_preview')
+			// Only look for other update_walkthrough messages to sync content
+			// Ignore open_walkthrough_preview messages as they don't contain content
+			const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
 			const latest = walkthroughMessages[walkthroughMessages.length - 1]
 
 			if (latest && latest.id !== toolMessage.id) {
@@ -54,7 +59,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 		// Check on mount and when messages change
 		checkForUpdates()
-	}, [threadId, toolMessage.id, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
+	}, [threadId, toolMessage.id, toolMessage.name, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
 
 	const result = latestWalkthrough.result?.result || latestWalkthrough.result
 	const toolName = latestWalkthrough.name
@@ -108,7 +113,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		try {
 			// Always call openWalkthroughPreview, the service will decide how to handle it
 			// (e.g., opening a React tab)
-			await agentManagerService.openWalkthroughPreview(result.filePath, result.preview)
+			await agentManagerService.openWalkthroughPreview(result.filePath, result.preview, { threadId })
 		} catch (error) {
 			console.error('Failed to open walkthrough:', error)
 			// Last resort fallback to raw file open
@@ -141,81 +146,71 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		}
 	}
 
-		return (
-
-			<div className="@@void-scope">
-
-				<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-4 shadow-sm">
-
-					{/* Header */}
-
-					<div className="bg-void-bg-4/50 px-3 py-2">
-
-						<div
-
-							className="flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors rounded px-2 py-1"
-
-							onClick={() => setIsExpanded(!isExpanded)}
-
-						>
-
-	
-					<div className="flex items-center gap-2 min-w-0 flex-1">
-						<svg
-							className={`w-4 h-4 text-void-fg-3 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} flex-shrink-0`}
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-						</svg>
-						<span className="text-lg flex-shrink-0">{getActionIcon()}</span>
-						<div className="min-w-0 flex-1">
-							<div className="font-medium text-void-fg-1 truncate">
-								Walkthrough {getActionText().toLowerCase()}
-							</div>
-							<div className="text-xs text-void-fg-4 font-mono truncate" title={result.filePath}>
-								{result.filePath}
+	return (
+		<div className="@@void-scope">
+			<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-4 shadow-sm">
+				{/* Header */}
+				<div className="bg-void-bg-4/50 px-3 py-2">
+					<div
+						className="flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors rounded px-2 py-1"
+						onClick={() => setIsExpanded(!isExpanded)}
+					>
+						<div className="flex items-center gap-2 min-w-0 flex-1">
+							<svg
+								className={`w-4 h-4 text-void-fg-3 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} flex-shrink-0`}
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+							</svg>
+							<span className="text-lg flex-shrink-0">{getActionIcon()}</span>
+							<div className="min-w-0 flex-1">
+								<div className="font-medium text-void-fg-1 truncate">
+									Walkthrough {getActionText().toLowerCase()}
+								</div>
+								<div className="text-xs text-void-fg-4 font-mono truncate" title={result.filePath}>
+									{result.filePath}
+								</div>
 							</div>
 						</div>
-					</div>
-					<button
-						onClick={(e) => {
-							e.stopPropagation() // Prevent header collapse when clicking Open
-							openWalkthrough()
-						}}
-						className="px-3 py-1 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-1 border border-void-border-2 rounded-md text-sm flex items-center gap-1 transition-colors flex-shrink-0"
-					>
-						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-						</svg>
-						Open
-					</button>
-				</div>
-			</div>
-
-			{/* Collapsible Content */}
-			{isExpanded && (
-				<div className="p-3">
-					<div className="text-sm font-medium text-void-fg-2 mb-2">Preview:</div>
-					<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
-						<ChatMarkdownRender
-							key={refreshKey}
-							string={result.preview}
-							chatMessageLocation={undefined}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
+						<button
+							onClick={(e) => {
+								e.stopPropagation() // Prevent header collapse when clicking Open
+								openWalkthrough()
+							}}
+							className="px-3 py-1 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-1 border border-void-border-2 rounded-md text-sm flex items-center gap-1 transition-colors flex-shrink-0"
+						>
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+							</svg>
+							Open
+						</button>
 					</div>
 				</div>
-			)}
 
-			{/* Update indicator */}
-			{latestWalkthrough.id !== toolMessage.id && (
-				<div className="px-3 pb-2 text-xs text-void-fg-4 italic">
-					This walkthrough has been updated. See latest version above.
-				</div>
-			)}
+				{/* Collapsible Content */}
+				{isExpanded && (
+					<div className="p-3">
+						<div className="text-sm font-medium text-void-fg-2 mb-2">Preview:</div>
+						<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
+							<ChatMarkdownRender
+								key={refreshKey}
+								string={result.preview}
+								chatMessageLocation={undefined}
+								isApplyEnabled={false}
+								isLinkDetectionEnabled={true}
+							/>
+						</div>
+					</div>
+				)}
+
+				{/* Update indicator */}
+				{latestWalkthrough.id !== toolMessage.id && (
+					<div className="px-3 pb-2 text-xs text-void-fg-4 italic">
+						This walkthrough has been updated. See latest version above.
+					</div>
+				)}
 			</div>
 		</div>
 	)

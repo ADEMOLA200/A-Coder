@@ -361,7 +361,7 @@ class InputRenderer implements ICompressibleTreeRenderer<ISCMInput, FuzzyScore, 
 			this.contentHeights.set(input, contentHeight);
 
 			if (templateData.inputWidgetHeight !== contentHeight) {
-				this.updateHeight(input, contentHeight + 10);
+				this.updateHeight(input, contentHeight + 36);
 				templateData.inputWidgetHeight = contentHeight;
 				templateData.inputWidget.layout();
 			}
@@ -394,7 +394,7 @@ class InputRenderer implements ICompressibleTreeRenderer<ISCMInput, FuzzyScore, 
 	}
 
 	getHeight(input: ISCMInput): number {
-		return (this.contentHeights.get(input) ?? InputRenderer.DEFAULT_HEIGHT) + 10;
+		return (this.contentHeights.get(input) ?? InputRenderer.DEFAULT_HEIGHT) + 36;
 	}
 
 	getRenderedInputWidget(input: ISCMInput): SCMInputWidget | undefined {
@@ -1934,11 +1934,7 @@ class SCMInputWidget {
 
 	layout(): void {
 		const editorHeight = this.getContentHeight();
-		let toolbarWidth = this.getToolbarWidth();
-		if (toolbarWidth > 0 && this.toolbarContainer.offsetWidth > toolbarWidth) {
-			toolbarWidth = this.toolbarContainer.offsetWidth;
-		}
-		const dimension = new Dimension(this.element.clientWidth - toolbarWidth, editorHeight);
+		const dimension = new Dimension(this.element.clientWidth, editorHeight);
 
 		if (dimension.width < 0) {
 			this.lastLayoutWasTrash = true;
@@ -2052,17 +2048,6 @@ class SCMInputWidget {
 			},
 			anchorAlignment: AnchorAlignment.LEFT
 		});
-	}
-
-	private getToolbarWidth(): number {
-		const showInputActionButton = this.configurationService.getValue<boolean>('scm.showInputActionButton');
-		if (!this.toolbar || !showInputActionButton || this.toolbar?.isEmpty() === true) {
-			return 0;
-		}
-
-		return this.toolbar.dropdownActions.length === 0 ?
-			26 /* 22px action + 4px margin */ :
-			39 /* 35px action + 4px margin */;
 	}
 
 	clearValidation(): void {

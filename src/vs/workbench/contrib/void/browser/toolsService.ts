@@ -770,6 +770,14 @@ export class ToolsService implements IToolsService {
 				};
 			},
 
+			display_lesson: (params: RawToolParamsObj) => {
+				const { title, content } = params;
+				return {
+					title: validateStr('title', title),
+					content: validateStr('content', content)
+				};
+			},
+
 			load_skill: (params: RawToolParamsObj) => {
 				const { skill_name: skillNameUnknown } = params;
 				const skill_name = validateStr('skill_name', skillNameUnknown);
@@ -1517,7 +1525,9 @@ ${code}
 **Instructions:** ${levelInstructions[level]}
 ${focus ? `**Focus on:** ${focus}` : ''}
 
-**Your response must include:**
+**IMPORTANT:** Do NOT output the explanation in the chat. Instead, write your response in markdown format and use the \`display_lesson\` tool to show it in a dedicated tab.
+
+**Content Structure:**
 
 ### 📋 Summary
 (One sentence: what does this code do?)
@@ -1552,7 +1562,9 @@ ${focus ? `**Focus on:** ${focus}` : ''}
 ${language ? `**Language:** Show examples in ${language}` : ''}
 ${context ? `**Context:** Relate to: ${context}` : ''}
 
-**Your response must include:**
+**IMPORTANT:** Do NOT output the lesson in the chat. Instead, write your response in markdown format and use the \`display_lesson\` tool to show it in a dedicated tab.
+
+**Content Structure:**
 
 ### 📚 What is ${concept}?
 (Clear definition appropriate for ${level} level)
@@ -1687,7 +1699,9 @@ ${student_code}
 **Student Level:** ${level}
 ${time_available ? `**Time Available:** ${time_available} minutes` : ''}
 
-**Create a structured lesson plan with this format:**
+**IMPORTANT:** Do NOT output the lesson plan in the chat. Instead, write your response in markdown format and use the \`display_lesson\` tool to show it in a dedicated tab.
+
+**Content Structure:**
 
 ### 🎯 Learning Objectives
 (3-5 specific things student will learn by the end)
@@ -1713,6 +1727,11 @@ For each module include:
 *Lesson Plan ID: ${planId}*`;
 
 				return { result: { planId, template } };
+			},
+
+			display_lesson: async ({ title, content }) => {
+				await this._agentManagerService.openContentPreview(title, content);
+				return { result: { success: true } };
 			},
 
 			load_skill: async ({ skill_name }, opts) => {
@@ -2082,6 +2101,10 @@ For each module include:
 
 			give_hint: (params, result) => {
 				return `💡 Hint (Level ${result.hintLevel})\n\n${result.template}`;
+			},
+
+			display_lesson: (params, result) => {
+				return result.success ? '✅ Lesson displayed successfully in a new tab.' : '❌ Failed to display lesson.'
 			},
 
 			create_lesson_plan: (params, result) => {

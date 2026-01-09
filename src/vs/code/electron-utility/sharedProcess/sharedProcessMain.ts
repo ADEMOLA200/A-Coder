@@ -5,13 +5,14 @@
 
 import { hostname, release } from 'os';
 import { MessagePortMain, MessageEvent } from '../../../base/parts/sandbox/node/electronTypes.js';
+import { RunOnceScheduler } from '../../../base/common/async.js';
 import { toErrorMessage } from '../../../base/common/errorMessage.js';
 import { onUnexpectedError, setUnexpectedErrorHandler } from '../../../base/common/errors.js';
 import { combinedDisposable, Disposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { Schemas } from '../../../base/common/network.js';
 import { URI } from '../../../base/common/uri.js';
 import { Emitter } from '../../../base/common/event.js';
-import { ProxyChannel, StaticRouter } from '../../../base/parts/ipc/common/ipc.js';
+import { LazyServerChannel, ProxyChannel, StaticRouter } from '../../../base/parts/ipc/common/ipc.js';
 import { IClientConnectionFilter, Server as UtilityProcessMessagePortServer, once } from '../../../base/parts/ipc/node/ipc.mp.js';
 import { CodeCacheCleaner } from './contrib/codeCacheCleaner.js';
 import { LanguagePackCachedDataCleaner } from './contrib/languagePackCachedDataCleaner.js';
@@ -181,16 +182,18 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 		});
 
 		// Instantiate Contributions
-		this._register(combinedDisposable(
-			instantiationService.createInstance(CodeCacheCleaner, this.configuration.codeCachePath),
-			instantiationService.createInstance(LanguagePackCachedDataCleaner),
-			instantiationService.createInstance(UnusedWorkspaceStorageDataCleaner),
-			instantiationService.createInstance(LogsDataCleaner),
-			instantiationService.createInstance(LocalizationsUpdater),
-			instantiationService.createInstance(ExtensionsContributions),
-			instantiationService.createInstance(UserDataProfilesCleaner),
-			instantiationService.createInstance(DefaultExtensionsInitializer)
-		));
+		this._register(new RunOnceScheduler(() => {
+			this._register(combinedDisposable(
+				instantiationService.createInstance(CodeCacheCleaner, this.configuration.codeCachePath),
+				instantiationService.createInstance(LanguagePackCachedDataCleaner),
+				instantiationService.createInstance(UnusedWorkspaceStorageDataCleaner),
+				instantiationService.createInstance(LogsDataCleaner),
+				instantiationService.createInstance(LocalizationsUpdater),
+				instantiationService.createInstance(ExtensionsContributions),
+				instantiationService.createInstance(UserDataProfilesCleaner),
+				instantiationService.createInstance(DefaultExtensionsInitializer)
+			));
+		}, 5000)).schedule();
 	}
 
 	private async initServices(): Promise<IInstantiationService> {
@@ -278,10 +281,10 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 		services.set(IRequestService, requestService);
 
 		// Checksum
-		services.set(IChecksumService, new SyncDescriptor(ChecksumService, undefined, false /* proxied to other processes */));
+		services.set(IChecksumService, new SyncDescriptor(ChecksumService, undefined, true /* proxied to other processes */));
 
 		// V8 Inspect profiler
-		services.set(IV8InspectProfilingService, new SyncDescriptor(V8InspectProfilingService, undefined, false /* proxied to other processes */));
+		services.set(IV8InspectProfilingService, new SyncDescriptor(V8InspectProfilingService, undefined, true /* proxied to other processes */));
 
 		// Native Host
 		const nativeHostService = new NativeHostService(-1 /* we are not running in a browser window context */, mainProcessService) as INativeHostService;
@@ -339,27 +342,28 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 		services.set(IExtensionGalleryService, new SyncDescriptor(ExtensionGalleryService, undefined, true));
 
 		// Extension Tips
-		services.set(IExtensionTipsService, new SyncDescriptor(ExtensionTipsService, undefined, false /* Eagerly scans and computes exe based recommendations */));
+		services.set(IExtensionTipsService, new SyncDescriptor(ExtensionTipsService, undefined, true /* Eagerly scans and computes exe based recommendations */));
 
 		// Localizations
-		services.set(ILanguagePackService, new SyncDescriptor(NativeLanguagePackService, undefined, false /* proxied to other processes */));
+		services.set(ILanguagePackService, new SyncDescriptor(NativeLanguagePackService, undefined, true /* proxied to other processes */));
 
 		// Diagnostics
-		services.set(IDiagnosticsService, new SyncDescriptor(DiagnosticsService, undefined, false /* proxied to other processes */));
+		services.set(IDiagnosticsService, new SyncDescriptor(DiagnosticsService, undefined, true /* proxied to other processes */));
 
 		// Settings Sync
 		services.set(IUserDataSyncAccountService, new SyncDescriptor(UserDataSyncAccountService, undefined, true));
 		services.set(IUserDataSyncLogService, new SyncDescriptor(UserDataSyncLogService, undefined, true));
 		services.set(IUserDataSyncUtilService, ProxyChannel.toService(this.server.getChannel('userDataSyncUtil', client => client.ctx !== 'main')));
-		services.set(IGlobalExtensionEnablementService, new SyncDescriptor(GlobalExtensionEnablementService, undefined, false /* Eagerly resets installed extensions */));
+		services.set(IGlobalExtensionEnablementService, new SyncDescriptor(GlobalExtensionEnablementService, undefined, true /* Eagerly resets installed extensions */));
 		services.set(IIgnoredExtensionsManagementService, new SyncDescriptor(IgnoredExtensionsManagementService, undefined, true));
 		services.set(IExtensionStorageService, new SyncDescriptor(ExtensionStorageService));
 		services.set(IUserDataSyncStoreManagementService, new SyncDescriptor(UserDataSyncStoreManagementService, undefined, true));
 		services.set(IUserDataSyncStoreService, new SyncDescriptor(UserDataSyncStoreService, undefined, true));
 		services.set(IUserDataSyncMachinesService, new SyncDescriptor(UserDataSyncMachinesService, undefined, true));
-		services.set(IUserDataSyncLocalStoreService, new SyncDescriptor(UserDataSyncLocalStoreService, undefined, false /* Eagerly cleans up old backups */));
+		services.set(IUserDataSyncLocalStoreService, new SyncDescriptor(UserDataSyncLocalStoreService, undefined, true /* Eagerly cleans up old backups */));
 		services.set(IUserDataSyncEnablementService, new SyncDescriptor(UserDataSyncEnablementService, undefined, true));
-		services.set(IUserDataSyncService, new SyncDescriptor(UserDataSyncService, undefined, false /* Initializes the Sync State */));
+		services.set(IUserDataSyncService, new SyncDescriptor(UserDataSyncService, undefined, true /* Initializes the Sync State */));
+
 		services.set(IUserDataProfileStorageService, new SyncDescriptor(SharedProcessUserDataProfileStorageService, undefined, true));
 		services.set(IUserDataSyncResourceProviderService, new SyncDescriptor(UserDataSyncResourceProviderService, undefined, true));
 
@@ -384,63 +388,53 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 
 	private initChannels(accessor: ServicesAccessor): void {
 
+		const instantiationService = accessor.get(IInstantiationService);
+
 		// Extensions Management
-		const channel = new ExtensionManagementChannel(accessor.get(IExtensionManagementService), () => null);
-		this.server.registerChannel('extensions', channel);
+		this.server.registerChannel('extensions', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ExtensionManagementChannel(accessor.get(IExtensionManagementService), () => null))));
 
 		// Language Packs
-		const languagePacksChannel = ProxyChannel.fromService(accessor.get(ILanguagePackService), this._store);
-		this.server.registerChannel('languagePacks', languagePacksChannel);
+		this.server.registerChannel('languagePacks', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ILanguagePackService), this._store))));
 
 		// Diagnostics
-		const diagnosticsChannel = ProxyChannel.fromService(accessor.get(IDiagnosticsService), this._store);
-		this.server.registerChannel('diagnostics', diagnosticsChannel);
+		this.server.registerChannel('diagnostics', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IDiagnosticsService), this._store))));
 
 		// Extension Tips
-		const extensionTipsChannel = new ExtensionTipsChannel(accessor.get(IExtensionTipsService));
-		this.server.registerChannel('extensionTipsService', extensionTipsChannel);
+		this.server.registerChannel('extensionTipsService', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ExtensionTipsChannel(accessor.get(IExtensionTipsService)))));
 
 		// Checksum
-		const checksumChannel = ProxyChannel.fromService(accessor.get(IChecksumService), this._store);
-		this.server.registerChannel('checksum', checksumChannel);
+		this.server.registerChannel('checksum', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IChecksumService), this._store))));
 
 		// Profiling
-		const profilingChannel = ProxyChannel.fromService(accessor.get(IV8InspectProfilingService), this._store);
-		this.server.registerChannel('v8InspectProfiling', profilingChannel);
+		this.server.registerChannel('v8InspectProfiling', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IV8InspectProfilingService), this._store))));
 
 		// Settings Sync
-		const userDataSyncMachineChannel = ProxyChannel.fromService(accessor.get(IUserDataSyncMachinesService), this._store);
-		this.server.registerChannel('userDataSyncMachines', userDataSyncMachineChannel);
+		this.server.registerChannel('userDataSyncMachines', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IUserDataSyncMachinesService), this._store))));
 
 		// Custom Endpoint Telemetry
-		const customEndpointTelemetryChannel = ProxyChannel.fromService(accessor.get(ICustomEndpointTelemetryService), this._store);
-		this.server.registerChannel('customEndpointTelemetry', customEndpointTelemetryChannel);
+		this.server.registerChannel('customEndpointTelemetry', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ICustomEndpointTelemetryService), this._store))));
 
-		const userDataSyncAccountChannel = new UserDataSyncAccountServiceChannel(accessor.get(IUserDataSyncAccountService));
-		this.server.registerChannel('userDataSyncAccount', userDataSyncAccountChannel);
+		this.server.registerChannel('userDataSyncAccount', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new UserDataSyncAccountServiceChannel(accessor.get(IUserDataSyncAccountService)))));
 
-		const userDataSyncStoreManagementChannel = new UserDataSyncStoreManagementServiceChannel(accessor.get(IUserDataSyncStoreManagementService));
-		this.server.registerChannel('userDataSyncStoreManagement', userDataSyncStoreManagementChannel);
+		this.server.registerChannel('userDataSyncStoreManagement', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new UserDataSyncStoreManagementServiceChannel(accessor.get(IUserDataSyncStoreManagementService)))));
 
-		const userDataSyncChannel = new UserDataSyncServiceChannel(accessor.get(IUserDataSyncService), accessor.get(IUserDataProfilesService), accessor.get(ILogService));
-		this.server.registerChannel('userDataSync', userDataSyncChannel);
+		this.server.registerChannel('userDataSync', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new UserDataSyncServiceChannel(accessor.get(IUserDataSyncService), accessor.get(IUserDataProfilesService), accessor.get(ILogService)))));
 
-		const userDataAutoSync = this._register(accessor.get(IInstantiationService).createInstance(UserDataAutoSyncService));
-		this.server.registerChannel('userDataAutoSync', ProxyChannel.fromService(userDataAutoSync, this._store));
+		this.server.registerChannel('userDataAutoSync', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => {
+			const userDataAutoSync = this._register(accessor.get(IInstantiationService).createInstance(UserDataAutoSyncService));
+			return ProxyChannel.fromService(userDataAutoSync, this._store);
+		})));
 
-		this.server.registerChannel('IUserDataSyncResourceProviderService', ProxyChannel.fromService(accessor.get(IUserDataSyncResourceProviderService), this._store));
+		this.server.registerChannel('IUserDataSyncResourceProviderService', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IUserDataSyncResourceProviderService), this._store))));
 
 		// Tunnel
-		const sharedProcessTunnelChannel = ProxyChannel.fromService(accessor.get(ISharedProcessTunnelService), this._store);
-		this.server.registerChannel(ipcSharedProcessTunnelChannelName, sharedProcessTunnelChannel);
+		this.server.registerChannel(ipcSharedProcessTunnelChannelName, new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ISharedProcessTunnelService), this._store))));
 
 		// Remote Tunnel
-		const remoteTunnelChannel = ProxyChannel.fromService(accessor.get(IRemoteTunnelService), this._store);
-		this.server.registerChannel('remoteTunnel', remoteTunnelChannel);
+		this.server.registerChannel('remoteTunnel', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IRemoteTunnelService), this._store))));
 
 		// Web Content Extractor
-		const webContentExtractorChannel = ProxyChannel.fromService(accessor.get(ISharedWebContentExtractorService), this._store);
-		this.server.registerChannel('sharedWebContentExtractor', webContentExtractorChannel);
+		this.server.registerChannel('sharedWebContentExtractor', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ISharedWebContentExtractorService), this._store))));
 	}
 
 	private registerErrorHandler(logService: ILogService): void {

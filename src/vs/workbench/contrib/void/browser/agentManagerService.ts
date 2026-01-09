@@ -144,14 +144,18 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
         }
     }
 
-    async openWalkthroughPreview(filePath: string, preview: string): Promise<void> {
+    async openWalkthroughPreview(filePath: string, preview: string, options?: { threadId?: string }): Promise<void> {
         // Always open in React tab
         const resource = URI.from({
             scheme: 'void-preview',
             path: filePath
         });
 
-        const input = this._instantiationService.createInstance(VoidPreviewInput, 'Walkthrough: ' + filePath.split('/').pop(), preview, resource);
+        const input = this._instantiationService.createInstance(VoidPreviewInput, 'Walkthrough: ' + filePath.split('/').pop(), preview, resource, {
+            isWalkthrough: true,
+            planId: filePath,
+            threadId: options?.threadId
+        });
         await this._editorService.openEditor(input, { pinned: true });
 
         // Also fire event for Agent Manager if it's open

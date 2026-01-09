@@ -37,6 +37,28 @@ export interface IServerChannel<TContext = string> {
 	listen<T>(ctx: TContext, event: string, arg?: any): Event<T>;
 }
 
+export class LazyServerChannel<TContext = string> implements IServerChannel<TContext> {
+	private channel: IServerChannel<TContext> | undefined;
+
+	constructor(private readonly factory: () => IServerChannel<TContext>) { }
+
+	call<T>(ctx: TContext, command: string, arg?: any, cancellationToken?: CancellationToken): Promise<T> {
+		if (!this.channel) {
+			this.channel = this.factory();
+		}
+
+		return this.channel.call(ctx, command, arg, cancellationToken);
+	}
+
+	listen<T>(ctx: TContext, event: string, arg?: any): Event<T> {
+		if (!this.channel) {
+			this.channel = this.factory();
+		}
+
+		return this.channel.listen(ctx, event, arg);
+	}
+}
+
 const enum RequestType {
 	Promise = 100,
 	PromiseCancel = 101,

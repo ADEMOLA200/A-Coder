@@ -23,7 +23,7 @@ export interface IAgentManagerService {
 	/**
 	 * Opens Agent Manager with walkthrough content
 	 */
-	openWalkthroughPreview(filePath: string, preview: string): Promise<void>;
+	openWalkthroughPreview(filePath: string, preview: string, options?: { threadId?: string }): Promise<void>;
 
 	/**
 	 * Opens Agent Manager with arbitrary markdown content (for implementation plans, etc.)

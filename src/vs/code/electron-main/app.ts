@@ -20,7 +20,7 @@ import { assertType } from '../../base/common/types.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
 import { registerContextMenuListener } from '../../base/parts/contextmenu/electron-main/contextmenu.js';
-import { getDelayedChannel, ProxyChannel, StaticRouter } from '../../base/parts/ipc/common/ipc.js';
+import { getDelayedChannel, LazyServerChannel, ProxyChannel, StaticRouter } from '../../base/parts/ipc/common/ipc.js';
 import { Server as ElectronIPCServer } from '../../base/parts/ipc/electron-main/ipc.electron.js';
 import { Client as MessagePortClient } from '../../base/parts/ipc/electron-main/ipc.mp.js';
 import { Server as NodeIPCServer } from '../../base/parts/ipc/node/ipc.net.js';
@@ -1153,160 +1153,141 @@ export class CodeApplication extends Disposable {
 		// across apps until `requestSingleInstance` APIs are adopted.
 
 		const disposables = this._register(new DisposableStore());
+		const instantiationService = accessor.get(IInstantiationService);
 
-		const launchChannel = ProxyChannel.fromService(accessor.get(ILaunchMainService), disposables, { disableMarshalling: true });
-		this.mainProcessNodeIpcServer.registerChannel('launch', launchChannel);
+		this.mainProcessNodeIpcServer.registerChannel('launch', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ILaunchMainService), disposables, { disableMarshalling: true }))));
 
-		const diagnosticsChannel = ProxyChannel.fromService(accessor.get(IDiagnosticsMainService), disposables, { disableMarshalling: true });
-		this.mainProcessNodeIpcServer.registerChannel('diagnostics', diagnosticsChannel);
+		this.mainProcessNodeIpcServer.registerChannel('diagnostics', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IDiagnosticsMainService), disposables, { disableMarshalling: true }))));
 
 		// Policies (main & shared process)
-		const policyChannel = disposables.add(new PolicyChannel(accessor.get(IPolicyService)));
-		mainProcessElectronServer.registerChannel('policy', policyChannel);
-		sharedProcessClient.then(client => client.registerChannel('policy', policyChannel));
+		const policyChannelLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => disposables.add(new PolicyChannel(accessor.get(IPolicyService)))));
+		mainProcessElectronServer.registerChannel('policy', policyChannelLazy);
+		sharedProcessClient.then(client => client.registerChannel('policy', policyChannelLazy));
 
 		// Local Files
-		const diskFileSystemProvider = this.fileService.getProvider(Schemas.file);
-		assertType(diskFileSystemProvider instanceof DiskFileSystemProvider);
-		const fileSystemProviderChannel = disposables.add(new DiskFileSystemProviderChannel(diskFileSystemProvider, this.logService, this.environmentMainService));
-		mainProcessElectronServer.registerChannel(LOCAL_FILE_SYSTEM_CHANNEL_NAME, fileSystemProviderChannel);
-		sharedProcessClient.then(client => client.registerChannel(LOCAL_FILE_SYSTEM_CHANNEL_NAME, fileSystemProviderChannel));
+		const fileSystemProviderChannelLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => {
+			const diskFileSystemProvider = this.fileService.getProvider(Schemas.file);
+			assertType(diskFileSystemProvider instanceof DiskFileSystemProvider);
+			return disposables.add(new DiskFileSystemProviderChannel(diskFileSystemProvider, this.logService, this.environmentMainService));
+		}));
+		mainProcessElectronServer.registerChannel(LOCAL_FILE_SYSTEM_CHANNEL_NAME, fileSystemProviderChannelLazy);
+		sharedProcessClient.then(client => client.registerChannel(LOCAL_FILE_SYSTEM_CHANNEL_NAME, fileSystemProviderChannelLazy));
 
 		// User Data Profiles
-		const userDataProfilesService = ProxyChannel.fromService(accessor.get(IUserDataProfilesMainService), disposables);
-		mainProcessElectronServer.registerChannel('userDataProfiles', userDataProfilesService);
-		sharedProcessClient.then(client => client.registerChannel('userDataProfiles', userDataProfilesService));
+		const userDataProfilesServiceLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IUserDataProfilesMainService), disposables)));
+		mainProcessElectronServer.registerChannel('userDataProfiles', userDataProfilesServiceLazy);
+		sharedProcessClient.then(client => client.registerChannel('userDataProfiles', userDataProfilesServiceLazy));
 
 		// Update
-		const updateChannel = new UpdateChannel(accessor.get(IUpdateService));
-		mainProcessElectronServer.registerChannel('update', updateChannel);
+		mainProcessElectronServer.registerChannel('update', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new UpdateChannel(accessor.get(IUpdateService)))));
 
 		// Process
-		const processChannel = ProxyChannel.fromService(accessor.get(IProcessMainService), disposables);
-		mainProcessElectronServer.registerChannel('process', processChannel);
+		mainProcessElectronServer.registerChannel('process', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IProcessMainService), disposables))));
 
 		// Encryption
-		const encryptionChannel = ProxyChannel.fromService(accessor.get(IEncryptionMainService), disposables);
-		mainProcessElectronServer.registerChannel('encryption', encryptionChannel);
+		mainProcessElectronServer.registerChannel('encryption', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IEncryptionMainService), disposables))));
 
 		// Signing
-		const signChannel = ProxyChannel.fromService(accessor.get(ISignService), disposables);
-		mainProcessElectronServer.registerChannel('sign', signChannel);
+		mainProcessElectronServer.registerChannel('sign', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ISignService), disposables))));
 
 		// Keyboard Layout
-		const keyboardLayoutChannel = ProxyChannel.fromService(accessor.get(IKeyboardLayoutMainService), disposables);
-		mainProcessElectronServer.registerChannel('keyboardLayout', keyboardLayoutChannel);
+		mainProcessElectronServer.registerChannel('keyboardLayout', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IKeyboardLayoutMainService), disposables))));
 
 		// Native host (main & shared process)
-		this.nativeHostMainService = accessor.get(INativeHostMainService);
-		const nativeHostChannel = ProxyChannel.fromService(this.nativeHostMainService, disposables);
-		mainProcessElectronServer.registerChannel('nativeHost', nativeHostChannel);
-		sharedProcessClient.then(client => client.registerChannel('nativeHost', nativeHostChannel));
+		const nativeHostChannelLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => {
+			this.nativeHostMainService = accessor.get(INativeHostMainService);
+			return ProxyChannel.fromService(this.nativeHostMainService, disposables);
+		}));
+		mainProcessElectronServer.registerChannel('nativeHost', nativeHostChannelLazy);
+		sharedProcessClient.then(client => client.registerChannel('nativeHost', nativeHostChannelLazy));
 
 		// Web Content Extractor
-		const webContentExtractorChannel = ProxyChannel.fromService(accessor.get(IWebContentExtractorService), disposables);
-		mainProcessElectronServer.registerChannel('webContentExtractor', webContentExtractorChannel);
+		mainProcessElectronServer.registerChannel('webContentExtractor', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IWebContentExtractorService), disposables))));
 
 		// Workspaces
-		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);
-		mainProcessElectronServer.registerChannel('workspaces', workspacesChannel);
+		mainProcessElectronServer.registerChannel('workspaces', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables))));
 
 		// Menubar
-		const menubarChannel = ProxyChannel.fromService(accessor.get(IMenubarMainService), disposables);
-		mainProcessElectronServer.registerChannel('menubar', menubarChannel);
+		mainProcessElectronServer.registerChannel('menubar', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IMenubarMainService), disposables))));
 
 		// URL handling
-		const urlChannel = ProxyChannel.fromService(accessor.get(IURLService), disposables);
-		mainProcessElectronServer.registerChannel('url', urlChannel);
+		mainProcessElectronServer.registerChannel('url', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IURLService), disposables))));
 
 		// Webview Manager
-		const webviewChannel = ProxyChannel.fromService(accessor.get(IWebviewManagerService), disposables);
-		mainProcessElectronServer.registerChannel('webview', webviewChannel);
+		mainProcessElectronServer.registerChannel('webview', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IWebviewManagerService), disposables))));
 
 		// Storage (main & shared process)
-		const storageChannel = disposables.add((new StorageDatabaseChannel(this.logService, accessor.get(IStorageMainService))));
-		mainProcessElectronServer.registerChannel('storage', storageChannel);
-		sharedProcessClient.then(client => client.registerChannel('storage', storageChannel));
+		const storageChannelLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => disposables.add((new StorageDatabaseChannel(this.logService, accessor.get(IStorageMainService))))));
+		mainProcessElectronServer.registerChannel('storage', storageChannelLazy);
+		sharedProcessClient.then(client => client.registerChannel('storage', storageChannelLazy));
 
 		// Profile Storage Changes Listener (shared process)
-		const profileStorageListener = disposables.add((new ProfileStorageChangesListenerChannel(accessor.get(IStorageMainService), accessor.get(IUserDataProfilesMainService), this.logService)));
-		sharedProcessClient.then(client => client.registerChannel('profileStorageListener', profileStorageListener));
+		const profileStorageListenerLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => disposables.add((new ProfileStorageChangesListenerChannel(accessor.get(IStorageMainService), accessor.get(IUserDataProfilesMainService), this.logService)))));
+		sharedProcessClient.then(client => client.registerChannel('profileStorageListener', profileStorageListenerLazy));
 
 		// Terminal
-		const ptyHostChannel = ProxyChannel.fromService(accessor.get(ILocalPtyService), disposables);
-		mainProcessElectronServer.registerChannel(TerminalIpcChannels.LocalPty, ptyHostChannel);
+		mainProcessElectronServer.registerChannel(TerminalIpcChannels.LocalPty, new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(ILocalPtyService), disposables))));
 
 		// External Terminal
-		const externalTerminalChannel = ProxyChannel.fromService(accessor.get(IExternalTerminalMainService), disposables);
-		mainProcessElectronServer.registerChannel('externalTerminal', externalTerminalChannel);
+		mainProcessElectronServer.registerChannel('externalTerminal', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IExternalTerminalMainService), disposables))));
 
 		// MCP
-		const mcpDiscoveryChannel = ProxyChannel.fromService(accessor.get(INativeMcpDiscoveryHelperService), disposables);
-		mainProcessElectronServer.registerChannel(NativeMcpDiscoveryHelperChannelName, mcpDiscoveryChannel);
+		mainProcessElectronServer.registerChannel(NativeMcpDiscoveryHelperChannelName, new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(INativeMcpDiscoveryHelperService), disposables))));
 
 		// Logger
-		const loggerChannel = new LoggerChannel(accessor.get(ILoggerMainService),);
-		mainProcessElectronServer.registerChannel('logger', loggerChannel);
-		sharedProcessClient.then(client => client.registerChannel('logger', loggerChannel));
+		const loggerChannelLazy = new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new LoggerChannel(accessor.get(ILoggerMainService))));
+		mainProcessElectronServer.registerChannel('logger', loggerChannelLazy);
+		sharedProcessClient.then(client => client.registerChannel('logger', loggerChannelLazy));
 
 		// Void - use loggerChannel as reference
-		const metricsChannel = ProxyChannel.fromService(accessor.get(IMetricsService), disposables);
-		mainProcessElectronServer.registerChannel('void-channel-metrics', metricsChannel);
+		mainProcessElectronServer.registerChannel('void-channel-metrics', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IMetricsService), disposables))));
 
-		const voidUpdatesChannel = ProxyChannel.fromService(accessor.get(IVoidUpdateService), disposables);
-		mainProcessElectronServer.registerChannel('void-channel-update', voidUpdatesChannel);
+		mainProcessElectronServer.registerChannel('void-channel-update', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IVoidUpdateService), disposables))));
 
-		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
-		mainProcessElectronServer.registerChannel('void-channel-llmMessage', sendLLMMessageChannel);
+		mainProcessElectronServer.registerChannel('void-channel-llmMessage', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new LLMMessageChannel(accessor.get(IMetricsService)))));
 
 		// Void added this
-		const voidSCMChannel = ProxyChannel.fromService(accessor.get(IVoidSCMService), disposables);
-		mainProcessElectronServer.registerChannel('void-channel-scm', voidSCMChannel);
+		mainProcessElectronServer.registerChannel('void-channel-scm', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IVoidSCMService), disposables))));
 
 		// Void added this
-		const mcpChannel = new MCPChannel();
-		mainProcessElectronServer.registerChannel('void-channel-mcp', mcpChannel);
+		mainProcessElectronServer.registerChannel('void-channel-mcp', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new MCPChannel())));
 
 		// Void - Code Execution with quickjs-emscripten
-		const codeExecutionChannel = new CodeExecutionChannel();
-		mainProcessElectronServer.registerChannel('void-channel-code-execution', codeExecutionChannel);
+		mainProcessElectronServer.registerChannel('void-channel-code-execution', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new CodeExecutionChannel())));
 
 		// Void - Morph Fast Apply API
-		const morphChannel = new MorphChannel();
-		mainProcessElectronServer.registerChannel('void-channel-morph', morphChannel);
+		mainProcessElectronServer.registerChannel('void-channel-morph', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new MorphChannel())));
 
 		// Void - Token Counting
-		const tokenCountingChannel = new TokenCountingChannel();
-		mainProcessElectronServer.registerChannel('void-channel-token-counting', tokenCountingChannel);
+		mainProcessElectronServer.registerChannel('void-channel-token-counting', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new TokenCountingChannel())));
 
 		// Void - Settings Channel
-		const settingsChannel = new SettingsChannel(
+		mainProcessElectronServer.registerChannel('void-channel-settings', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new SettingsChannel(
 			accessor.get(IMainProcessSettingsService),
 			accessor.get(IMainProcessApiAuthService)
-		);
-		mainProcessElectronServer.registerChannel('void-channel-settings', settingsChannel);
+		))));
 
 		// Void - Mobile API
 		// The API server is now managed by MainProcessApiIntegration service
-		const apiIntegration = accessor.get(IMainProcessApiIntegration);
-		const apiServiceManager = apiIntegration.getApiServiceManager();
-		if (apiServiceManager) {
-			const apiChannel = apiServiceManager.getChannel();
-			(apiChannel as any).setApiServiceManager(apiServiceManager); // Allow IPC control of API server
-			mainProcessElectronServer.registerChannel('void-channel-api', apiChannel);
-		}
+		mainProcessElectronServer.registerChannel('void-channel-api', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => {
+			const apiIntegration = accessor.get(IMainProcessApiIntegration);
+			const apiServiceManager = apiIntegration.getApiServiceManager();
+			if (apiServiceManager) {
+				const apiChannel = apiServiceManager.getChannel();
+				(apiChannel as any).setApiServiceManager(apiServiceManager); // Allow IPC control of API server
+				return apiChannel;
+			}
+			throw new Error('API Service Manager not found');
+		})));
 
 		// Extension Host Debug Broadcasting
-		const electronExtensionHostDebugBroadcastChannel = new ElectronExtensionHostDebugBroadcastChannel(accessor.get(IWindowsMainService));
-		mainProcessElectronServer.registerChannel('extensionhostdebugservice', electronExtensionHostDebugBroadcastChannel);
+		mainProcessElectronServer.registerChannel('extensionhostdebugservice', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ElectronExtensionHostDebugBroadcastChannel(accessor.get(IWindowsMainService)))));
 
 		// Extension Host Starter
-		const extensionHostStarterChannel = ProxyChannel.fromService(accessor.get(IExtensionHostStarter), disposables);
-		mainProcessElectronServer.registerChannel(ipcExtensionHostStarterChannelName, extensionHostStarterChannel);
+		mainProcessElectronServer.registerChannel(ipcExtensionHostStarterChannelName, new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IExtensionHostStarter), disposables))));
 
 		// Utility Process Worker
-		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
-		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
+		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, new LazyServerChannel(() => instantiationService.invokeFunction(accessor => ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables))));
 	}
 
 	private async openFirstWindow(accessor: ServicesAccessor, initialProtocolUrls: IInitialProtocolUrls | undefined): Promise<ICodeWindow[]> {

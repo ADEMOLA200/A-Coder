@@ -12,11 +12,12 @@ export interface VoidPreviewProps {
 	title: string;
 	content: string;
 	isImplementationPlan?: boolean;
+	isWalkthrough?: boolean;
 	planId?: string;
 	threadId?: string;
 }
 
-export const VoidPreview: React.FC<VoidPreviewProps> = ({ title, content, isImplementationPlan, planId, threadId }) => {
+export const VoidPreview: React.FC<VoidPreviewProps> = ({ title, content, isImplementationPlan, isWalkthrough, planId, threadId }) => {
 	const isDark = useIsDark();
 	const accessor = useAccessor();
 	const chatThreadsService = accessor.get('IChatThreadService');
@@ -33,7 +34,10 @@ export const VoidPreview: React.FC<VoidPreviewProps> = ({ title, content, isImpl
 				voidSettingsService.setGlobalSetting('chatMode', 'code');
 			}
 
-			const approvalMessage = `The implementation plan (ID: ${planId}) has been approved for execution.
+			let approvalMessage = '';
+
+			if (isImplementationPlan) {
+				approvalMessage = `The implementation plan (ID: ${planId}) has been approved for execution.
 
 **Instructions:**
 1. First, use the \`create_plan\` tool to create a task plan based on the approved implementation plan steps
@@ -42,13 +46,18 @@ export const VoidPreview: React.FC<VoidPreviewProps> = ({ title, content, isImpl
 4. Mark each task complete as you finish it
 
 Please begin execution now.`;
+			} else if (isWalkthrough) {
+				approvalMessage = `The walkthrough (File: ${planId}) has been approved. Please proceed with the next steps or apply the changes as described.`;
+			}
 
-			await chatThreadsService.addUserMessageAndStreamResponse({
-				threadId,
-				userMessage: approvalMessage
-			});
+			if (approvalMessage) {
+				await chatThreadsService.addUserMessageAndStreamResponse({
+					threadId,
+					userMessage: approvalMessage
+				});
+			}
 		} catch (error) {
-			console.error('Failed to approve implementation plan:', error);
+			console.error('Failed to approve:', error);
 		} finally {
 			setIsApproving(false);
 		}
@@ -62,14 +71,21 @@ Please begin execution now.`;
 				await voidSettingsService.setGlobalSetting('chatMode', 'plan');
 			}
 
-			const changeMessage = `I would like to request changes to the implementation plan (ID: ${planId}).\n\nPlease revise the plan based on my feedback. After making changes, use \`preview_implementation_plan\` to show me the updated plan for review.\n\nMy requested changes:`;
+			let changeMessage = '';
+			if (isImplementationPlan) {
+				changeMessage = `I would like to request changes to the implementation plan (ID: ${planId}).\n\nPlease revise the plan based on my feedback. After making changes, use \`preview_implementation_plan\` to show me the updated plan for review.\n\nMy requested changes:`;
+			} else if (isWalkthrough) {
+				changeMessage = `I would like to request changes to the walkthrough (File: ${planId}).\n\nPlease revise the walkthrough based on my feedback.\n\nMy requested changes:`;
+			}
 
-			await chatThreadsService.addUserMessageAndStreamResponse({
-				threadId,
-				userMessage: changeMessage
-			});
+			if (changeMessage) {
+				await chatThreadsService.addUserMessageAndStreamResponse({
+					threadId,
+					userMessage: changeMessage
+				});
+			}
 		} catch (error) {
-			console.error('Failed to request plan changes:', error);
+			console.error('Failed to request changes:', error);
 		}
 	};
 
@@ -77,188 +93,169 @@ Please begin execution now.`;
 		if (!planId || !threadId) return;
 
 		try {
-			const rejectMessage = `I am rejecting the implementation plan (ID: ${planId}). Please stop working on this plan.`;
+			let rejectMessage = '';
+			if (isImplementationPlan) {
+				rejectMessage = `I am rejecting the implementation plan (ID: ${planId}). Please stop working on this plan.`;
+			} else if (isWalkthrough) {
+				rejectMessage = `I am rejecting the walkthrough (File: ${planId}). Please stop working on this.`;
+			}
 
-			await chatThreadsService.addUserMessageAndStreamResponse({
-				threadId,
-				userMessage: rejectMessage
-			});
+			if (rejectMessage) {
+				await chatThreadsService.addUserMessageAndStreamResponse({
+					threadId,
+					userMessage: rejectMessage
+				});
+			}
 		} catch (error) {
-			console.error('Failed to reject implementation plan:', error);
+			console.error('Failed to reject:', error);
 		}
 	};
+
+	const showActions = (isImplementationPlan || isWalkthrough) && planId && threadId;
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
 			<div className="void-preview-container h-full flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans">
 				
-				{/* Top Header - Minimal & Elegant */}
+				{/* Top Header */}
 				<header className="px-6 py-4 flex-shrink-0 flex items-center justify-between border-b border-void-border-2 bg-void-bg-2/50 backdrop-blur-md z-20">
-				<div className="flex items-center gap-3 overflow-hidden">
-					<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center border border-void-accent/20">
-						<svg className="w-5 h-5 text-void-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-						</svg>
-					</div>
-					<div className="flex flex-col min-w-0">
-						<h1 className="text-sm font-semibold text-void-fg-1 truncate tracking-tight">{title}</h1>
-						<div className="flex items-center gap-2">
-							<span className="text-[10px] text-void-fg-4 font-medium uppercase tracking-wider opacity-60">Status: Pending Review</span>
-							{planId && (
-								<>
-									<span className="text-[10px] text-void-fg-4 opacity-30">•</span>
-									<span className="text-[10px] text-void-fg-4 font-mono opacity-60">{planId}</span>
-								</>
-							)}
+					<div className="flex items-center gap-3 overflow-hidden">
+						<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center border border-void-accent/20">
+							<svg className="w-5 h-5 text-void-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+							</svg>
+						</div>
+						<div className="flex flex-col min-w-0">
+							<h1 className="text-sm font-semibold text-void-fg-1 truncate tracking-tight">{title}</h1>
+							<div className="flex items-center gap-2">
+								<span className="text-[10px] text-void-fg-4 font-medium uppercase tracking-wider opacity-60">Status: Pending Review</span>
+								{planId && (
+									<>
+										<span className="text-[10px] text-void-fg-4 opacity-30">•</span>
+										<span className="text-[10px] text-void-fg-4 font-mono opacity-60">{planId}</span>
+									</>
+								)}
+							</div>
 						</div>
 					</div>
-				</div>
-				
-				<div className="flex items-center gap-2">
-					{/* Close/Action indicator could go here */}
-				</div>
-			</header>
-
-			{/* Main Scroll Area */}
-			<div className="flex-1 overflow-y-auto custom-scrollbar relative z-10 flex flex-col items-center">
-				
-				{/* Document Container */}
-				<main className="w-full max-w-4xl mx-auto px-6 py-12 md:px-12">
 					
-					{/* Plan Badge (Inside Document) */}
-					{isImplementationPlan && (
-						<div className="mb-8 flex justify-center">
-							<span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-void-accent/10 text-void-accent border border-void-accent/20">
-								Agent Implementation Strategy
-							</span>
-						</div>
-					)}
+					<div className="flex items-center gap-2">
+					</div>
+				</header>
 
-					{/* The Card */}
-					<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-xl shadow-black/10 overflow-hidden ring-1 ring-white/5">
+				{/* Main Scroll Area */}
+				<div className="flex-1 overflow-y-auto custom-scrollbar relative z-10 flex flex-col items-center">
+					
+					{/* Document Container */}
+					<main className="w-full max-w-4xl mx-auto px-6 py-12 md:px-12">
 						
-						{/* Document Header Decor */}
-						<div className="h-1.5 w-full bg-void-accent/40" />
-						
-						<div className="p-8 md:p-12">
-							<div className="prose prose-invert max-w-none 
-								prose-headings:text-void-fg-1 prose-headings:font-bold prose-headings:tracking-tight
-								prose-h1:text-3xl prose-h1:mb-8
-								prose-h2:text-xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:pb-2 prose-h2:border-b prose-h2:border-void-border-2
-								prose-h3:text-lg prose-h3:mt-8 prose-h3:mb-4 prose-h3:flex prose-h3:items-center prose-h3:gap-2
-								prose-p:text-void-fg-2 prose-p:leading-relaxed prose-p:text-base prose-p:mb-4
-								prose-li:text-void-fg-2 prose-li:mb-2
-								prose-strong:text-void-fg-1 prose-strong:font-bold
-								prose-code:text-void-accent prose-code:bg-void-accent/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-sm
-								prose-pre:bg-void-bg-4 prose-pre:border prose-pre:border-void-border-2 prose-pre:rounded-xl prose-pre:shadow-inner prose-pre:my-6
-								prose-blockquote:border-l-4 prose-blockquote:border-void-accent prose-blockquote:bg-void-accent/5 prose-blockquote:py-2 prose-blockquote:px-6 prose-blockquote:rounded-r-xl prose-blockquote:text-void-fg-2 prose-blockquote:italic prose-blockquote:my-8
+						{/* Plan Badge */}
+						{isImplementationPlan && (
+							<div className="mb-8 flex justify-center">
+								<span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-void-accent/10 text-void-accent border border-void-accent/20">
+									Agent Implementation Strategy
+								</span>
+							</div>
+						)}
+						{isWalkthrough && (
+							<div className="mb-8 flex justify-center">
+								<span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-void-accent/10 text-void-accent border border-void-accent/20">
+									Code Walkthrough
+								</span>
+							</div>
+						)}
+
+						{/* The Card */}
+						<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-xl shadow-black/10 overflow-hidden ring-1 ring-white/5">
+							
+							{/* Document Header Decor */}
+							<div className="h-1.5 w-full bg-void-accent/40" />
+							
+							<div className="p-8 md:p-12">
+								<div className="prose prose-invert max-w-none 
+									prose-headings:text-void-fg-1 prose-headings:font-bold prose-headings:tracking-tight
+									prose-h1:text-3xl prose-h1:mb-8
+									prose-h2:text-xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:pb-2 prose-h2:border-b prose-h2:border-void-border-2
+									prose-h3:text-lg prose-h3:mt-8 prose-h3:mb-4 prose-h3:flex prose-h3:items-center prose-h3:gap-2
+									prose-p:text-void-fg-2 prose-p:leading-relaxed prose-p:text-base prose-p:mb-4
+									prose-li:text-void-fg-2 prose-li:mb-2
+									prose-strong:text-void-fg-1 prose-strong:font-bold
+									prose-code:text-void-accent prose-code:bg-void-accent/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-sm
+									prose-pre:bg-void-bg-4 prose-pre:border prose-pre:border-void-border-2 prose-pre:rounded-xl prose-pre:shadow-inner prose-pre:my-6
+									prose-blockquote:border-l-4 prose-blockquote:border-void-accent prose-blockquote:bg-void-accent/5 prose-blockquote:py-2 prose-blockquote:px-6 prose-blockquote:rounded-r-xl prose-blockquote:text-void-fg-2 prose-blockquote:italic prose-blockquote:my-8
 								prose-img:rounded-xl prose-img:shadow-lg
 								">
-								<ChatMarkdownRender
-									string={content}
-									chatMessageLocation={undefined}
-									isApplyEnabled={false}
-									isLinkDetectionEnabled={true}
-								/>
+									<ChatMarkdownRender
+										string={content}
+										chatMessageLocation={undefined}
+										isApplyEnabled={false}
+										isLinkDetectionEnabled={true}
+									/>
+								</div>
 							</div>
 						</div>
-					</div>
 
-					{/* Footer Disclaimer */}
-					<div className="mt-8 text-center">
-						<p className="text-xs text-void-fg-4 opacity-40">Generated by A-Coder Agent • Review carefully before execution</p>
-					</div>
+						{/* Footer Disclaimer */}
+						<div className="mt-8 text-center">
+							<p className="text-xs text-void-fg-4 opacity-40">Generated by A-Coder Agent • Review carefully before execution</p>
+						</div>
 
-					{/* Bottom Spacing for Floating Bar */}
-					<div className="h-32" />
-				</main>
-			</div>
-
-			{/* Floating Action Bar - The "Enterprise" Touch */}
-			{isImplementationPlan && (
-				<div className="absolute bottom-8 left-0 right-0 flex justify-center z-30 pointer-events-none px-4">
-					<div className="bg-void-bg-2/80 backdrop-blur-xl border border-void-border-1 rounded-2xl p-2 shadow-2xl shadow-black/40 flex items-center gap-2 pointer-events-auto ring-1 ring-white/10 scale-110 md:scale-100 transition-transform duration-300">
-						
-						<button
-							onClick={handleReject}
-							className="px-4 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 rounded-xl transition-all flex items-center gap-2 group"
-						>
-							<div className="w-5 h-5 rounded-md bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</div>
-							Reject
-						</button>
-
-						<div className="w-px h-6 bg-void-border-2 mx-1" />
-
-						<button
-							onClick={handleRequestChanges}
-							className="px-4 py-2.5 text-xs font-semibold text-void-fg-2 hover:bg-void-bg-4 rounded-xl transition-all flex items-center gap-2 group"
-						>
-							<div className="w-5 h-5 rounded-md bg-void-bg-4 flex items-center justify-center group-hover:border-void-border-2 transition-colors">
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-								</svg>
-							</div>
-							Request Changes
-						</button>
-
-						<button
-							onClick={handleApprove}
-							disabled={isApproving}
-							className="ml-2 px-6 py-2.5 text-xs font-bold bg-void-accent hover:opacity-90 disabled:opacity-50 text-white rounded-xl shadow-lg shadow-void-accent/20 transition-all active:scale-95 flex items-center gap-2"
-						>
-							{isApproving ? (
-								<svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-									<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-									<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-								</svg>
-							) : (
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-								</svg>
-							)}
-							Approve & Execute
-						</button>
-					</div>
+						{/* Bottom Spacing */}
+						<div className="h-32" />
+					</main>
 				</div>
-			)}
 
-			<style>{`
-				.custom-scrollbar::-webkit-scrollbar {
-					width: 8px;
-				}
-				.custom-scrollbar::-webkit-scrollbar-track {
-					background: transparent;
-				}
-				.custom-scrollbar::-webkit-scrollbar-thumb {
-					background: rgba(128, 128, 128, 0.1);
-					border-radius: 10px;
-					border: 2px solid transparent;
-					background-clip: content-box;
-				}
-				.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-					background: rgba(128, 128, 128, 0.2);
-				}
-				
-				/* Typography improvements */
-				.prose h3 {
-					color: var(--void-fg-1);
-				}
-				
-				/* Better code blocks */
-				.prose pre {
-					padding: 1.25rem;
-					line-height: 1.6;
-				}
-				
-				/* Glass effect for header */
-				header {
-					background: color-mix(in srgb, var(--void-bg-2) 70%, transparent 30%);
-				}
-			`}</style>
+				{/* Floating Action Bar */}
+				{showActions && (
+					<div className="absolute bottom-8 left-0 right-0 flex justify-center z-30 pointer-events-none px-4">
+						<div className="bg-void-bg-2/80 backdrop-blur-xl border border-void-border-1 rounded-2xl p-2 shadow-2xl shadow-black/40 flex items-center gap-2 pointer-events-auto ring-1 ring-white/10 scale-110 md:scale-100 transition-transform duration-300">
+							
+							<button
+								onClick={handleReject}
+								className="px-4 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 rounded-xl transition-all flex items-center gap-2 group"
+							>
+								<div className="w-5 h-5 rounded-md bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</div>
+								Reject
+							</button>
+
+							<div className="w-px h-6 bg-void-border-2 mx-1" />
+
+							<button
+								onClick={handleRequestChanges}
+								className="px-4 py-2.5 text-xs font-semibold text-void-fg-2 hover:bg-void-bg-4 rounded-xl transition-all flex items-center gap-2 group"
+							>
+								<div className="w-5 h-5 rounded-md bg-void-bg-4 flex items-center justify-center group-hover:border-void-border-2 transition-colors">
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+									</svg>
+								</div>
+								Request Changes
+							</button>
+
+							<button
+								onClick={handleApprove}
+								disabled={isApproving}
+								className="ml-2 px-6 py-2.5 text-xs font-bold bg-void-accent hover:opacity-90 disabled:opacity-50 text-white rounded-xl shadow-lg shadow-void-accent/20 transition-all active:scale-95 flex items-center gap-2"
+							>
+								{isApproving ? (
+									<svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+										<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+										<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+									</svg>
+								) : (
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+									</svg>
+								)}
+								{isImplementationPlan ? 'Approve & Execute' : 'Approve'}
+							</button>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);
