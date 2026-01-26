@@ -567,3 +567,8 @@ export const useIsOptedOut = () => {
 
 	return s
 }
+
+export const useClipboardService = () => {
+	const accessor = useAccessor()
+	return accessor.get(IClipboardService)
+}

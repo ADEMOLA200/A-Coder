@@ -7,8 +7,8 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
-import { useAccessor, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState } from '../util/services.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search } from 'lucide-react'
+import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState } from '../util/services.js'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -1194,6 +1194,7 @@ const SkillsList = () => {
 
 export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	const isDark = useIsDark()
+	const clipboardService = useClipboardService()
 	// ─── sidebar nav ──────────────────────────
 	const [selectedSection, setSelectedSection] =
 		useState<Tab>(initialTab || 'models');
@@ -2125,8 +2126,18 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 															<div key={idx} className="flex items-center gap-2 p-2 bg-void-bg-1 rounded border border-void-border-1">
 																<code className="flex-1 text-xs font-mono text-void-fg-2 truncate">{token}</code>
 																<button
+																	type="button"
+																	onClick={() => clipboardService.writeText(token)}
+																	className="text-blue-400 hover:text-blue-300 transition-colors"
+																	title="Copy token"
+																>
+																	<Copy size={14} />
+																</button>
+																<button
+																	type="button"
 																	onClick={() => voidSettingsService.setGlobalSetting('apiTokens', settingsState.globalSettings.apiTokens.filter((_, i) => i !== idx))}
 																	className="text-red-400 hover:text-red-300 transition-colors"
+																	title="Delete token"
 																>
 																	<X size={14} />
 																</button>
