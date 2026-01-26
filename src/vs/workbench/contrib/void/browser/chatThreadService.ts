@@ -1605,7 +1605,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// Handle text-only responses (no tool call)
 				// Following Claude Code / Continue pattern: If no tool call, task is complete.
 				// The LLM knows when it needs to use tools - if it responds with just text, it's done.
-				else if (!isEmptyResponse && textContent.length > 0 && textContent !== '(empty message)') {
+				else if (!isEmptyResponse && (textContent.length > 0 && textContent !== '(empty message)' || info.fullReasoning)) {
 					if (chatMode === 'code') {
 						const thread = this.state.allThreads[threadId];
 						const workflow = thread?.state.activeWorkflow;
@@ -1652,6 +1652,16 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 						if (isVeryShortResponse && lastMessageWasToolResult && nPokesThisLoop < 3) {
 							console.log(`[chatThreadService] Agent mode: Model returned short response (${textContent.length} chars) after tool call, silently auto-continuing...`)
+							nPokesThisLoop += 1;
+							shouldSendAnotherMessage = true;
+							break;
+						}
+
+						// Handle models that output ONLY reasoning (thinking) without text or tool calls
+						// These models (like Gemini 3 Pro with thinking) will reason then stop, expecting to continue
+						const isOnlyReasoning = info.fullReasoning && info.fullReasoning.length > 10 && textContent.length === 0;
+						if (isOnlyReasoning && nPokesThisLoop < 3) {
+							console.log(`[chatThreadService] Agent mode: Model returned reasoning only (${info.fullReasoning.length} chars) without text or tool call, silently auto-continuing...`)
 							nPokesThisLoop += 1;
 							shouldSendAnotherMessage = true;
 							break;
