@@ -153,7 +153,8 @@ function _createExtHostProtocol(): Promise<IMessagePassingProtocol> {
 				});
 			};
 
-			process.parentPort.on('message', (e: Electron.MessageEvent) => withPorts(e.ports));
+			// Use .once() instead of .on() since this Promise only resolves once
+			process.parentPort!.once('message', (e: Electron.MessageEvent) => withPorts(e.ports));
 		});
 
 	} else if (extHostConnection.type === ExtHostConnectionType.Socket) {

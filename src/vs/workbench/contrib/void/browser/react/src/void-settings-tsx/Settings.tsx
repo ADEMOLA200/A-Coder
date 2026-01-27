@@ -2124,14 +2124,31 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 													) : (
 														settingsState.globalSettings.apiTokens.map((token, idx) => (
 															<div key={idx} className="flex items-center gap-2 p-2 bg-void-bg-1 rounded border border-void-border-1">
-																<code className="flex-1 text-xs font-mono text-void-fg-2 truncate">{token}</code>
+																<code className="flex-1 text-xs font-mono text-void-fg-2 select-text cursor-text" style={{ userSelect: 'text' }}>{token}</code>
 																<button
 																	type="button"
-																	onClick={async () => {
+																	onClick={() => {
 																		try {
-																			await clipboardService.writeText(token);
+																			// Try fallback method first (more reliable from click events)
+																			const textArea = document.createElement('textarea');
+																			textArea.value = token;
+																			textArea.style.position = 'fixed';
+																			textArea.style.left = '-9999px';
+																			document.body.appendChild(textArea);
+																			textArea.select();
+																			const success = document.execCommand('copy');
+																			document.body.removeChild(textArea);
+
+																			if (success) return;
 																		} catch (e) {
-																			console.error('Failed to copy token:', e);
+																			// Fall through to clipboard service
+																		}
+
+																		// Fallback to clipboard service
+																		if (clipboardService) {
+																			clipboardService.writeText(token).catch(err => console.error('Failed to copy:', err));
+																		} else if (navigator.clipboard) {
+																			navigator.clipboard.writeText(token).catch(err => console.error('Failed to copy:', err));
 																		}
 																	}}
 																	className="text-blue-400 hover:text-blue-300 transition-colors"

@@ -57,8 +57,36 @@
 				) : (
 					settingsState.globalSettings.apiTokens.map((token, idx) => (
 						<div key={idx} className='flex items-center gap-2 bg-void-bg-2 px-3 py-2 rounded'>
-							<code className='text-xs text-void-fg-2 flex-1 font-mono'>{token}</code>
-							<VoidButtonBgDarken className='px-2 py-1 text-xs' onClick={() => { navigator.clipboard.writeText(token); notificationService.info('Copied'); }}>Copy</VoidButtonBgDarken>
+							<code className='text-xs text-void-fg-2 flex-1 font-mono select-text cursor-text' style={{ userSelect: 'text' }}>{token}</code>
+							<VoidButtonBgDarken className='px-2 py-1 text-xs' onClick={() => {
+								try {
+									// Try fallback method first (more reliable from click events)
+									const textArea = document.createElement('textarea');
+									textArea.value = token;
+									textArea.style.position = 'fixed';
+									textArea.style.left = '-9999px';
+									document.body.appendChild(textArea);
+									textArea.select();
+									const success = document.execCommand('copy');
+									document.body.removeChild(textArea);
+
+									if (success) {
+										notificationService.info('Copied');
+										return;
+									}
+								} catch (e) {
+									// Fallback to navigator.clipboard
+								}
+
+								// Fallback to navigator.clipboard
+								if (navigator.clipboard) {
+									navigator.clipboard.writeText(token).then(() => notificationService.info('Copied')).catch(() => {
+										notificationService.error('Failed to copy. Please select and copy manually.');
+									});
+								} else {
+									notificationService.error('Failed to copy. Please select and copy manually.');
+								}
+							}}>Copy</VoidButtonBgDarken>
 							<VoidButtonBgDarken className='px-2 py-1 text-xs bg-red-900/20' onClick={() => voidSettingsService.setGlobalSetting('apiTokens', settingsState.globalSettings.apiTokens.filter((_, i) => i !== idx))}>Revoke</VoidButtonBgDarken>
 						</div>
 					))
@@ -67,8 +95,34 @@
 			<VoidButtonBgDarken className='px-4 py-1 mt-2' onClick={() => {
 				const token = `acoder_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
 				voidSettingsService.setGlobalSetting('apiTokens', [...settingsState.globalSettings.apiTokens, token]);
-				navigator.clipboard.writeText(token);
-				notificationService.info('Token generated and copied');
+
+				try {
+					// Try fallback method first (more reliable from click events)
+					const textArea = document.createElement('textarea');
+					textArea.value = token;
+					textArea.style.position = 'fixed';
+					textArea.style.left = '-9999px';
+					document.body.appendChild(textArea);
+					textArea.select();
+					const success = document.execCommand('copy');
+					document.body.removeChild(textArea);
+
+					if (success) {
+						notificationService.info('Token generated and copied');
+						return;
+					}
+				} catch (e) {
+					// Fallback to navigator.clipboard
+				}
+
+				// Fallback to navigator.clipboard
+				if (navigator.clipboard) {
+					navigator.clipboard.writeText(token).then(() => notificationService.info('Token generated and copied')).catch(() => {
+						notificationService.info('Token generated (copy manually)');
+					});
+				} else {
+					notificationService.info('Token generated (copy manually)');
+				}
 			}}>Generate New Token</VoidButtonBgDarken>
 		</div>
 
