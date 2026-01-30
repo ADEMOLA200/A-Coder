@@ -338,7 +338,11 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 		const originalLines = fileContents.split('\n')
 		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
 
-		return returnAns(fileContents, reconstructedIdx, text)
+		// FIX: Use the actual matched text from the file, not the search text
+		// The matched text may have different whitespace/indentation than the search text
+		const textLen = text.split('\n').length
+		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + textLen).join('\n')
+		return returnAns(fileContents, reconstructedIdx, matchedText)
 	}
 
 	// Strategy 3: Aggressive normalization - collapse all whitespace (handles indentation differences)
@@ -358,7 +362,10 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 		const originalLines = fileContents.split('\n')
 		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
 
-		return returnAns(fileContents, reconstructedIdx, text)
+		// FIX: Use the actual matched text from the file, not the search text
+		const textLen = text.split('\n').length
+		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + textLen).join('\n')
+		return returnAns(fileContents, reconstructedIdx, matchedText)
 	}
 
 	// Strategy 3: Indentation-preserving match (handles different indentation levels)
@@ -391,7 +398,13 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	// Strategy 4: Fuzzy matching using Levenshtein distance (handles minor typos and changes)
 	const fuzzyMatch = findBestFuzzyMatch(text, fileContents, opts?.startingAtLine);
 	if (fuzzyMatch && fuzzyMatch.score >= 0.85) {
-		return returnAns(fileContents, fuzzyMatch.idx, text);
+		// FIX: Use the actual matched text from the file, not the search text
+		// Fuzzy matching may have found a text with minor differences
+		const fuzzyMatchLines = fileContents.substring(0, fuzzyMatch.idx).split('\n').length - 1
+		const originalLines = fileContents.split('\n')
+		const textLen = text.split('\n').length
+		const matchedText = originalLines.slice(fuzzyMatchLines, fuzzyMatchLines + textLen).join('\n')
+		return returnAns(fileContents, fuzzyMatch.idx, matchedText);
 	}
 
 	// All strategies failed - return detailed error with suggestions
@@ -2115,8 +2128,16 @@ ${problematicCode}
 
 				// including endline at end
 
+				// FIX: The .join('\n') doesn't preserve whether the original file had a trailing newline.
+				// We need to check if there's a newline after the matched section in the original and include it.
 
-				replacement.origEnd = modelStrLines.slice(0, endLine0 + 1).join('\n').length - 1
+				const sectionEndInOriginal = modelStrLines.slice(0, endLine0 + 1).join('\n').length
+
+				// Check if there's a newline right after the joined section in the original
+				const hasTrailingNewline = sectionEndInOriginal < modelStr.length && modelStr[sectionEndInOriginal] === '\n'
+
+				// If there's a trailing newline, include it in the replacement range
+				replacement.origEnd = hasTrailingNewline ? sectionEndInOriginal : sectionEndInOriginal - 1
 
 
 	

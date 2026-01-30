@@ -240,7 +240,7 @@ export type BuiltinToolResultType = {
 	'update_implementation_step': { stepId: string, newStatus: string, summary: string },
 	'get_implementation_status': { planExists: boolean, summary: string | null },
 	// ---
-	'update_walkthrough': { success: boolean, filePath: string, action: 'created' | 'updated' | 'appended', preview: string },
+	'update_walkthrough': { success: boolean, filePath: string, action: 'created' | 'updated' | 'appended', preview: string, error?: string },
 	'open_walkthrough_preview': { success: boolean, message: string },
 	// --- Teaching tools (Student Mode)
 	'explain_code': { template: string },

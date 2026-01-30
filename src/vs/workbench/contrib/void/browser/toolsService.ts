@@ -1432,7 +1432,16 @@ export class ToolsService implements IToolsService {
 				// Get workspace root
 				const workspaceRoot = this._workspaceContextService.getWorkspace().folders[0]?.uri
 				if (!workspaceRoot) {
-					throw new Error('No workspace folder found. Please open a folder in VS Code to use the walkthrough feature.')
+					// Return a user-friendly error instead of throwing
+					return {
+						result: {
+							success: false,
+							error: 'No workspace folder found. Please open a folder in VS Code to use the walkthrough feature.',
+							filePath: '',
+							action: 'created' as const,
+							preview: ''
+						}
+					}
 				}
 
 				// Construct file URI
@@ -1463,7 +1472,15 @@ export class ToolsService implements IToolsService {
 					action = existingContent.length > 0 ? 'updated' : 'created'
 				} else { // create
 					if (existingContent.length > 0) {
-						throw new Error('walkthrough.md already exists. Use mode="append" to add content or mode="replace" to overwrite.')
+						return {
+							result: {
+								success: false,
+								error: 'walkthrough.md already exists. Use mode="append" to add content or mode="replace" to overwrite.',
+								filePath: walkthroughUri.fsPath,
+								action: 'created' as const,
+								preview: existingContent.substring(0, 1000) + (existingContent.length > 1000 ? '...' : '')
+							}
+						}
 					}
 					// Only add title heading if content doesn't already start with a heading
 					if (title && !content.trimStart().startsWith('#')) {
@@ -1484,8 +1501,9 @@ export class ToolsService implements IToolsService {
 				// Write file
 				await this._fileService.writeFile(walkthroughUri, VSBuffer.fromString(finalContent))
 
-				// Return preview (first 500 chars)
-				const preview = finalContent.substring(0, 500) + (finalContent.length > 500 ? '...' : '')
+				// Return preview (first 1000 chars - increased from 500 for better context)
+				const PREVIEW_TRUNCATION_LENGTH = 1000
+				const preview = finalContent.substring(0, PREVIEW_TRUNCATION_LENGTH) + (finalContent.length > PREVIEW_TRUNCATION_LENGTH ? '...' : '')
 
 				return {
 					result: {

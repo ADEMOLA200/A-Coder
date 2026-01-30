@@ -67,11 +67,11 @@ import { MediaResultWrapper } from './MediaResultWrapper.js';
 import { SkillsResultWrapper } from './SkillsResultWrapper.js';
 import { FormResultWrapper } from './FormResultWrapper.js';
 import { QuizResultWrapper } from './QuizResultWrapper.js';
+import WalkthroughResultWrapper from './WalkthroughResultWrapper.js';
 
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
 const LazyPlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
-const LazyWalkthroughResultWrapper = React.lazy(() => import('./WalkthroughResultWrapper.js'))
 const LazyImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
 
 // Image Preview Component
@@ -1833,13 +1833,13 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'update_task_status': { resultWrapper: (params: WrapperProps<'update_task_status'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
 	'add_tasks_to_plan': { resultWrapper: (params: WrapperProps<'add_tasks_to_plan'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
 	'get_plan_status': { resultWrapper: (params: WrapperProps<'get_plan_status'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
-	'update_walkthrough': { resultWrapper: (params: WrapperProps<'update_walkthrough'>) => (<React.Suspense fallback={null}><LazyWalkthroughResultWrapper {...params} /></React.Suspense>) },
+	'update_walkthrough': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'update_walkthrough'> },
 	'create_implementation_plan': { resultWrapper: (params: WrapperProps<'create_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'preview_implementation_plan': { resultWrapper: (params: WrapperProps<'preview_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'execute_implementation_plan': { resultWrapper: (params: WrapperProps<'execute_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'update_implementation_step': { resultWrapper: (params: WrapperProps<'update_implementation_step'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'get_implementation_status': { resultWrapper: (params: WrapperProps<'get_implementation_status'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
-	'open_walkthrough_preview': { resultWrapper: (params: WrapperProps<'open_walkthrough_preview'>) => (<React.Suspense fallback={null}><LazyWalkthroughResultWrapper {...params} /></React.Suspense>) },
+	'open_walkthrough_preview': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'open_walkthrough_preview'> },
 	'explain_code': { resultWrapper: DefaultToolResultWrapper },
 	'teach_concept': { resultWrapper: DefaultToolResultWrapper },
 	'create_exercise': { resultWrapper: DefaultToolResultWrapper },

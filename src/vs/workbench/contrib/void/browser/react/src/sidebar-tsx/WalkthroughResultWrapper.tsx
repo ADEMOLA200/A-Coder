@@ -3,11 +3,15 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------------*/
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { useAccessor } from '../util/services.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
+
+// Configuration constants
+const PREVIEW_TRUNCATION_LENGTH = 1000 // Increased from 500 to 1000 chars
+const PREVIEW_TAB_SCHEME = 'void-preview'
 
 interface WalkthroughResultWrapperProps {
 	toolMessage: {
@@ -15,7 +19,7 @@ interface WalkthroughResultWrapperProps {
 		params: any
 		content: string
 		result?: any
-		id: string // Add the missing id property
+		id: string
 	}
 	messageIdx: number
 	threadId: string
@@ -33,35 +37,66 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [latestWalkthrough, setLatestWalkthrough] = useState(toolMessage)
-	const [isExpanded, setIsExpanded] = useState(true) // Add collapsible state
+	const [isExpanded, setIsExpanded] = useState(true)
+	const [showFullPreview, setShowFullPreview] = useState(false)
+
+	// Store the messages length to detect changes without including the service in deps
+	const messagesLengthRef = useRef(0)
 
 	// Check for newer walkthrough updates in this thread
-	useEffect(() => {
+	const checkForUpdates = useCallback(() => {
 		// Don't auto-update open_walkthrough_preview messages
 		if (toolMessage.name === 'open_walkthrough_preview') return
 
-		const checkForUpdates = () => {
-			if (!chatThreadsService) return
-			const thread = chatThreadsService.state.allThreads[threadId]
-			if (!thread) return
+		if (!chatThreadsService) return
+		const thread = chatThreadsService.state.allThreads[threadId]
+		if (!thread) return
 
-			const messages = thread.messages || []
-			// Only look for other update_walkthrough messages to sync content
-			// Ignore open_walkthrough_preview messages as they don't contain content
-			const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
-			const latest = walkthroughMessages[walkthroughMessages.length - 1]
+		const messages = thread.messages || []
+		// Store current length for next comparison
+		messagesLengthRef.current = messages.length
 
-			if (latest && latest.id !== toolMessage.id) {
-				setLatestWalkthrough(latest)
-				setRefreshKey(prev => prev + 1)
-			}
+		// Only look for other update_walkthrough messages to sync content
+		const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
+		const latest = walkthroughMessages[walkthroughMessages.length - 1]
+
+		if (latest && latest.id !== toolMessage.id) {
+			setLatestWalkthrough(latest)
+			setRefreshKey(prev => prev + 1)
+		}
+	}, [chatThreadsService, threadId, toolMessage.id, toolMessage.name])
+
+	// Check for updates on mount and when messages change
+	useEffect(() => {
+		checkForUpdates()
+
+		// Also check for updates when the preview tab might need refreshing
+		const handleUpdateEvent = () => {
+			checkForUpdates()
 		}
 
-		// Check on mount and when messages change
-		checkForUpdates()
-	}, [threadId, toolMessage.id, toolMessage.name, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
+		// Listen for custom event that can be triggered when preview tab is updated
+		window.addEventListener('walkthrough-updated', handleUpdateEvent)
 
-	const result = latestWalkthrough.result?.result || latestWalkthrough.result
+		return () => {
+			window.removeEventListener('walkthrough-updated', handleUpdateEvent)
+		}
+	}, [checkForUpdates])
+
+	// Watch for changes in messages length without including chatThreadsService in deps
+	useEffect(() => {
+		if (!chatThreadsService) return
+		const thread = chatThreadsService.state.allThreads[threadId]
+		if (!thread) return
+
+		const currentLength = (thread.messages || []).length
+		if (currentLength !== messagesLengthRef.current) {
+			checkForUpdates()
+		}
+	}, [chatThreadsService, threadId, checkForUpdates])
+
+	// Fix: Remove redundant nested property access
+	const result = latestWalkthrough.result
 	const toolName = latestWalkthrough.name
 
 	if (!result || typeof result === 'string') {
@@ -85,14 +120,41 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		)
 	}
 
+	// Handle error case from the tool
+	if (result.error) {
+		return (
+			<div className="@@void-scope">
+				<div className="void-walkthrough-result border border-void-warning/50 rounded-lg overflow-hidden bg-void-warning/5 p-3">
+					<div className="flex items-start gap-2 text-void-fg-1">
+						<span className="text-lg">⚠️</span>
+						<div className="flex flex-col">
+							<span className="text-sm font-medium text-void-warning">Walkthrough update failed</span>
+							<span className="text-xs text-void-fg-3 mt-1">{result.error}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
 	// Handle open_walkthrough_preview tool result
 	if (toolName === 'open_walkthrough_preview') {
+		const filePath = result.message?.match(/for:\s*(.+)$/)?.[1] || 'walkthrough.md'
+
 		return (
 			<div className="@@void-scope">
 				<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-2 p-3">
-					<div className="flex items-center gap-2 text-void-fg-1">
-						<span className="text-lg">👁️</span>
-						<div className="text-sm font-medium">{result.message || 'Walkthrough preview opened'}</div>
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-2 text-void-fg-1">
+							<span className="text-lg">👁️</span>
+							<div className="flex flex-col">
+								<span className="text-sm font-medium">Walkthrough preview opened</span>
+								<span className="text-xs text-void-fg-4 font-mono truncate" title={filePath}>{filePath}</span>
+							</div>
+						</div>
+						<span className="text-xs text-void-accent bg-void-accent/10 px-2 py-0.5 rounded border border-void-accent/20">
+							Preview tab active
+						</span>
 					</div>
 				</div>
 			</div>
@@ -114,6 +176,11 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			// Always call openWalkthroughPreview, the service will decide how to handle it
 			// (e.g., opening a React tab)
 			await agentManagerService.openWalkthroughPreview(result.filePath, result.preview, { threadId })
+
+			// Fire a custom event to notify any open preview tabs that content has changed
+			window.dispatchEvent(new CustomEvent('walkthrough-updated', {
+				detail: { filePath: result.filePath, threadId }
+			}))
 		} catch (error) {
 			console.error('Failed to open walkthrough:', error)
 			// Last resort fallback to raw file open
@@ -145,6 +212,13 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			default: return 'Modified'
 		}
 	}
+
+	// Show either the full preview or truncated version based on state
+	const displayPreview = showFullPreview
+		? result.preview
+		: result.preview.substring(0, PREVIEW_TRUNCATION_LENGTH) + (result.preview.length > PREVIEW_TRUNCATION_LENGTH ? '...' : '')
+
+	const isTruncated = result.preview.length > PREVIEW_TRUNCATION_LENGTH
 
 	return (
 		<div className="@@void-scope">
@@ -192,15 +266,30 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 				{/* Collapsible Content */}
 				{isExpanded && (
 					<div className="p-3">
-						<div className="text-sm font-medium text-void-fg-2 mb-2">Preview:</div>
+						<div className="flex items-center justify-between mb-2">
+							<span className="text-sm font-medium text-void-fg-2">Preview:</span>
+							{isTruncated && (
+								<button
+									onClick={() => setShowFullPreview(!showFullPreview)}
+									className="text-xs text-void-accent hover:text-void-accent-hover transition-colors"
+								>
+									{showFullPreview ? 'Show less' : 'Show more'}
+								</button>
+							)}
+						</div>
 						<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
 							<ChatMarkdownRender
 								key={refreshKey}
-								string={result.preview}
+								string={displayPreview}
 								chatMessageLocation={undefined}
 								isApplyEnabled={false}
 								isLinkDetectionEnabled={true}
 							/>
+							{isTruncated && !showFullPreview && (
+								<div className="text-xs text-void-fg-4 italic mt-2 text-center">
+									... ({result.preview.length - PREVIEW_TRUNCATION_LENGTH} more characters)
+								</div>
+							)}
 						</div>
 					</div>
 				)}
