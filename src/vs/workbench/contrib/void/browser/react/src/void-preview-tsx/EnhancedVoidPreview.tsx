@@ -14,6 +14,7 @@ import { CollapsibleLessonSection, ProgressSection, TableOfContents } from '../l
 import { InlineExerciseBlock } from '../learning-tsx/InlineExerciseBlock.js';
 import { HintSystem, InlineHintButton } from '../learning-tsx/HintSystem.js';
 import { CelebrationEffect, CelebrationType, useCelebration } from '../learning-tsx/CelebrationEffect.js';
+import { registerPreviewTab } from '../sidebar-tsx/WalkthroughResultWrapper.js';
 
 // Re-export original types
 export type { VoidPreviewProps } from './VoidPreview.js';
@@ -249,12 +250,47 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 		activeSection: null,
 	});
 
+	// Track local content state for walkthrough refreshes
+	const [localContent, setLocalContent] = useState(content);
+	const [localThreadId, setLocalThreadId] = useState(threadId);
+
+	// Update local state when props change (for initial load or explicit updates)
+	useEffect(() => {
+		setLocalContent(content);
+	}, [content]);
+
+	useEffect(() => {
+		setLocalThreadId(threadId);
+	}, [threadId]);
+
+	// Register this preview tab with WalkthroughResultWrapper for auto-refresh
+	// Only for walkthroughs where we have a planId (file path)
+	useEffect(() => {
+		if (!isWalkthrough || !planId || !localThreadId) return;
+
+		// Create a refresh function that updates the local content
+		const refreshFn = (filePath: string, newPreview: string) => {
+			if (filePath === planId) {
+				setLocalContent(newPreview);
+			}
+		};
+
+		// Register with WalkthroughResultWrapper
+		const cleanup = registerPreviewTab(planId, localThreadId, refreshFn);
+
+		// Cleanup on unmount
+		return () => {
+			cleanup();
+		};
+	}, [isWalkthrough, planId, localThreadId]);
+
 	const [showDashboard, setShowDashboard] = useState(false);
 	const [showMenu, setShowMenu] = useState(false);
 	const timerRef = useRef<NodeJS.Timeout>();
 
 	// Parse content into sections if not provided
-	const parsedSections = providedSections || parseContentIntoSections(content, exercises.map(e => e.id));
+	// Use localContent to support walkthrough refreshes
+	const parsedSections = providedSections || parseContentIntoSections(localContent, exercises.map(e => e.id));
 
 	// Time tracking
 	useEffect(() => {

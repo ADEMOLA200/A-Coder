@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Licensed under the Apache License, Version 2.0 See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
@@ -25,6 +25,26 @@ interface WalkthroughResultWrapperProps {
 	threadId: string
 }
 
+// Map to track open walkthrough preview tabs by file path
+const openPreviewTabs = new Map<string, {
+	threadId: string
+	refreshFn: (filePath: string, preview: string) => void
+}>()
+
+// Function to register a preview tab's refresh function
+export const registerPreviewTab = (filePath: string, threadId: string, refreshFn: (filePath: string, preview: string) => void) => {
+	openPreviewTabs.set(filePath, { threadId, refreshFn })
+	return () => openPreviewTabs.delete(filePath) // Return cleanup function
+}
+
+// Function to refresh all open preview tabs for a given file
+const refreshPreviewTabs = (filePath: string, preview: string) => {
+	const tabInfo = openPreviewTabs.get(filePath)
+	if (tabInfo) {
+		tabInfo.refreshFn(filePath, preview)
+	}
+}
+
 const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	toolMessage,
 	messageIdx,
@@ -34,6 +54,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	const commandService = accessor.get('ICommandService')
 	const chatThreadsService = accessor.get('IChatThreadService') as any
 	const agentManagerService = accessor.get('IAgentManagerService') as any
+	const editorService = accessor.get('IEditorService') as any
 
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [latestWalkthrough, setLatestWalkthrough] = useState(toolMessage)
@@ -42,6 +63,24 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	// Store the messages length to detect changes without including the service in deps
 	const messagesLengthRef = useRef(0)
+	// Store threadId to detect changes and reset state
+	const threadIdRef = useRef(threadId)
+	// Ref to store the latest result to avoid stale closure in openWalkthrough
+	const latestResultRef = useRef(toolMessage.result)
+
+	// Reset state when threadId changes
+	useEffect(() => {
+		if (threadIdRef.current !== threadId) {
+			// Reset state for new thread
+			threadIdRef.current = threadId
+			setLatestWalkthrough(toolMessage)
+			setRefreshKey(0)
+			setIsExpanded(true)
+			setShowFullPreview(false)
+			messagesLengthRef.current = 0
+			latestResultRef.current = toolMessage.result
+		}
+	}, [threadId, toolMessage])
 
 	// Check for newer walkthrough updates in this thread
 	const checkForUpdates = useCallback(() => {
@@ -53,8 +92,6 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		if (!thread) return
 
 		const messages = thread.messages || []
-		// Store current length for next comparison
-		messagesLengthRef.current = messages.length
 
 		// Only look for other update_walkthrough messages to sync content
 		const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
@@ -63,39 +100,53 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		if (latest && latest.id !== toolMessage.id) {
 			setLatestWalkthrough(latest)
 			setRefreshKey(prev => prev + 1)
+
+			// Update the latest result ref to avoid stale closure
+			latestResultRef.current = latest.result
+
+			// Refresh any open preview tabs for this file
+			if (latest.result?.filePath && latest.result?.preview) {
+				refreshPreviewTabs(latest.result.filePath, latest.result.preview)
+			}
 		}
-	}, [chatThreadsService, threadId, toolMessage.id, toolMessage.name])
+	}, [threadId, toolMessage.id, toolMessage.name]) // Removed chatThreadsService from deps
 
-	// Check for updates on mount and when messages change
-	useEffect(() => {
-		checkForUpdates()
-
-		// Also check for updates when the preview tab might need refreshing
-		const handleUpdateEvent = () => {
-			checkForUpdates()
-		}
-
-		// Listen for custom event that can be triggered when preview tab is updated
-		window.addEventListener('walkthrough-updated', handleUpdateEvent)
-
-		return () => {
-			window.removeEventListener('walkthrough-updated', handleUpdateEvent)
-		}
-	}, [checkForUpdates])
-
-	// Watch for changes in messages length without including chatThreadsService in deps
+	// Single consolidated effect for all update checking
 	useEffect(() => {
 		if (!chatThreadsService) return
+
 		const thread = chatThreadsService.state.allThreads[threadId]
 		if (!thread) return
 
-		const currentLength = (thread.messages || []).length
+		const messages = thread.messages || []
+		const currentLength = messages.length
+
+		// Check if we have new messages
 		if (currentLength !== messagesLengthRef.current) {
+			// Update ref before calling checkForUpdates
+			messagesLengthRef.current = currentLength
 			checkForUpdates()
+		}
+
+		// Listen for custom event to refresh preview tabs
+		// This is fired when openWalkthrough is called
+		const handleWalkthroughEvent = (e: CustomEvent) => {
+			const { filePath, threadId: eventThreadId } = e.detail
+			// Only refresh if this is our thread and file
+			if (eventThreadId === threadId && filePath === latestResultRef.current?.filePath) {
+				// This event indicates the preview tab was just opened
+				// We don't need to do anything here as the content was just set
+			}
+		}
+
+		window.addEventListener('walkthrough-updated', handleWalkthroughEvent as EventListener)
+
+		return () => {
+			window.removeEventListener('walkthrough-updated', handleWalkthroughEvent as EventListener)
 		}
 	}, [chatThreadsService, threadId, checkForUpdates])
 
-	// Fix: Remove redundant nested property access
+	// Get the latest result (from latestWalkthrough, not toolMessage)
 	const result = latestWalkthrough.result
 	const toolName = latestWalkthrough.name
 
@@ -166,34 +217,40 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		return null
 	}
 
-	const openWalkthrough = async () => {
+	// Use a ref to always get the latest result in openWalkthrough to avoid stale closure
+	const openWalkthrough = useCallback(async () => {
 		if (!agentManagerService) {
 			console.error('agentManagerService not available')
 			return
 		}
 
-		try {
-			// Always call openWalkthroughPreview, the service will decide how to handle it
-			// (e.g., opening a React tab)
-			await agentManagerService.openWalkthroughPreview(result.filePath, result.preview, { threadId })
+		// Get the latest result from the ref to avoid stale closure
+		const latestResult = latestResultRef.current
+		if (!latestResult?.filePath || !latestResult?.preview) {
+			console.error('No valid walkthrough data to open')
+			return
+		}
 
-			// Fire a custom event to notify any open preview tabs that content has changed
-			window.dispatchEvent(new CustomEvent('walkthrough-updated', {
-				detail: { filePath: result.filePath, threadId }
-			}))
+		try {
+			// Open the preview in editor
+			await agentManagerService.openWalkthroughPreview(latestResult.filePath, latestResult.preview, { threadId })
+
+			// Try to refresh the preview tab if it's already open
+			refreshPreviewTabs(latestResult.filePath, latestResult.preview)
+
 		} catch (error) {
 			console.error('Failed to open walkthrough:', error)
 			// Last resort fallback to raw file open
 			if (commandService) {
 				try {
-					const uri = URI.file(result.filePath)
+					const uri = URI.file(latestResult.filePath)
 					await commandService.executeCommand('vscode.open', uri)
 				} catch (fallbackError) {
 					console.error('Fallback also failed:', fallbackError)
 				}
 			}
 		}
-	}
+	}, [agentManagerService, commandService, threadId])
 
 	const getActionIcon = () => {
 		switch (result.action) {
