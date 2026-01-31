@@ -316,6 +316,10 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			if (readS.globalSettings.imageGenerationModel === undefined) {
 				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
 			}
+			// migration: update old 'sd' model to 'x/flux2-klein:4b'
+			if (readS.globalSettings.imageGenerationModel === 'sd') {
+				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
+			}
 			if (readS.globalSettings.enableMediaGeneration === undefined) {
 				readS.globalSettings.enableMediaGeneration = true;
 			}
@@ -323,6 +327,11 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			delete (readS.globalSettings as any).pollinationsApiKey;
 			delete (readS.globalSettings as any).pollinationsImageModel;
 			delete (readS.globalSettings as any).pollinationsVideoModel;
+
+			// migrate old 'sd' model to flux2-klein (1.5.0+)
+			if (readS.globalSettings.imageGenerationModel === 'sd') {
+				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
+			}
 		}
 		catch (e) {
 			readS = defaultState()

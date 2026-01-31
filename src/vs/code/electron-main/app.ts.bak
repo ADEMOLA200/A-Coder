@@ -141,6 +141,7 @@ import { MainProcessApiIntegration } from '../../workbench/contrib/void/electron
 import { IMainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
 import { MainProcessSettingsService, IMainProcessSettingsService } from '../../workbench/contrib/void/electron-main/mainProcessSettingsService.js';
 import { MainProcessApiAuthService, IMainProcessApiAuthService } from '../../workbench/contrib/void/electron-main/mainProcessApiAuthService.js';
+import { SettingsChannel } from '../../workbench/contrib/void/electron-main/settingsChannel.js';
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -1263,6 +1264,11 @@ export class CodeApplication extends Disposable {
 
 		// Void - Image Generation
 		mainProcessElectronServer.registerChannel('void-channel-image-generation', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ImageGenerationChannel())));
+
+		// Void - Settings Channel
+			accessor.get(IMainProcessSettingsService),
+			accessor.get(IMainProcessApiAuthService)
+		))));
 
 		// Void - Mobile API
 		// The API server is now managed by MainProcessApiIntegration service

@@ -1924,39 +1924,23 @@ For each module include:
 					size = `${width}x${height}`;
 				}
 
-				// Build request body for OpenAI-compatible API
-				const requestBody: any = {
-					prompt: prompt,
+				// Get IPC channel to electron-main for image generation
+				const channel = this._mainProcessService.getChannel('void-channel-image-generation');
+
+				// Call the main process to make the request (handles HTTPS with self-signed certs)
+				const response = await channel.call('generateImage', {
+					baseUrl,
 					model: defaultModel,
-					n: 1,
-					size: size,
-					response_format: 'b64_json',
-				};
+					prompt,
+					size,
+					quality,
+				}) as { success: boolean; data?: string; error?: string };
 
-				// Add optional parameters that Ollama supports
-				if (quality) requestBody.quality = quality;
-
-				// Make API request
-				const url = `${baseUrl}/images/generations`;
-				const response = await fetch(url, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify(requestBody),
-				});
-
-				if (!response.ok) {
-					const errorText = await response.text();
-					throw new Error(`Image generation failed: ${response.status} ${response.statusText} - ${errorText}`);
+				if (!response.success || !response.data) {
+					throw new Error(response.error || 'Image generation failed');
 				}
 
-				const data = await response.json();
-				const b64Json = data?.data?.[0]?.b64_json;
-
-				if (!b64Json) {
-					throw new Error('No image data returned from API');
-				}
+				const b64Json = response.data;
 
 				// Generate unique filename - use provided filename or create timestamp-based one
 				const timestamp = Date.now();
