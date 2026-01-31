@@ -21,6 +21,7 @@ exports.workerLocalFileSearch = createModuleDescription('vs/workbench/services/s
 exports.workerProfileAnalysis = createModuleDescription('vs/platform/profiling/electron-sandbox/profileAnalysisWorkerMain');
 exports.workerOutputLinks = createModuleDescription('vs/workbench/contrib/output/common/outputLinkComputerMain');
 exports.workerBackgroundTokenization = createModuleDescription('vs/workbench/services/textMate/browser/backgroundTokenization/worker/textMateTokenizationWorker.workerMain');
+exports.workerVoidDiff = createModuleDescription('vs/workbench/contrib/void/browser/helpers/diffWorkerMain');
 
 exports.workbenchDesktop = [
 	createModuleDescription('vs/workbench/contrib/debug/node/telemetryApp'),
