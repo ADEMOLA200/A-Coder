@@ -37,7 +37,8 @@ export const EditToolChildren = ({ uri, code, type, chatMessageLocation }: { uri
 	const accessor = useAccessor()
 	const languageService = accessor.get('ILanguageService')
 
-	const hasValidDiffFormat = type === 'diff' && (
+	// Check if code is defined and has valid diff format
+	const hasValidDiffFormat = type === 'diff' && code && (
 		code.includes('<<<<<<< ORIGINAL') &&
 		code.includes('=======') &&
 		code.includes('>>>>>>> UPDATED')
@@ -46,9 +47,13 @@ export const EditToolChildren = ({ uri, code, type, chatMessageLocation }: { uri
 	const content = type === 'diff' ?
 		(hasValidDiffFormat ?
 			<VoidDiffEditor uri={uri} originalUpdatedBlocks={code} />
+			: code ? <ChatMarkdownRender string={`\
+\`\`\`${uri ? detectLanguage(languageService, { uri, fileContents: code }) : ''}
+${code}
+\`\`\``} codeURI={uri} chatMessageLocation={chatMessageLocation} isApplyEnabled={true} />
 			: <div className="w-full p-4 text-void-fg-3 text-sm">
-				<div className="mb-2 font-medium">Processing diff...</div>
-				<div className="text-void-fg-4 text-xs">Waiting for complete ORIGINAL/UPDATED blocks.</div>
+				<div className="mb-2 font-medium">No code to display</div>
+				<div className="text-void-fg-4 text-xs">The edit was applied successfully.</div>
 			</div>)
 		: <ChatMarkdownRender string={`\
 \`\`\`${uri ? detectLanguage(languageService, { uri, fileContents: code }) : ''}
@@ -70,29 +75,18 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file'> 
 	const { params, name } = toolMessage
 	const desc1OnClick = () => voidOpenFileFn(params.uri, accessor)
 
-	// Calculate diff stats
+	// Calculate diff stats (only for rewrite_file with full content)
 	let diffStatsElement: React.ReactNode = null;
-	const content = toolMessage.name === 'edit_file' ? (toolMessage.params as any).originalUpdatedBlocks : (toolMessage.params as any).newContent;
+	// Note: edit_file now uses old_string/new_string, not originalUpdatedBlocks
+	const content = toolMessage.name === 'edit_file' ? (toolMessage.params as any).old_string : (toolMessage.params as any).newContent;
 
-	if (toolMessage.type === 'running_now' && toolMessage.name === 'edit_file' && content) {
-		let addedLines = 0;
-		let removedLines = 0;
-		const blocks = content.split('<<<<<<< ORIGINAL').slice(1);
-		blocks.forEach((block: string) => {
-			const parts = block.split('=======');
-			if (parts.length === 2) {
-				const original = parts[0].trim();
-				const updated = parts[1].split('>>>>>>> UPDATED')[0].trim();
-				removedLines += original ? original.split('\n').length : 0;
-				addedLines += updated ? updated.split('\n').length : 0;
-			}
-		});
-
-		if (addedLines > 0 || removedLines > 0) {
+	if (toolMessage.type === 'running_now' && toolMessage.name === 'rewrite_file' && content) {
+		// Only calculate stats for rewrite_file since edit_file now does simple replacement
+		const oldLineCount = content.split('\n').length;
+		if (oldLineCount > 0) {
 			diffStatsElement = (
 				<span className='flex items-center gap-1 text-xs ml-1.5'>
-					{addedLines > 0 && <span className='text-green-500'>+{addedLines}</span>}
-					{removedLines > 0 && <span className='text-red-500'>-{removedLines}</span>}
+					<span className='text-void-fg-3'>{oldLineCount} lines</span>
 				</span>
 			);
 		}

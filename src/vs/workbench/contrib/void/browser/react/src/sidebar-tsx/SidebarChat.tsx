@@ -1806,7 +1806,13 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			componentParams.info = getRelative(params.uri, accessor)
 			if (toolMessage.type === 'success') {
 				componentParams.onClick = () => { voidOpenFileFn(params.uri, accessor) }
-				componentParams.children = toolMessage.result.lintErrors ? <LintErrorChildren lintErrors={toolMessage.result.lintErrors} /> : `No lint errors found.`
+				componentParams.children = toolMessage.result.lintErrors && toolMessage.result.lintErrors.length > 0 ?
+					<div className='flex flex-col gap-1'>
+						{toolMessage.result.lintErrors.map((error: any, i: number) => (
+							<div key={i} className='text-void-fg-2 text-xs whitespace-nowrap'>Lines {error.startLineNumber}-{error.endLineNumber}: {error.message}</div>
+						))}
+					</div>
+					: `No lint errors found.`
 			} else if (toolMessage.type === 'tool_error') {
 				componentParams.bottomChildren = <BottomChildren title='Error'><CodeChildren>{String(toolMessage.result)}</CodeChildren></BottomChildren>
 			}

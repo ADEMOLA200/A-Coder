@@ -101,40 +101,6 @@ ${FINAL}
 ${tripleTick[1]}`
 
 
-const replaceTool_description = `\
-A string of ORIGINAL/UPDATED block(s) which will be applied to the given file.
-Your ORIGINAL/UPDATED blocks string must be formatted as follows:
-${searchReplaceBlockTemplate}
-
-## Guidelines:
-
-1. You may output multiple ORIGINAL/UPDATED blocks if needed.
-
-2. The ORIGINAL code should match the file as closely as possible. The system uses advanced matching:
-   - Exact match (fastest, most reliable)
-   - Whitespace-normalized match (handles minor spacing differences)
-   - Indentation-preserving match (handles different indentation levels)
-   - Fuzzy match (handles small typos or changes)
-   However, EXACT matches are still most reliable - copy the exact text from the file.
-
-3. Each ORIGINAL text must be large enough to uniquely identify the location in the file. Include enough surrounding context (2-3 lines before/after) to ensure uniqueness.
-
-4. Each ORIGINAL text must be DISJOINT from all other ORIGINAL text - no overlapping blocks.
-
-5. CRITICAL: Always read the file first with read_file before editing to ensure you have the current exact contents. Files may have changed since you last saw them.
-
-6. This field is a STRING (not an array).
-
-7. If edit_file fails, the error message will show you similar blocks from the file. Use these suggestions to correct your ORIGINAL block and try again.
-
-8. MARKER FORMAT: The markers (${ORIGINAL}, ${DIVIDER}, ${FINAL}) must appear exactly as shown, on their own lines. Do NOT add extra spaces or text to the markers.
-
-## When to use edit_file vs rewrite_file:
-
-- Use edit_file for: Small, targeted changes to specific sections (< 20 lines)
-- Use rewrite_file for: Large refactors, multiple scattered changes, or when edit_file fails repeatedly
-- If edit_file fails with "Not found" error, check the suggested similar blocks in the error message first, then try rewrite_file if needed`
-
 
 // ======================================================== tools ========================================================
 
@@ -553,31 +519,30 @@ Line 200: export async function processData(input: string): Promise<Result>
 
 	edit_file: {
 		name: 'edit_file',
-		description: `Edit specific sections of a file using ORIGINAL/UPDATED blocks. Best for small, targeted changes (< 20 lines).
+		description: `Edit specific sections of a file by finding and replacing exact text. Best for small, targeted changes (< 20 lines).
 
 **REQUIRED PARAMETERS:**
 - uri: The FULL file path to edit (e.g., "/Users/username/project/src/file.ts")
-- original_updated_blocks: ORIGINAL/UPDATED blocks with the changes
-
-**OPTIONAL PARAMETERS:**
-- try_fuzzy_matching: (Boolean) If true, uses fuzzy matching if exact matching fails. Useful when you don't have the exact content or whitespace. Use with caution.
+- old_string: The exact text to find and replace in the file
+- new_string: The new text to replace it with
 
 **WORKFLOW:**
 1. ALWAYS read the file with read_file first to get exact content
-2. Use edit_file with precise ORIGINAL blocks that match the file exactly
-3. Include surrounding context with "// ... existing code ..." comments (these are used as anchors for matching)
+2. Use edit_file with precise old_string that matches the file exactly
+3. Include enough context (surrounding lines) to ensure unique match
 4. Verify changes worked by reading the file again or checking lint errors
 
 **ERROR RECOVERY:**
-If edit_file fails, follow these steps:
-1. **"Not found" error:** Read the file again - you may have stale content. Ensure your ORIGINAL block matches exactly, including all whitespace and indentation. Try setting try_fuzzy_matching to true.
-2. **"Not unique" error:** Add more surrounding context to your ORIGINAL block to make it unique in the file.
-3. **"Has overlap" error:** Combine your ORIGINAL/UPDATED blocks into a single larger block.
-4. **Still failing:** Use rewrite_file instead - it's more reliable for complex changes or when you don't have exact content.`,
+If edit_file fails with "Could not find text to replace":
+1. Read the file again - you may have stale content
+2. Ensure old_string matches exactly, including all whitespace and indentation
+3. Try including more surrounding context to make it unique
+4. If there are multiple occurrences, the first one will be replaced
+5. For complex changes, use rewrite_file instead - it's more reliable`,
 		params: {
 			...uriParam('file'),
-			original_updated_blocks: { description: replaceTool_description },
-			try_fuzzy_matching: { description: 'Optional. If true, use fuzzy matching if exact match fails.' }
+			old_string: { description: 'The exact text to find and replace. Must match exactly, including whitespace and indentation.' },
+			new_string: { description: 'The new text to replace it with.' }
 		},
 	},
 

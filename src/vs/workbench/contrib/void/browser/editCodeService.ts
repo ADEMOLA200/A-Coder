@@ -1538,6 +1538,73 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		onDone()
 	}
 
+	public instantlyReplaceString({ uri, oldString, newString, onProgress }: { uri: URI, oldString: string, newString: string, onProgress?: (data: string) => void }) {
+		onProgress?.(`Replacing text in: ${uri.fsPath}...`);
+
+		const { model } = this._voidModelService.getModel(uri);
+		if (!model) {
+			throw new Error(`File not found: ${uri.fsPath}`);
+		}
+
+		const content = model.getValue(EndOfLinePreference.LF);
+
+		// Find the first occurrence of oldString
+		const index = content.indexOf(oldString);
+		if (index === -1) {
+			const preview = oldString.length > 200 ? oldString.substring(0, 200) + '...' : oldString;
+			throw new Error(`Could not find text to replace in file.\n\nSearch text:\n${preview}`);
+		}
+
+		// Check for multiple occurrences
+		const secondIndex = content.indexOf(oldString, index + 1);
+		if (secondIndex !== -1) {
+			console.warn(`[editCodeService] Found multiple occurrences of search text. Replacing only the first occurrence.`);
+		}
+
+		// Calculate positions using Monaco's API
+		const startPosition = model.getPositionAt(index);
+		const endPosition = model.getPositionAt(index + oldString.length);
+
+		// start diffzone for tracking
+		const res = this._startStreamingDiffZone({
+			uri,
+			streamRequestIdRef: { current: null },
+			startBehavior: 'keep-conflicts',
+			linkedCtrlKZone: null,
+			onWillUndo: () => { },
+		})
+		if (!res) {
+			throw new Error('Failed to create diff zone for tracking');
+		}
+		const { diffZone, onFinishEdit } = res
+
+		// Create the range for the replacement
+		const range = {
+			startLineNumber: startPosition.lineNumber,
+			startColumn: startPosition.column,
+			endLineNumber: endPosition.lineNumber,
+			endColumn: endPosition.column
+		};
+
+		// Apply the edit using Monaco's pushEditOperations
+		this.weAreWriting = true;
+		model.pushEditOperations([], [{ range, text: newString }], () => null);
+		this.weAreWriting = false;
+
+		onProgress?.(`Successfully replaced text in: ${uri.fsPath}`);
+
+		// Finish diff zone tracking
+		diffZone._streamState = { isStreaming: false, }
+		this._onDidChangeStreamingInDiffZone.fire({ uri, diffareaid: diffZone.diffareaid })
+		this._refreshStylesAndDiffsInURI(uri)
+		onFinishEdit()
+
+		// Auto accept if enabled
+		if (this._settingsService.state.globalSettings.autoAcceptLLMChanges) {
+			this.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: false, behavior: 'accept' });
+		}
+	}
+
 
 	private _findOverlappingDiffArea({ startLine, endLine, uri, filter }: { startLine: number, endLine: number, uri: URI, filter?: (diffArea: DiffArea) => boolean }): DiffArea | null {
 		// check if there's overlap with any other diffAreas and return early if there is
@@ -1978,6 +2045,39 @@ ${problematicCode}
 
 			if (blocks.length === 0) throw new Error(`No ORIGINAL/UPDATED blocks were received!`)
 
+			// Validate that no merge conflict markers are present in the extracted blocks
+			// This catches cases where the LLM produces malformed search/replace blocks
+			for (const b of blocks) {
+				const markerPatterns = [/^<<<<<<<\s/m, /^=======\s?$/m, /^>>>>>>>\s/m];
+				for (const pattern of markerPatterns) {
+					if (pattern.test(b.orig)) {
+						throw new Error(`Found merge conflict marker in ORIGINAL block. The LLM may have produced malformed search/replace blocks.\nOriginal block:\n${b.orig.substring(0, 500)}`);
+					}
+					if (pattern.test(b.final)) {
+						throw new Error(`Found merge conflict marker in FINAL block. The LLM may have produced malformed search/replace blocks.\nFinal block:\n${b.final.substring(0, 500)}`);
+					}
+				}
+			}
+
+			// VALIDATION: Check for merge conflict markers in extracted blocks
+			for (let i = 0; i < blocks.length; i++) {
+				const b = blocks[i];
+				const mergeMarkerPatterns = [
+					'<<<<<<<',   // Standard git conflict marker
+					'=======',   // Divider marker
+					'>>>>>>>',   // End marker
+				];
+
+				for (const pattern of mergeMarkerPatterns) {
+					if (b.orig.includes(pattern)) {
+						throw new Error(`Block ${i + 1} contains merge conflict marker '${pattern}' in original text. The LLM may be producing malformed output.\n\nOriginal text:\n${b.orig.substring(0, 200)}...`);
+					}
+					if (b.final.includes(pattern)) {
+						throw new Error(`Block ${i + 1} contains merge conflict marker '${pattern}' in replacement text. The LLM may be producing malformed output.\n\nReplacement text:\n${b.final.substring(0, 200)}...`);
+					}
+				}
+			}
+
 
 	
 
@@ -2112,32 +2212,41 @@ ${problematicCode}
 
 
 				// including newline before start
-
-
-				replacement.origStart = (startLine0 !== 0 ?
-
-
-					modelStrLines.slice(0, startLine0).join('\n') + '\n'
-
-
-					: '').length
+				// FIXED: Calculate origStart by summing actual line lengths, not using join().length
+				// This ensures positions match the actual modelStr
+				if (startLine0 > 0) {
+					let pos = 0;
+					for (let i = 0; i < startLine0; i++) {
+						pos += modelStrLines[i].length + 1; // +1 for the '\n'
+					}
+					replacement.origStart = pos;
+				} else {
+					replacement.origStart = 0;
+				}
 
 
 	
 
+				// FIXED: Calculate origEnd by summing actual line lengths
+				let pos = 0;
+				for (let i = 0; i <= endLine0; i++) {
+					pos += modelStrLines[i].length;
+					if (i < endLine0) {
+						pos += 1; // +1 for '\n' between lines
+					}
+				}
 
-				// including endline at end
+				// Check if there's a newline after the last line in the original
+				const linesTotal = modelStrLines.length;
 
-				// FIX: The .join('\n') doesn't preserve whether the original file had a trailing newline.
-				// We need to check if there's a newline after the matched section in the original and include it.
-
-				const sectionEndInOriginal = modelStrLines.slice(0, endLine0 + 1).join('\n').length
-
-				// Check if there's a newline right after the joined section in the original
-				const hasTrailingNewline = sectionEndInOriginal < modelStr.length && modelStr[sectionEndInOriginal] === '\n'
-
-				// If there's a trailing newline, include it in the replacement range
-				replacement.origEnd = hasTrailingNewline ? sectionEndInOriginal : sectionEndInOriginal - 1
+				// If there's a line after the matched section, include the newline
+				if (endLine0 < linesTotal - 1) {
+					replacement.origEnd = pos + 1; // Include the newline character
+				} else {
+					// This is the last line - check if there's a trailing newline at end of file
+					const fileEndsWithNewline = modelStr.length > 0 && modelStr[modelStr.length - 1] === '\n';
+					replacement.origEnd = fileEndsWithNewline ? pos + 1 : pos;
+				}
 
 
 	
@@ -2254,7 +2363,9 @@ ${problematicCode}
 				const { origStart, origEnd, block } = replacements[i]
 
 
-				newCode = newCode.slice(0, origStart) + block.final + newCode.slice(origEnd + 1, Infinity)
+				// FIXED: Use origEnd (exclusive end position), not origEnd + 1
+				// This matches the Context7 pattern where limChar is exclusive
+				newCode = newCode.slice(0, origStart) + block.final + newCode.slice(origEnd, Infinity)
 
 
 			}

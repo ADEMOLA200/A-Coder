@@ -482,11 +482,11 @@ export class ToolsService implements IToolsService {
 			},
 
 			edit_file: (params: RawToolParamsObj) => {
-				const { uri: uriStr, original_updated_blocks: originalUpdatedBlocksUnknown, try_fuzzy_matching: tryFuzzyMatchingUnknown } = params
+				const { uri: uriStr, old_string: oldStringUnknown, new_string: newStringUnknown } = params
 				const uri = validateURI(uriStr)
-				const originalUpdatedBlocks = validateStr('originalUpdatedBlocks', originalUpdatedBlocksUnknown)
-				const tryFuzzyMatching = validateBoolean(tryFuzzyMatchingUnknown, { default: false })
-				return { uri, originalUpdatedBlocks, tryFuzzyMatching }
+				const old_string = validateStr('old_string', oldStringUnknown)
+				const new_string = validateStr('new_string', newStringUnknown)
+				return { uri, old_string, new_string }
 			},
 
 			// ---
@@ -1291,29 +1291,13 @@ export class ToolsService implements IToolsService {
 				return { result: lintErrorsPromise }
 			},
 
-			edit_file: async ({ uri, originalUpdatedBlocks: originalUpdatedBlocks, tryFuzzyMatching }, opts) => {
+			edit_file: async ({ uri, old_string, new_string }, opts) => {
 				await this._voidModelService.initializeModel(uri)
 				await this._editCodeService.callBeforeApplyOrEdit(uri)
 
-				// Check if Morph Fast Apply is enabled
-				const useMorph = this._voidSettingsService.state.globalSettings.enableMorphFastApply;
-
-				if (useMorph) {
-					// Use Morph Fast Apply - convert original/updated blocks to Morph format
-					opts?.onData?.(`Morph: Applying ORIGINAL/UPDATED edits to ${path.basename(uri.fsPath)}...`);
-					const fileContent = await this._fileService.readFile(uri);
-					const originalContent = fileContent.value.toString();
-					const appliedCode = await this._morphService.applyCodeChange({
-						instruction: 'Applying code edits',
-						originalCode: originalContent,
-						updatedCode: originalUpdatedBlocks // Morph expects code with // ... existing code ... format
-					});
-					this._editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode, onProgress: opts?.onData });
-				} else {
-					// Use standard original/updated
-					opts?.onData?.(`Applying edits to ${path.basename(uri.fsPath)}...`);
-					await this._editCodeService.instantlyApplyOriginalUpdatedBlocks({ uri, originalUpdatedBlocks: originalUpdatedBlocks, tryFuzzyMatching, onProgress: opts?.onData });
-				}
+				// Use simple string replacement (Cursor-style approach)
+				opts?.onData?.(`Replacing text in ${path.basename(uri.fsPath)}...`);
+				this._editCodeService.instantlyReplaceString({ uri, oldString: old_string, newString: new_string, onProgress: opts?.onData });
 
 				// Morph Repo Storage: sync to cloud if enabled
 				this._syncToMorphRepoStorage(uri, 'Edit file: ' + path.basename(uri.fsPath));

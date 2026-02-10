@@ -82,7 +82,7 @@ export type BuiltinToolCallParams = {
 	'check_terminal_status': { timeoutMs: number, persistentTerminalId: string },
 	// ---
 	'rewrite_file': { uri: URI, newContent: string },
-	'edit_file': { uri: URI, originalUpdatedBlocks: string, tryFuzzyMatching?: boolean },
+	'edit_file': { uri: URI, old_string: string, new_string: string },
 	'create_file_or_folder': { uri: URI, isFolder: boolean },
 	'delete_file_or_folder': { uri: URI, isRecursive: boolean, isFolder: boolean },
 	// ---
