@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
+ *  Copyright 2026 The A-Tech Corporation PTY LTD. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
@@ -21,7 +21,9 @@ const MAX_DIFF_FILES = 10
 
 const git = async (command: string, path: string): Promise<string> => {
 	const { stdout, stderr } = await exec(`${command}`, { cwd: path })
-	if (stderr) {
+	// Only throw an error if the command actually failed (exitCode !== 0)
+	// Git warnings like "CRLF will be replaced by LF" are just informational
+	if (stderr && !stderr.toLowerCase().startsWith('warning:')) {
 		throw new Error(stderr)
 	}
 	return stdout.trim()
