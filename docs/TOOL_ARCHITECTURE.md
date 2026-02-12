@@ -73,7 +73,7 @@ read_file: async ({ uri, startLine, endLine, pageNumber }) => {
         })
     }
     
-    // 3. Paginate (2MB chunks)
+    // 3. Paginate (5MB chunks)
     const fromIdx = MAX_FILE_CHARS_PAGE * (pageNumber - 1)
     const toIdx = MAX_FILE_CHARS_PAGE * pageNumber - 1
     const fileContents = contents.slice(fromIdx, toIdx + 1)
@@ -85,26 +85,26 @@ read_file: async ({ uri, startLine, endLine, pageNumber }) => {
 
 #### `edit_file`
 ```typescript
-edit_file: async ({ uri, searchReplaceBlocks }) => {
+edit_file: async ({ uri, old_string, new_string }) => {
     // 1. Initialize and check if file is being edited
     await voidModelService.initializeModel(uri)
     if (commandBarService.getStreamState(uri) === 'streaming') {
         throw new Error(`Another LLM is currently making changes...`)
     }
-    
+
     // 2. Prepare for edit
     await editCodeService.callBeforeApplyOrEdit(uri)
-    
-    // 3. Apply search/replace blocks
-    editCodeService.instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks })
-    
+
+    // 3. Apply single search/replace (old_string -> new_string)
+    editCodeService.instantlyApplySearchReplace({ uri, old_string, new_string })
+
     // 4. Get lint errors after 2s delay
     const lintErrorsPromise = Promise.resolve().then(async () => {
         await timeout(2000)
         const { lintErrors } = this._getLintErrors(uri)
         return { lintErrors }
     })
-    
+
     return { result: lintErrorsPromise }
 }
 ```
@@ -196,34 +196,60 @@ read_file: (params, result) => {
 ## Key Constants
 
 ```typescript
-MAX_FILE_CHARS_PAGE = 2_000_000  // 2MB per page
+MAX_FILE_CHARS_PAGE = 5_000_000  // 5MB per page
 MAX_CHILDREN_URIs_PAGE = 500     // Max URIs in directory listings
 MAX_TERMINAL_CHARS = 100_000     // Max terminal output
-MAX_TERMINAL_INACTIVE_TIME = 8   // Seconds before timeout
+MAX_TERMINAL_INACTIVE_TIME = 60  // Seconds before timeout
+MAX_TERMINAL_BG_COMMAND_TIME = 60 // Background command timeout
 ```
 
 ## Tool Categories
 
 ### Context Gathering
-- `read_file` - Read file contents (with pagination)
+- `read_file` - Read file contents (with pagination, line ranges)
+- `outline_file` - Get file structure outline without reading implementation
 - `ls_dir` - List directory contents
-- `get_dir_tree` - Get directory tree structure
-- `search_pathnames_only` - Search for files by name
-- `search_for_files` - Full-text search across files
+- `get_dir_tree` - Get directory tree structure (recursive)
+- `search_pathnames_only` - Search for files by name/pathname
+- `search_for_files` - Full-text search across files (content search)
 - `search_in_file` - Search within a specific file
 - `read_lint_errors` - Get linting errors for a file
+- `fast_context` - Semantic search via Morph warpGrep
+- `codebase_search` - Semantic search over Morph Repo Storage
 
 ### File Manipulation
 - `create_file_or_folder` - Create new file or folder
 - `delete_file_or_folder` - Delete file or folder
 - `rewrite_file` - Replace entire file contents
-- `edit_file` - Apply search/replace blocks
+- `edit_file` - Edit specific sections using old_string/new_string replacement
+
+### Code Execution
+- `run_code` - Execute TypeScript/JavaScript code in sandbox with access to all tools
 
 ### Terminal
-- `run_command` - Run temporary command
-- `run_persistent_command` - Run command in persistent terminal
-- `open_persistent_terminal` - Create persistent terminal
+- `run_command` - Run terminal command (supports temporary, background, or existing terminals via `is_background` and `terminal_id` parameters)
+- `open_persistent_terminal` - Create persistent terminal for long-running processes
 - `kill_persistent_terminal` - Close persistent terminal
+- `wait` - Wait for persistent terminal command to complete
+- `check_terminal_status` - Check terminal status with short timeout
+
+### Git/Repo Operations (Morph)
+- `repo_init` - Initialize Morph Repo Storage repository
+- `repo_clone` - Clone Morph Repo Storage repository
+- `repo_add` - Stage files for commit (git add)
+- `repo_commit` - Commit staged changes
+- `repo_push` - Push to remote and optionally index embeddings
+- `repo_pull` - Pull latest changes from remote
+- `repo_status` - Get status of a specific file
+- `repo_status_matrix` - Get status of all files
+- `repo_log` - Get commit history
+- `repo_checkout` - Checkout branch or commit
+- `repo_branch` - Create new branch
+- `repo_list_branches` - List all branches
+- `repo_current_branch` - Get current branch name
+- `repo_resolve_ref` - Resolve reference to commit hash
+- `repo_get_commit_metadata` - Get metadata for a commit
+- `repo_wait_for_embeddings` - Wait for embeddings to complete
 
 ## Error Handling
 
@@ -247,11 +273,19 @@ throw new Error(`Multiple ORIGINAL blocks overlap with each other...`)
 ## Recent Improvements
 
 ### `edit_file` Tool
-- **Three-tier fuzzy matching**: Exact → Normalized whitespace → Whitespace-agnostic
+- **Simplified interface**: Now uses `old_string` and `new_string` parameters instead of search/replace blocks
+- **Single replacement**: Replaces the first occurrence of `old_string` with `new_string`
 - **Better error messages**: Include tips for LLM on how to fix issues
 - **Position mapping**: Correctly maps fuzzy matches back to original file positions
 
-### `read_file` Tool  
-- **Increased page size**: 500k → 2MB (4x larger)
+### `read_file` Tool
+- **Increased page size**: 2MB → 5MB (2.5x larger)
+- **Line range reading**: Added `start_line` and `end_line` parameters for efficient partial reads
 - **Clear truncation warnings**: Explicit ⚠️ warnings with next steps
-- **Honest descriptions**: No longer claims "full contents" when paginating
+- **Line numbering**: Returns line numbers prefixed to each line for easy reference
+
+### New Tools
+- **`run_code`**: Execute TypeScript/JavaScript code in a sandbox with full tool access (great for complex workflows)
+- **`fast_context`**: Semantic search using Morph's warpGrep for intelligent code discovery
+- **`outline_file`**: Get file structure without reading full implementation
+- **Git/Repo tools**: Full suite of `repo_*` tools for Morph Repo Storage integration
