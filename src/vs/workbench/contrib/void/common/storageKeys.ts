@@ -35,3 +35,7 @@ export const LAST_SESSION_KEY = 'void.app.lastSession';
 // Session tracking - Analytics enhancement
 export const SESSION_ID_KEY = 'void.app.sessionId';
 export const SESSION_START_TIME_KEY = 'void.app.sessionStartTime';
+
+// Multi-workspace agent manager
+export const WORKSPACE_REGISTRY_STORAGE_KEY = 'void.workspaceRegistryStorage';
+export const WORKSPACE_HUB_PORT_KEY = 'void.workspaceHubPort';

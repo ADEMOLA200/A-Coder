@@ -139,6 +139,8 @@ import { TokenCountingChannel } from '../../workbench/contrib/void/electron-main
 import { ImageGenerationChannel } from '../../workbench/contrib/void/electron-main/imageGenerationChannel.js';
 import { BrowserChannel } from '../../workbench/contrib/void/electron-main/browserChannel.js';
 import { BrowserWindowChannel } from '../../workbench/contrib/void/electron-main/browserWindowChannel.js';
+import { WorkspaceRegistryService } from '../../workbench/contrib/void/electron-main/workspaceRegistryService.js';
+import { WorkspaceHubChannel } from '../../workbench/contrib/void/electron-main/workspaceHubChannel.js';
 import { MainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
 import { IMainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
 import { MainProcessSettingsService, IMainProcessSettingsService } from '../../workbench/contrib/void/electron-main/mainProcessSettingsService.js';
@@ -1289,6 +1291,10 @@ export class CodeApplication extends Disposable {
 
 		// Void - Browser Window (for browser tools)
 		mainProcessElectronServer.registerChannel('void-channel-browser-window', new BrowserWindowChannel());
+
+		// Void - Multi-Workspace Registry
+		const workspaceRegistryService = new WorkspaceRegistryService();
+		mainProcessElectronServer.registerChannel('void-channel-workspace-hub', new WorkspaceHubChannel(workspaceRegistryService));
 
 		// Void - Mobile API
 		// The API server is now managed by MainProcessApiIntegration service

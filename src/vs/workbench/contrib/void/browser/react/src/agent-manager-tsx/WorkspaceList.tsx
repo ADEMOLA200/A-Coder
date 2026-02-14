@@ -1,0 +1,193 @@
+/*--------------------------------------------------------------------------------------
+ *  Copyright 2026 The A-Tech Corporation PTY LTD. All rights reserved.
+ *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *--------------------------------------------------------------------------------------*/
+
+import React, { useMemo } from 'react';
+import { WorkspaceConnection } from '../../../../common/workspaceRegistryTypes.js';
+import { useAllWorkspaces, useSelectedWorkspace } from '../util/services.js';
+import { Folder, MessageSquare, Activity, Circle, ChevronRight } from 'lucide-react';
+
+/**
+ * Status indicator component
+ */
+const StatusIndicator = ({ status, color }: { status: WorkspaceConnection['status'], color: string }) => {
+	const statusColors = {
+		connected: 'bg-emerald-500 shadow-emerald-500/50',
+		inactive: 'bg-amber-500 shadow-amber-500/50',
+		disconnected: 'bg-gray-400 shadow-gray-400/50'
+	};
+
+	return (
+		<div className="relative">
+			<div className={`w-2.5 h-2.5 rounded-full ${statusColors[status]} shadow-lg`} />
+			{status === 'connected' && (
+				<div className={`absolute inset-0 w-2.5 h-2.5 rounded-full ${statusColors[status]} animate-ping opacity-40`} />
+			)}
+		</div>
+	);
+};
+
+/**
+ * Individual workspace card component
+ */
+const WorkspaceCard = ({
+	workspace,
+	isSelected,
+	onClick
+}: {
+	workspace: WorkspaceConnection,
+	isSelected: boolean,
+	onClick: () => void
+}) => {
+	const totalMessages = useMemo(() => {
+		return workspace.threads.reduce((sum, t) => sum + t.messageCount, 0);
+	}, [workspace.threads]);
+
+	const activeThreads = useMemo(() => {
+		return workspace.threads.filter(t => t.status === 'streaming').length;
+	}, [workspace.threads]);
+
+	return (
+		<button
+			onClick={onClick}
+			className={`
+				group w-full text-left p-3 rounded-xl border transition-all duration-200
+				${isSelected
+					? 'bg-void-accent/10 border-void-accent/30 shadow-lg shadow-void-accent/10'
+					: 'bg-void-bg-2/40 border-void-border-2 hover:bg-void-bg-2/60 hover:border-void-border-1'
+				}
+			`}
+		>
+			<div className="flex items-start gap-3">
+				{/* Workspace color badge */}
+				<div
+					className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center shadow-md"
+					style={{ backgroundColor: workspace.color + '20', borderColor: workspace.color + '40', borderWidth: 1 }}
+				>
+					<Folder className="w-5 h-5" style={{ color: workspace.color }} />
+				</div>
+
+				{/* Workspace info */}
+				<div className="flex-1 min-w-0">
+					<div className="flex items-center gap-2 mb-1">
+						<span className="text-sm font-semibold text-void-fg-1 truncate">{workspace.name}</span>
+						<StatusIndicator status={workspace.status} color={workspace.color} />
+					</div>
+					<span className="text-[10px] text-void-fg-4 truncate block opacity-60 font-mono">
+						{workspace.path.split('/').pop() || workspace.path}
+					</span>
+				</div>
+
+				{/* Chevron for selected */}
+				{isSelected && (
+					<ChevronRight className="w-4 h-4 text-void-accent flex-shrink-0" />
+				)}
+			</div>
+
+			{/* Stats row */}
+			<div className="flex items-center gap-4 mt-3 pt-2 border-t border-void-border-2/50">
+				<div className="flex items-center gap-1.5">
+					<MessageSquare className="w-3 h-3 text-void-fg-4" />
+					<span className="text-[10px] font-medium text-void-fg-3">{workspace.threads.length} threads</span>
+				</div>
+				<div className="flex items-center gap-1.5">
+					<Activity className="w-3 h-3 text-void-fg-4" />
+					<span className="text-[10px] font-medium text-void-fg-3">{totalMessages} msgs</span>
+				</div>
+				{activeThreads > 0 && (
+					<div className="flex items-center gap-1.5">
+						<Circle className="w-2 h-2 text-void-accent fill-current animate-pulse" />
+						<span className="text-[10px] font-medium text-void-accent">{activeThreads} active</span>
+					</div>
+				)}
+			</div>
+		</button>
+	);
+};
+
+/**
+ * Workspace list component showing all connected workspaces
+ */
+export const WorkspaceList = () => {
+	const workspaces = useAllWorkspaces();
+	const { selectedId, setSelected } = useSelectedWorkspace();
+
+	// Sort workspaces: connected first, then by last seen
+	const sortedWorkspaces = useMemo(() => {
+		return [...workspaces].sort((a, b) => {
+			// Connected workspaces first
+			if (a.status === 'connected' && b.status !== 'connected') return -1;
+			if (a.status !== 'connected' && b.status === 'connected') return 1;
+			// Then by last seen (most recent first)
+			return b.lastSeen - a.lastSeen;
+		});
+	}, [workspaces]);
+
+	if (workspaces.length === 0) {
+		return (
+			<div className="flex flex-col items-center justify-center p-8 text-void-fg-4">
+				<div className="w-12 h-12 rounded-xl bg-void-bg-2/50 border border-dashed border-void-border-2 flex items-center justify-center mb-3">
+					<Folder className="w-6 h-6 opacity-30" />
+				</div>
+				<p className="text-xs font-medium text-void-fg-3">No workspaces connected</p>
+				<p className="text-[10px] text-void-fg-4 mt-1 opacity-60">Open another VS Code window to see it here</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="flex flex-col gap-2">
+			{sortedWorkspaces.map(workspace => (
+				<WorkspaceCard
+					key={workspace.id}
+					workspace={workspace}
+					isSelected={selectedId === workspace.id}
+					onClick={() => setSelected(selectedId === workspace.id ? null : workspace.id)}
+				/>
+			))}
+		</div>
+	);
+};
+
+/**
+ * Mini workspace list for sidebar
+ */
+export const MiniWorkspaceList = () => {
+	const workspaces = useAllWorkspaces();
+	const { selectedId, setSelected } = useSelectedWorkspace();
+
+	const activeCount = workspaces.filter(w => w.status === 'connected').length;
+
+	return (
+		<div className="flex items-center gap-2 flex-wrap">
+			{workspaces.slice(0, 4).map(workspace => (
+				<button
+					key={workspace.id}
+					onClick={() => setSelected(workspace.id)}
+					className={`
+						flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all
+						${selectedId === workspace.id
+							? 'bg-void-accent/20 border border-void-accent/30'
+							: 'bg-void-bg-2/40 border border-void-border-2 hover:border-void-border-1'
+						}
+					`}
+					title={workspace.name}
+				>
+					<div
+						className="w-2 h-2 rounded-full"
+						style={{ backgroundColor: workspace.color }}
+					/>
+					<span className="text-[10px] font-medium text-void-fg-2 truncate max-w-[80px]">
+						{workspace.name}
+					</span>
+				</button>
+			))}
+			{workspaces.length > 4 && (
+				<span className="text-[10px] text-void-fg-4 px-1">
+					+{workspaces.length - 4} more
+				</span>
+			)}
+		</div>
+	);
+};

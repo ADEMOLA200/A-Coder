@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { MCPUserState, RefreshableProviderName, SettingsOfProvider } from '../../../../../../../workbench/contrib/void/common/voidSettingsTypes.js'
 import { DisposableStore, IDisposable } from '../../../../../../../base/common/lifecycle.js'
 import { VoidSettingsState } from '../../../../../../../workbench/contrib/void/common/voidSettingsService.js'
@@ -58,6 +58,7 @@ import { IStorageService, StorageScope } from '../../../../../../../platform/sto
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
+import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -573,4 +574,115 @@ export const useIsOptedOut = () => {
 export const useClipboardService = () => {
 	const accessor = useAccessor()
 	return accessor.get(IClipboardService)
+}
+
+// Multi-workspace state
+let allWorkspacesState: WorkspaceConnection[] = []
+const allWorkspacesListeners: Set<(workspaces: WorkspaceConnection[]) => void> = new Set()
+
+let selectedWorkspaceIdState: string | null = null
+const selectedWorkspaceListeners: Set<(id: string | null) => void> = new Set()
+
+export const updateAllWorkspacesState = (workspaces: WorkspaceConnection[]) => {
+	allWorkspacesState = workspaces
+	allWorkspacesListeners.forEach(l => l(workspaces))
+}
+
+export const updateSelectedWorkspaceId = (id: string | null) => {
+	selectedWorkspaceIdState = id
+	selectedWorkspaceListeners.forEach(l => l(id))
+}
+
+/**
+ * Hook to get all connected workspaces across all VS Code windows
+ */
+export const useAllWorkspaces = () => {
+	const [workspaces, setWorkspaces] = useState<WorkspaceConnection[]>(allWorkspacesState)
+
+	useEffect(() => {
+		setWorkspaces(allWorkspacesState)
+		allWorkspacesListeners.add(setWorkspaces)
+		return () => { allWorkspacesListeners.delete(setWorkspaces) }
+	}, [])
+
+	return workspaces
+}
+
+/**
+ * Hook to get/set the selected workspace in multi-view
+ */
+export const useSelectedWorkspace = () => {
+	const [selectedId, setSelectedId] = useState<string | null>(selectedWorkspaceIdState)
+
+	useEffect(() => {
+		setSelectedId(selectedWorkspaceIdState)
+		selectedWorkspaceListeners.add(setSelectedId)
+		return () => { selectedWorkspaceListeners.delete(setSelectedId) }
+	}, [])
+
+	const setSelected = useCallback((id: string | null) => {
+		updateSelectedWorkspaceId(id)
+	}, [])
+
+	return { selectedId, setSelected }
+}
+
+/**
+ * Hook to get aggregated stats across all workspaces
+ */
+export const useMultiWorkspaceStats = () => {
+	const workspaces = useAllWorkspaces()
+
+	return useMemo(() => {
+		let totalThreads = 0
+		let totalMessages = 0
+		let activeOperations = 0
+		const activeWorkspaces = workspaces.filter(w => w.status === 'connected').length
+
+		for (const workspace of workspaces) {
+			totalThreads += workspace.threads.length
+			totalMessages += workspace.threads.reduce((sum, t) => sum + t.messageCount, 0)
+			activeOperations += workspace.activeOperations
+		}
+
+		return {
+			totalWorkspaces: workspaces.length,
+			activeWorkspaces,
+			totalThreads,
+			totalMessages,
+			activeOperations
+		}
+	}, [workspaces])
+}
+
+/**
+ * Hook to search threads across all workspaces
+ */
+export const useMultiWorkspaceSearch = (query: string) => {
+	const workspaces = useAllWorkspaces()
+
+	return useMemo(() => {
+		if (!query.trim()) {
+			return workspaces.flatMap(w => w.threads.map(t => ({ ...t, workspaceId: w.id, workspaceName: w.name, workspaceColor: w.color })))
+		}
+
+		const lowerQuery = query.toLowerCase()
+		const results: (WorkspaceThreadSummary & { workspaceId: string, workspaceName: string, workspaceColor: string })[] = []
+
+		for (const workspace of workspaces) {
+			for (const thread of workspace.threads) {
+				if (thread.title.toLowerCase().includes(lowerQuery) ||
+					thread.lastMessage.toLowerCase().includes(lowerQuery)) {
+					results.push({
+						...thread,
+						workspaceId: workspace.id,
+						workspaceName: workspace.name,
+						workspaceColor: workspace.color
+					})
+				}
+			}
+		}
+
+		return results
+	}, [workspaces, query])
 }
