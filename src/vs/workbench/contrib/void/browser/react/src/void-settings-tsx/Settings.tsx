@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
-import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, useACoderAuthState, useACoderModels } from '../util/services.js'
+import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, useACoderOAuthState, useACoderModels } from '../util/services.js'
 import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
 import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
@@ -736,7 +736,7 @@ const ACoderProviderCard = () => {
 	const accessor = useAccessor()
 	const metricsService = accessor.get('IMetricsService')
 	const oauthService = accessor.get('IACoderOAuthService')
-	const authState = useACoderAuthState()
+	const authState = useACoderOAuthState()
 	const models = useACoderModels()
 
 	const [isLoading, setIsLoading] = useState(false)

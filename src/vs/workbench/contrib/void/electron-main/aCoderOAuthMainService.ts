@@ -257,6 +257,10 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 		return this._onDidUpdateModels.event;
 	}
 
+	get models(): ACoderModelResponse | null {
+		return this._models;
+	}
+
 	private setAuthState(newState: Partial<ACoderAuthState>): void {
 		this._authState = { ...this._authState, ...newState };
 		this._onDidChangeAuthState.fire(this._authState);
@@ -274,17 +278,17 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 
 			if (userData && sessionTokenEncrypted && refreshTokenEncrypted) {
 				const parsed = JSON.parse(userData);
-				this._sessionToken = decryptData(sessionTokenEncrypted);
-				this._refreshToken = decryptData(refreshTokenEncrypted);
+				this._sessionToken = decryptData(Buffer.from(sessionTokenEncrypted));
+				this._refreshToken = decryptData(Buffer.from(refreshTokenEncrypted));
 				this._userId = parsed.userId;
 				this._expiresAt = parseInt(expiresAtStr || '0', 10);
 
 				if (this._sessionToken && this._refreshToken) {
 					this._authState = {
 						isAuthenticated: true,
-						userEmail: parsed.userEmail,
-						authProvider: parsed.authProvider,
-						userId: this._userId,
+						userEmail: parsed.userEmail ?? undefined,
+						authProvider: parsed.authProvider ?? undefined,
+						userId: this._userId ?? undefined,
 						expiresAt: this._expiresAt,
 					};
 					console.log('[ACoderOAuth] Loaded encrypted tokens from storage');
@@ -594,7 +598,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	 * Get the user ID from A-Coder backend
 	 */
 	getUserId(): string | undefined {
-		return this._userId;
+		return this._userId ?? undefined;
 	}
 
 	/**

@@ -260,7 +260,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 		// Use A-Coder's backend which proxies requests to chutes.ai
 		// The session token authenticates the user, backend adds the master API key
 		return new OpenAI({
-			baseURL: 'https://api.a-coder.dev/v1', // A-Coder backend (proxies to chutes.ai)
+			baseURL: ACODER_API_URL, // A-Coder backend (proxies to chutes.ai)
 			apiKey: sessionToken, // Session token from OAuth
 			defaultHeaders: {
 				'HTTP-User-Agent': 'A-Coder/1.0.0',

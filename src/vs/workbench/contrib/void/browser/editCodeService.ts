@@ -51,9 +51,6 @@ import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
 // import { VOID_OPEN_SETTINGS_ACTION_ID } from './voidSettingsPane.js';
 
-const numLinesOfStr = (str: string) => str.split('\n').length
-
-
 export const getLengthOfTextPx = ({ tabWidth, spaceWidth, content }: { tabWidth: number, spaceWidth: number, content: string }) => {
 	let lengthOfTextPx = 0;
 	for (const char of content) {
@@ -262,123 +259,6 @@ const findSimilarBlocks = (searchText: string, fileContents: string, maxResults:
 }
 
 /**
- * Maps a character position from normalized content back to the original content.
- * CRITICAL: This properly handles cases where normalization changed line structure.
- * Returns both the character index and the line number in the original content.
- */
-const mapNormalizedPositionToOriginal = (
-	normalizedContent: string,
-	originalContent: string,
-	normalizedIdx: number
-): { charIdx: number; lineIdx: number } => {
-	// Count newlines before the match position in normalized content
-	const normalizedLinesBefore = normalizedContent.substring(0, normalizedIdx).split('\n').length - 1;
-	const normalizedLineStart = normalizedContent.split('\n').slice(normalizedLinesBefore, normalizedLinesBefore + 1)[0] || '';
-
-	// Find the character within the line (after the last newline before normalizedIdx)
-	const lastNewlineBefore = normalizedContent.lastIndexOf('\n', normalizedIdx - 1);
-	const charInNormalizedLine = lastNewlineBefore === -1 ? normalizedIdx : normalizedIdx - lastNewlineBefore - 1;
-
-	// Map to original content by line
-	const originalLines = originalContent.split('\n');
-
-	// If the number of lines matches, simple mapping
-	if (normalizedContent.split('\n').length === originalLines.length) {
-		const charIdx = originalLines.slice(0, normalizedLinesBefore).join('\n').length + (normalizedLinesBefore > 0 ? 1 : 0) + charInNormalizedLine;
-		return { charIdx, lineIdx: normalizedLinesBefore };
-	}
-
-	// Line counts differ - need to find the corresponding position by content matching
-	// Build a map of normalized lines to original line indices
-	const normalizedLines = normalizedContent.split('\n');
-	let originalLineIdx = 0;
-	let normalizedLineIdx = 0;
-
-	// Track position through both versions
-	while (normalizedLineIdx < normalizedLinesBefore && originalLineIdx < originalLines.length) {
-		const normLine = normalizedLines[normalizedLineIdx]?.trim() || '';
-		const origLine = originalLines[originalLineIdx]?.trim() || '';
-
-		if (normLine === origLine || normLine === '' || origLine === '') {
-			// Lines match or one is empty - advance both
-			normalizedLineIdx++;
-			originalLineIdx++;
-		} else {
-			// Lines don't match - the original might have merged/split lines
-			// Try to find the normalized line in original
-			const foundInOriginal = originalLines.slice(originalLineIdx).findIndex(l => (l?.trim() || '') === normLine);
-			if (foundInOriginal !== -1) {
-				originalLineIdx += foundInOriginal + 1;
-				normalizedLineIdx++;
-			} else {
-				// Can't find it - advance original and hope for sync
-				originalLineIdx++;
-			}
-		}
-	}
-
-	// Calculate character position in original
-	const charIdx = originalLines.slice(0, originalLineIdx).join('\n').length + (originalLineIdx > 0 ? 1 : 0) + charInNormalizedLine;
-	return { charIdx, lineIdx: originalLineIdx };
-};
-
-/**
- * Extracts the actual matched text from the original content using character positions.
- * This is the safe way to get matched text - it doesn't rely on line counts from search text.
- */
-const extractMatchedText = (
-	originalContent: string,
-	startCharIdx: number,
-	searchText: string,
-	normalizedSearchText: string,
-	normalizedContent: string,
-	normalizedStartIdx: number
-): string => {
-	// The length of the search text in the normalized content
-	const normalizedSearchLen = normalizedSearchText.length;
-
-	// Find the end position in normalized content
-	const normalizedEndIdx = normalizedStartIdx + normalizedSearchLen;
-
-	// Extract the matched portion from normalized content
-	const normalizedMatched = normalizedContent.substring(normalizedStartIdx, normalizedEndIdx);
-
-	// Now we need to find the corresponding text in original content
-	// Use the character-based approach for safety
-	const originalLines = originalContent.split('\n');
-	const normalizedLines = normalizedContent.split('\n');
-
-	// Find which line the match starts on in normalized
-	let normLineIdx = 0;
-	let normCharCount = 0;
-	for (let i = 0; i < normalizedLines.length; i++) {
-		if (normCharCount + normalizedLines[i].length >= normalizedStartIdx) {
-			normLineIdx = i;
-			break;
-		}
-		normCharCount += normalizedLines[i].length + 1; // +1 for newline
-	}
-
-	// Count how many lines the normalized match spans
-	const normalizedMatchLines = normalizedMatched.split('\n').length;
-
-	// The matched text should span the same number of lines in original
-	// (since normalizeWhitespaceSoft only trims lines, doesn't merge them)
-	// But for aggressive normalization, lines CAN be merged
-
-	// For soft normalization (trim only), line count is preserved
-	// Use the character position approach for accuracy
-	const startLine = originalContent.substring(0, startCharIdx).split('\n').length;
-	const numLinesInSearch = searchText.split('\n').length;
-
-	// Get the matched text using the same number of lines as the search text
-	// This is a reasonable approximation since we're looking for equivalent content
-	const matchedText = originalLines.slice(startLine - 1, startLine - 1 + numLinesInSearch).join('\n');
-
-	return matchedText;
-};
-
-/**
  * Result type for findTextInCode.
  * Returns both line numbers (1-indexed) and character positions for accurate replacement.
  */
@@ -388,6 +268,20 @@ type FindTextResult = {
 	startChar: number;    // 0-indexed character position of match start
 	endChar: number;      // 0-indexed character position of match end (exclusive)
 	matchedText: string;  // The actual matched text from the file
+};
+
+/**
+ * Type guard to check if result is FindTextResult (full result with character positions)
+ */
+const isFindTextResult = (result: FindTextResult | readonly [number, number] | 'Not found' | 'Not unique'): result is FindTextResult => {
+	return result !== 'Not found' && result !== 'Not unique' && !Array.isArray(result) && 'startLine' in result;
+};
+
+/**
+ * Type guard to check if result is a line range tuple
+ */
+const isLineRange = (result: FindTextResult | readonly [number, number] | 'Not found' | 'Not unique'): result is readonly [number, number] => {
+	return Array.isArray(result) && result.length === 2 && typeof result[0] === 'number' && typeof result[1] === 'number';
 };
 
 // finds block.orig in fileContents and return its range in file
@@ -450,15 +344,6 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 		// For exact match, the text should be identical
 		// For other strategies, we just need non-empty text
 		return true;
-	};
-
-	/**
-	 * Finds character index from line index in content.
-	 */
-	const charIdxFromLineIdx = (content: string, lineIdx: number): number => {
-		const lines = content.split('\n');
-		if (lineIdx <= 0) return 0;
-		return lines.slice(0, lineIdx).join('\n').length + 1; // +1 for the newline
 	};
 
 	const startingAtLineIdx = (fileContents: string) => opts?.startingAtLine !== undefined ?
@@ -538,7 +423,6 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 
 		// The matched line in original might have leading whitespace that was trimmed
 		// Find where the trimmed content starts
-		const normMatchedLine = fileContentsSoftNorm.split('\n')[linesBeforeMatch] || '';
 		const trimmedStart = originalLine.trimStart();
 		const leadingWsLen = originalLine.length - trimmedStart.length;
 
@@ -590,17 +474,6 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 		if (!normFirstWord || !normLastWord) {
 			// Degenerate case, fall through
 		} else {
-			// Find first and last words in original content
-			const originalLines = fileContents.split('\n');
-
-			// Search for a contiguous block that contains all the words in order
-			// Start by finding the first word
-			let foundStart = false;
-			let startLineIdx = -1;
-			let startCharInLine = -1;
-			let endLineIdx = -1;
-			let endCharInLine = -1;
-
 			// Build a regex that matches the normalized pattern with flexible whitespace
 			const flexiblePattern = normMatchWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*');
 			const regex = new RegExp(flexiblePattern, 'm');
@@ -609,11 +482,6 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 			if (match && match.index !== undefined) {
 				// Found a flexible match in original content
 				const matchStart = match.index;
-				const matchEnd = matchStart + match[0].length;
-
-				// Verify this is close to where we expect based on normalized position
-				// Count newlines to get approximate line
-				const approxLine = fileContents.substring(0, matchStart).split('\n').length;
 
 				// Extract the matched text
 				const matchedText = match[0];
@@ -2546,7 +2414,7 @@ ${tripleTick[1]}
 	 * Generates a human-readable error message for an invalid ORIGINAL search block.
 	 */
 	private _errContentOfInvalidStr = (
-		str: 'Not found' | 'Not unique' | 'Has overlap',
+		str: 'Not found' | 'Not unique' | 'Has overlap' | 'Invalid result type',
 		blockOrig: string,
 		fileContext?: string,
 	): string => {
@@ -2689,9 +2557,6 @@ ${problematicCode}
 			const modelStr = model.getValue(EndOfLinePreference.LF)
 
 
-			const modelStrLines = modelStr.split('\n')
-
-
 	
 
 
@@ -2752,9 +2617,11 @@ ${problematicCode}
 	
 
 
-				// FIXED: Use character positions directly from findTextInCode instead of
-				// calculating from line numbers, which was error-prone when matches
-				// didn't start at the beginning of a line
+				// Type guard for FindTextResult
+				if (!isFindTextResult(res)) {
+					throw new Error(this._errContentOfInvalidStr('Not found', b.orig, modelStr))
+				}
+
 				const { startLine, endLine, startChar, endChar, matchedText } = res
 
 
@@ -3087,7 +2954,7 @@ ${problematicCode}
 							if (shouldUpdateOrigStreamStyle && block.orig.trim().length >= 20) {
 								const startingAtLine = diffZone._streamState.line ?? 1 // dont go backwards if already have a stream line
 								const originalRange = findTextInCode(block.orig, originalFileCode, false, { startingAtLine, returnType: 'lines' })
-								if (typeof originalRange !== 'string') {
+								if (isLineRange(originalRange)) {
 									const [startLine, _] = convertOriginalRangeToFinalRange(originalRange)
 									diffZone._streamState.line = startLine
 									shouldUpdateOrigStreamStyle = false
@@ -3113,16 +2980,69 @@ ${problematicCode}
 						if (!(blockNum in addedTrackingZoneOfBlockNum)) {
 
 							const originalBounds = findTextInCode(block.orig, originalFileCode, true, { returnType: 'lines' })
-							// if error
+							// if error (string), handle it
+							if (typeof originalBounds === 'string') {
+								const errorMessage = originalBounds
+
+
+								console.log('--------------Error finding text in code:')
+								console.log('originalFileCode', { originalFileCode })
+								console.log('fullText', { fullText })
+								console.log('error:', errorMessage)
+								console.log('block.orig:', block.orig)
+								console.log('---------')
+								const content = this._errContentOfInvalidStr(errorMessage, block.orig)
+								const retryMsg = 'All of your previous outputs have been ignored. Please re-output ALL ORIGINAL/UPDATED blocks starting from the first one, and avoid the error this time.'
+								messages.push(
+									{ role: 'assistant', content: fullText }, // latest output
+									{ role: 'user', content: content + '\n' + retryMsg } // user explanation of what's wrong
+								)
+
+
+								// REVERT ALL BLOCKS
+								currStreamingBlockNum = 0
+								latestStreamLocationMutable = null
+								weAreAborting = true
+								return
+							}
+
+							// Extract line range from result
+							let boundsArray: readonly [number, number];
+							if (isFindTextResult(originalBounds)) {
+								boundsArray = [originalBounds.startLine, originalBounds.endLine];
+							} else if (isLineRange(originalBounds)) {
+								boundsArray = originalBounds;
+							} else {
+								// Invalid result type
+								const errorMessage: 'Invalid result type' = 'Invalid result type';
+								console.log('--------------Error finding text in code:')
+								console.log('originalFileCode', { originalFileCode })
+								console.log('fullText', { fullText })
+								console.log('error:', errorMessage)
+								console.log('block.orig:', block.orig)
+								console.log('---------')
+								const content = this._errContentOfInvalidStr(errorMessage, block.orig)
+								const retryMsg = 'All of your previous outputs have been ignored. Please re-output ALL ORIGINAL/UPDATED blocks starting from the first one, and avoid the error this time.'
+								messages.push(
+									{ role: 'assistant', content: fullText }, // latest output
+									{ role: 'user', content: content + '\n' + retryMsg } // user explanation of what's wrong
+								)
+								currStreamingBlockNum = 0
+								latestStreamLocationMutable = null
+								weAreAborting = true
+								return
+							}
+
 							// Check for overlap with existing modified ranges
+							const [boundsStart, boundsEnd] = boundsArray;
 							const hasOverlap = addedTrackingZoneOfBlockNum.some(trackingZone => {
 								const [existingStart, existingEnd] = trackingZone.metadata.originalBounds;
-								const hasNoOverlap = endLine < existingStart || startLine > existingEnd
+								const hasNoOverlap = boundsEnd < existingStart || boundsStart > existingEnd
 								return !hasNoOverlap
 							});
 
-							if (typeof originalBounds === 'string' || hasOverlap) {
-								const errorMessage = typeof originalBounds === 'string' ? originalBounds : 'Has overlap' as const
+							if (hasOverlap) {
+								const errorMessage: 'Has overlap' = 'Has overlap';
 
 								console.log('--------------Error finding text in code:')
 								console.log('originalFileCode', { originalFileCode })
@@ -3163,12 +3083,12 @@ ${problematicCode}
 
 
 
-							const [startLine, endLine] = convertOriginalRangeToFinalRange(originalBounds)
+							const [startLine, endLine] = convertOriginalRangeToFinalRange(boundsArray)
 
 							// console.log('---------adding-------')
 							// console.log('CURRENT TEXT!!!', { current: model?.getValue(EndOfLinePreference.LF) })
 							// console.log('block', deepClone(block))
-							// console.log('origBounds', originalBounds)
+							// console.log('origBounds', boundsArray)
 							// console.log('start end', startLine, endLine)
 
 							// otherwise if no error, add the position as a diffarea
@@ -3178,7 +3098,7 @@ ${problematicCode}
 								endLine: endLine,
 								_URI: uri,
 								metadata: {
-									originalBounds: [...originalBounds],
+									originalBounds: [...boundsArray] as [number, number],
 									originalCode: block.orig,
 								},
 							}
