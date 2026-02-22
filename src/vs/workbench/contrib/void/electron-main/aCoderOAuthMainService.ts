@@ -600,4 +600,4 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	}
 }
 
-registerSingleton(IACoderOAuthMainService, ACoderOAuthMainService, InstantiationType.Eager);
+registerSingleton(IACoderOAuthMainService, ACoderOAuthMainService, InstantiationType.Delayed);
