@@ -577,7 +577,13 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 })
 
 
-export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
+export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {
+	// During streaming, render plain text to avoid malformed markdown from incomplete chunks
+	// This is what ChatGPT, Claude, and other AI chatbots do
+	if (isStreaming) {
+		return <span className="whitespace-pre-wrap">{string}</span>;
+	}
+
 	// Safety check: ensure string is defined
 	const safeString = string?.replaceAll('\n•', '\n\n•') || '';
 	const tokens = useMemo(() => marked.lexer(safeString), [safeString]); // https://marked.js.org/using_pro#renderer

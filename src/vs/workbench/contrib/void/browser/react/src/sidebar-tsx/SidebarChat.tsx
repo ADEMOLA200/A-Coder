@@ -1498,6 +1498,7 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 									chatMessageLocation={chatMessageLocation}
 									isApplyEnabled={true}
 									isLinkDetectionEnabled={true}
+									isStreaming={!isCommitted}
 								/>
 							</ProseWrapper>
 						</div>
