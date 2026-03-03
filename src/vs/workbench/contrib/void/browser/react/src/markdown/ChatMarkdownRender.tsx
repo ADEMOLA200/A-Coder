@@ -15,7 +15,8 @@ import { separateOutFirstLine } from '../../../../common/helpers/util.js'
 import { BlockCode } from '../util/inputs.js'
 import { CodespanLocationLink } from '../../../../common/chatThreadServiceTypes.js'
 import { getBasename, getRelative, voidOpenFileFn } from '../sidebar-tsx/ToolResultHelpers.js'
-import { MermaidDiagram } from './MermaidDiagram.js'
+import { ChartRender, parseChartDefinition } from './ChartRender.js'
+import { LatexRender, LatexTextRender } from './LatexRender.js'
 
 
 export type ChatMessageLocation = {
@@ -31,63 +32,6 @@ export const getApplyBoxId = ({ threadId, messageIdx, tokenIdx }: ApplyBoxLocati
 
 function isValidUri(s: string): boolean {
 	return s.length > 5 && isAbsolute(s) && !s.includes('//') && !s.includes('/*') // common case that is a false positive is comments like //
-}
-
-// renders contiguous string of latex eg $e^{i\pi}$
-const LatexRender = ({ latex }: { latex: string }) => {
-	return <span className="katex-error text-red-500">{latex}</span>
-	// try {
-	// 	let formula = latex;
-	// 	let displayMode = false;
-
-	// 	// Extract the formula from delimiters
-	// 	if (latex.startsWith('$') && latex.endsWith('$')) {
-	// 		// Check if it's display math $$...$$
-	// 		if (latex.startsWith('$$') && latex.endsWith('$$')) {
-	// 			formula = latex.slice(2, -2);
-	// 			displayMode = true;
-	// 		} else {
-	// 			formula = latex.slice(1, -1);
-	// 		}
-	// 	} else if (latex.startsWith('\\(') && latex.endsWith('\\)')) {
-	// 		formula = latex.slice(2, -2);
-	// 	} else if (latex.startsWith('\\[') && latex.endsWith('\\]')) {
-	// 		formula = latex.slice(2, -2);
-	// 		displayMode = true;
-	// 	}
-
-	// 	// Render LaTeX
-	// 	const html = katex.renderToString(formula, {
-	// 		displayMode: displayMode,
-	// 		throwOnError: false,
-	// 		output: 'html'
-	// 	});
-
-	// 	// Sanitize the HTML output with DOMPurify
-	// 	const sanitizedHtml = dompurify.sanitize(html, {
-	// 		RETURN_TRUSTED_TYPE: true,
-	// 		USE_PROFILES: { html: true, svg: true, mathMl: true }
-	// 	});
-
-	// 	// Add proper styling based on mode
-	// 	const className = displayMode
-	// 		? 'katex-block my-2 text-center'
-	// 		: 'katex-inline';
-
-	// 	// Use the ref approach to avoid dangerouslySetInnerHTML
-	// 	const mathRef = React.useRef<HTMLSpanElement>(null);
-
-	// 	React.useEffect(() => {
-	// 		if (mathRef.current) {
-	// 			mathRef.current.innerHTML = sanitizedHtml as unknown as string;
-	// 		}
-	// 	}, [sanitizedHtml]);
-
-	// 	return <span ref={mathRef} className={className}></span>;
-	// } catch (error) {
-	// 	console.error('KaTeX rendering error:', error);
-	// 	return <span className="katex-error text-red-500">{latex}</span>;
-	// }
 }
 
 const Codespan = ({ text, className, onClick, tooltip }: { text: string, className?: string, onClick?: () => void, tooltip?: string }) => {
@@ -291,15 +235,26 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 
 		if (!contents) return null
 
-		// Check if this is a Mermaid diagram
-		const isMermaid = t.lang === 'mermaid' || t.lang === 'mmd' || contents.trim().startsWith('flowchart') ||
-			contents.trim().startsWith('sequenceDiagram') || contents.trim().startsWith('classDiagram') ||
-			contents.trim().startsWith('stateDiagram') || contents.trim().startsWith('erDiagram') ||
-			contents.trim().startsWith('gantt') || contents.trim().startsWith('pie') ||
-			contents.trim().startsWith('mindmap') || contents.trim().startsWith('timeline')
+		// Check if this is a chart definition (JSON or simple syntax)
+		const isChart = t.lang === 'chart' || t.lang === 'recharts' ||
+			contents.trim().startsWith('{') && (contents.includes('"type"') && contents.includes('"data"')) ||
+			contents.trim().startsWith('type:') && contents.includes('data:')
 
-		if (isMermaid) {
-			return <MermaidDiagram code={contents} className="my-4" />
+		if (isChart) {
+			const chartConfig = parseChartDefinition(contents)
+			if (chartConfig) {
+				return <ChartRender config={chartConfig} className="my-4" />
+			}
+		}
+
+		// Check if this is LaTeX math
+		const isLatex = t.lang === 'latex' || t.lang === 'math' || t.lang === 'tex'
+		if (isLatex) {
+			return (
+				<div className="my-4 p-4 bg-void-bg-2 rounded-lg border border-void-border-2 overflow-x-auto">
+					<LatexRender latex={contents} displayMode={true} />
+				</div>
+			)
 		}
 
 		// figure out langauge and URI

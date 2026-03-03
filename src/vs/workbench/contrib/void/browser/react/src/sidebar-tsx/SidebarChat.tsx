@@ -1960,9 +1960,33 @@ const ChatBubble = React.memo((props: ChatBubbleProps) => {
 }, (prevProps, nextProps) => {
 	// Always re-render during streaming (isCommitted=false) to show incremental updates
 	if (!nextProps.isCommitted) return false;
-	// For committed messages, use default comparison
-	return prevProps.chatMessage.displayContent === nextProps.chatMessage.displayContent &&
-		prevProps.chatMessage.reasoning === nextProps.chatMessage.reasoning;
+
+	const prevMsg = prevProps.chatMessage;
+	const nextMsg = nextProps.chatMessage;
+
+	// For tool messages, compare type and result to detect state changes
+	if (prevMsg.role === 'tool' || nextMsg.role === 'tool') {
+		if (prevMsg.role === 'tool' && nextMsg.role === 'tool') {
+			return prevMsg.type === nextMsg.type &&
+				prevMsg.result === nextMsg.result &&
+				prevMsg.content === nextMsg.content;
+		}
+		return false; // Different message types, re-render
+	}
+
+	// For assistant messages, compare displayContent and reasoning
+	if (prevMsg.role === 'assistant' && nextMsg.role === 'assistant') {
+		return prevMsg.displayContent === nextMsg.displayContent &&
+			prevMsg.reasoning === nextMsg.reasoning;
+	}
+
+	// For user messages and other types, compare content
+	if (prevMsg.role === 'user' && nextMsg.role === 'user') {
+		return prevMsg.content === nextMsg.content;
+	}
+
+	// Default: re-render if message role changed
+	return false;
 })
 
 const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, messageIdx, chatIsRunning, _scrollToBottom }: ChatBubbleProps) => {
@@ -2851,12 +2875,21 @@ export const SidebarChat = () => {
 		const hiddenAbove = shouldVirtualize ? visibleRange.start : 0;
 		const hiddenBelow = shouldVirtualize ? filteredMessages.length - visibleRange.end : 0;
 
-		// Placeholder for hidden messages above
 		const elements: React.ReactNode[] = [];
+
+		// "Load all" button at the top when there are hidden messages above
 		if (hiddenAbove > 0) {
 			elements.push(
-				<div key="hidden-above" className="mb-4 text-center text-void-fg-4 text-sm py-4 opacity-60">
-					↑ {hiddenAbove} earlier messages (scroll up to view)
+				<div key="load-all-top" className="mb-4 flex flex-col items-center gap-2">
+					<button
+						onClick={() => setShowAllMessages(true)}
+						className="px-4 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-colors"
+					>
+						Load all {filteredMessages.length} messages
+					</button>
+					<div className="text-void-fg-4 text-xs opacity-60">
+						↑ {hiddenAbove} earlier messages hidden
+					</div>
 				</div>
 			);
 		}
@@ -2883,20 +2916,6 @@ export const SidebarChat = () => {
 			elements.push(
 				<div key="hidden-below" className="mb-4 text-center text-void-fg-4 text-sm py-4 opacity-60">
 					↓ {hiddenBelow} newer messages (scroll down to view)
-				</div>
-			);
-		}
-
-		// Add "Load all" button if many messages
-		if (shouldVirtualize && filteredMessages.length > MAX_VISIBLE_MESSAGES * 2) {
-			elements.push(
-				<div key="load-all" className="mb-4 flex justify-center">
-					<button
-						onClick={() => setShowAllMessages(true)}
-						className="px-4 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-colors"
-					>
-						Load all {filteredMessages.length} messages
-					</button>
 				</div>
 			);
 		}
