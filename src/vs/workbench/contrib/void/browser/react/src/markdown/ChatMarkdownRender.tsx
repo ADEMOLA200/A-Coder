@@ -529,6 +529,32 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 			<span className='text-sm text-orange-500'>Unknown token rendered...</span>
 		</div>
 	)
+}, (prevProps, nextProps) => {
+	// Custom comparison function for better React reconciliation during streaming
+	// Compare tokens by their content instead of by reference
+	const prevToken = prevProps.token as MarkedToken
+	const nextToken = nextProps.token as MarkedToken
+
+	// Compare by raw content (the original markdown text)
+	if (prevToken.raw !== nextToken.raw) return false
+
+	// Compare type
+	if (prevToken.type !== nextToken.type) return false
+
+	// Compare tokenIdx
+	if (prevProps.tokenIdx !== nextProps.tokenIdx) return false
+
+	// Compare options
+	if (prevProps.isApplyEnabled !== nextProps.isApplyEnabled) return false
+	if (prevProps.isLinkDetectionEnabled !== nextProps.isLinkDetectionEnabled) return false
+
+	// Compare chatMessageLocation (if both exist, they should match)
+	if (prevProps.chatMessageLocation && nextProps.chatMessageLocation) {
+		if (prevProps.chatMessageLocation.threadId !== nextProps.chatMessageLocation.threadId) return false
+		if (prevProps.chatMessageLocation.messageIdx !== nextProps.chatMessageLocation.messageIdx) return false
+	}
+
+	return true
 })
 
 
@@ -548,10 +574,35 @@ const preprocessStreamingMarkdown = (text: string): { processedText: string; has
 	return { processedText, hasIncompleteCodeBlock };
 }
 
+// Generate a stable content-based key for a token
+// This uses a hash of the token's raw content so that tokens that haven't changed
+// maintain the same key across re-renders, preventing React from unmounting/remounting
+const generateTokenKey = (token: Token, index: number, prefix: string): string => {
+	// Use token.raw for content-based identity (raw contains the original markdown text)
+	// Fall back to token.text if raw is not available
+	const content = token.raw || (token as any).text || '';
+
+	// Simple hash function for content stability
+	let hash = 0;
+	for (let i = 0; i < content.length && i < 50; i++) {
+		const char = content.charCodeAt(i);
+		hash = ((hash << 5) - hash) + char;
+		hash = hash & hash; // Convert to 32-bit integer
+	}
+
+	// Combine prefix + content hash + type + index for stable identification
+	// The prefix ensures different messages don't have colliding keys
+	// The content hash ensures tokens with same content get same keys
+	// The index is a fallback for uniqueness within the same content
+	return `${prefix}-${token.type}-${Math.abs(hash).toString(36)}-${index}`;
+}
+
 // Component to render streaming markdown with proper handling of incomplete structures
 const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
 	const { processedText, hasIncompleteCodeBlock } = useMemo(() => preprocessStreamingMarkdown(string), [string]);
 
+	// Use useMemo to cache tokens and prevent unnecessary re-parsing
+	// The dependency is the processed text, so we only re-parse when content actually changes
 	const tokens = useMemo(() => {
 		try {
 			return marked.lexer(processedText);
@@ -567,15 +618,28 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 		return <span className="whitespace-pre-wrap">{string}</span>;
 	}
 
-	// Generate a stable key prefix based on content hash for better React reconciliation
-	const contentHash = string.length;
+	// Use a stable prefix based on content length to prevent key collisions
+	// between different messages, but use content-based hashing for stability
+	// within the same message across streaming updates
+	const keyPrefix = useMemo(() => {
+		// Create a stable prefix from the first ~20 chars of content
+		// This helps maintain key stability across streaming updates
+		const firstChars = string.slice(0, 20);
+		let hash = 0;
+		for (let i = 0; i < firstChars.length; i++) {
+			const char = firstChars.charCodeAt(i);
+			hash = ((hash << 5) - hash) + char;
+			hash = hash & hash;
+		}
+		return Math.abs(hash).toString(36);
+	}, []); // Empty deps - compute once per component instance
 
 	return (
 		<>
 			{tokens.map((token, index) => {
-				// Create a more stable key using token type and index
-				// This helps React maintain component state across re-renders
-				const tokenKey = `${contentHash}-${token.type}-${index}`;
+				// Use content-based key for stable React reconciliation
+				// This prevents flickering and out-of-order rendering during streaming
+				const tokenKey = generateTokenKey(token, index, keyPrefix);
 
 				return <RenderToken
 					key={tokenKey}
