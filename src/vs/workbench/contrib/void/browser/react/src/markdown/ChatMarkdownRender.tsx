@@ -559,19 +559,171 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 
 
 // Helper to detect and fix incomplete markdown during streaming
-const preprocessStreamingMarkdown = (text: string): { processedText: string; hasIncompleteCodeBlock: boolean } => {
-	// Count code block delimiters
-	const codeBlockMatches = text.match(/```/g);
-	const codeBlockCount = codeBlockMatches ? codeBlockMatches.length : 0;
-	const hasIncompleteCodeBlock = codeBlockCount % 2 !== 0;
-
-	// If there's an incomplete code block, add a closing delimiter
+// This handles various incomplete markdown structures that would cause parsing issues
+const preprocessStreamingMarkdown = (text: string): { processedText: string; isIncomplete: boolean } => {
 	let processedText = text;
-	if (hasIncompleteCodeBlock) {
-		processedText = text + '\n```';
+	let isIncomplete = false;
+
+	// 1. Handle incomplete fenced code blocks
+	const codeBlockMatches = processedText.match(/```/g);
+	const codeBlockCount = codeBlockMatches ? codeBlockMatches.length : 0;
+	if (codeBlockCount % 2 !== 0) {
+		processedText = processedText + '\n```';
+		isIncomplete = true;
 	}
 
-	return { processedText, hasIncompleteCodeBlock };
+	// 2. Handle incomplete inline code (single backtick)
+	const inlineCodeMatches = processedText.match(/`/g);
+	const inlineCodeCount = inlineCodeMatches ? inlineCodeMatches.length : 0;
+	if (inlineCodeCount % 2 !== 0) {
+		// Find the last backtick and add a closing one
+		const lastBacktick = processedText.lastIndexOf('`');
+		if (lastBacktick !== -1) {
+			processedText = processedText.slice(0, lastBacktick + 1) + '`' + processedText.slice(lastBacktick + 1);
+		}
+	}
+
+	// 3. Handle incomplete bold/italic (must check pairs)
+	// Count unmatched ** and * and __ and _
+	const processInlineFormatting = (text: string, delimiter: string): string => {
+		// Find all occurrences and their positions
+		const regex = new RegExp(`\\${delimiter}{1,2}`, 'g');
+		const matches = [...text.matchAll(regex)];
+
+		// Check if we have an odd number
+		if (matches.length % 2 !== 0) {
+			// Add a closing delimiter at the end
+			return text + delimiter.repeat(matches[0][0].length);
+		}
+		return text;
+	};
+
+	// Process bold/italic markers
+	processedText = processInlineFormatting(processedText, '*');
+	processedText = processInlineFormatting(processedText, '_');
+
+	// 4. Handle incomplete strikethrough
+	const strikeMatches = processedText.match(/~~/g);
+	const strikeCount = strikeMatches ? strikeMatches.length : 0;
+	if (strikeCount % 2 !== 0) {
+		processedText = processedText + '~~';
+	}
+
+	// 5. Handle incomplete links [text](url
+	const linkStartMatches = processedText.match(/\[/g);
+	const linkEndMatches = processedText.match(/\]/g);
+	const linkStartCount = linkStartMatches ? linkStartMatches.length : 0;
+	const linkEndCount = linkEndMatches ? linkEndMatches.length : 0;
+
+	if (linkStartCount > linkEndCount) {
+		// Unclosed link brackets
+		processedText = processedText + ']';
+		isIncomplete = true;
+	} else if (linkStartCount < linkEndCount) {
+		// More closing than opening - escape the extra ones
+		// This is less common, just add opening bracket
+		processedText = '[' + processedText;
+	}
+
+	// Handle incomplete link URLs [text](url without closing paren
+	const parenStartMatches = processedText.match(/\]\(/g);
+	if (parenStartMatches) {
+		// Check for unclosed parentheses after ](
+		const afterLinkText = processedText.split(/\]\(/);
+		for (let i = 1; i < afterLinkText.length; i++) {
+			const part = afterLinkText[i];
+			const parenOpen = (part.match(/\(/g) || []).length;
+			const parenClose = (part.match(/\)/g) || []).length;
+			// If more opening than closing in URL part, we might have incomplete link
+		}
+	}
+
+	// 6. Handle incomplete images ![alt](url
+	const imgMatches = processedText.match(/!\[/g);
+	if (imgMatches && linkEndMatches) {
+		const imgCount = imgMatches.length;
+		// Images need ](url) to close
+		const imgCloseMatches = processedText.match(/\)\)/g);
+		const imgCloseCount = imgCloseMatches ? imgCloseMatches.length : 0;
+		if (imgCount > imgCloseCount) {
+			processedText = processedText + ')'; // Close the parenthesis
+			isIncomplete = true;
+		}
+	}
+
+	// 7. Handle incomplete HTML tags (basic detection)
+	const htmlOpenMatches = processedText.match(/<[a-zA-Z][^>]*>/g);
+	const htmlCloseMatches = processedText.match(/<\/[a-zA-Z]+>/g);
+	if (htmlOpenMatches && htmlCloseMatches) {
+		if (htmlOpenMatches.length > htmlCloseMatches.length) {
+			isIncomplete = true;
+		}
+	}
+
+	return { processedText, isIncomplete };
+}
+
+// Alternative approach: Render streaming content more safely
+// This renders the content with minimal formatting during streaming,
+// then switches to full markdown when complete
+const StreamingMarkdownFallback = ({ string }: { string: string }) => {
+	// During streaming, use a simpler rendering that's less prone to artifacts
+	// We still do basic processing for code blocks and paragraphs
+	const lines = string.split('\n');
+	const elements: React.ReactNode[] = [];
+	let inCodeBlock = false;
+	let codeBlockContent: string[] = [];
+	let codeBlockLang = '';
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
+		if (line.startsWith('```')) {
+			if (!inCodeBlock) {
+				// Start code block
+				if (codeBlockContent.length > 0 || i > 0) {
+					elements.push(<p key={`text-${elements.length}`} className="whitespace-pre-wrap mb-2">{codeBlockContent.join('\n') || ''}</p>);
+					codeBlockContent = [];
+				}
+				inCodeBlock = true;
+				codeBlockLang = line.slice(3).trim();
+			} else {
+				// End code block
+				inCodeBlock = false;
+				elements.push(
+					<BlockCode
+						key={`code-${elements.length}`}
+						initValue={codeBlockContent.join('\n')}
+						language={codeBlockLang || 'plaintext'}
+					/>
+				);
+				codeBlockContent = [];
+				codeBlockLang = '';
+			}
+		} else if (inCodeBlock) {
+			codeBlockContent.push(line);
+		} else {
+			// Regular text - just accumulate
+			codeBlockContent.push(line);
+		}
+	}
+
+	// Handle remaining content
+	if (inCodeBlock) {
+		// Unclosed code block - still show it
+		elements.push(
+			<BlockCode
+				key={`code-${elements.length}`}
+				initValue={codeBlockContent.join('\n')}
+				language={codeBlockLang || 'plaintext'}
+			/>
+		);
+	} else if (codeBlockContent.length > 0) {
+		// Remaining text
+		elements.push(<p key={`text-${elements.length}`} className="whitespace-pre-wrap mb-2">{codeBlockContent.join('\n')}</p>);
+	}
+
+	return <>{elements}</>;
 }
 
 // Generate a stable content-based key for a token
@@ -598,60 +750,177 @@ const generateTokenKey = (token: Token, index: number, prefix: string): string =
 }
 
 // Component to render streaming markdown with proper handling of incomplete structures
+// KEY INSIGHT: During streaming, markdown is often incomplete and parsing it can produce
+// wildly different token structures that cause visual jumping/flickering.
+//
+// Strategy: During streaming, we render content more conservatively:
+// 1. Code blocks are detected and rendered properly (they're critical for code)
+// 2. Everything else is rendered as styled text with proper line breaks
+// 3. When streaming completes, full markdown parsing is used
 const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
-	const { processedText, hasIncompleteCodeBlock } = useMemo(() => preprocessStreamingMarkdown(string), [string]);
-
-	// Use useMemo to cache tokens and prevent unnecessary re-parsing
-	// The dependency is the processed text, so we only re-parse when content actually changes
-	const tokens = useMemo(() => {
-		try {
-			return marked.lexer(processedText);
-		} catch (e) {
-			// If parsing fails, return empty array and fall back to plain text
-			console.warn('Markdown parsing error during streaming:', e);
-			return [];
-		}
-	}, [processedText]);
-
-	// If no tokens were parsed, render as plain text
-	if (tokens.length === 0) {
-		return <span className="whitespace-pre-wrap">{string}</span>;
-	}
-
-	// Use a stable prefix based on content length to prevent key collisions
-	// between different messages, but use content-based hashing for stability
-	// within the same message across streaming updates
-	const keyPrefix = useMemo(() => {
-		// Create a stable prefix from the first ~20 chars of content
-		// This helps maintain key stability across streaming updates
-		const firstChars = string.slice(0, 20);
-		let hash = 0;
-		for (let i = 0; i < firstChars.length; i++) {
-			const char = firstChars.charCodeAt(i);
-			hash = ((hash << 5) - hash) + char;
-			hash = hash & hash;
-		}
-		return Math.abs(hash).toString(36);
-	}, []); // Empty deps - compute once per component instance
+	// Parse the content into segments: code blocks and regular text
+	// This is more stable than full markdown parsing during streaming
+	const segments = useMemo(() => {
+		return parseStreamingContent(string);
+	}, [string]);
 
 	return (
 		<>
-			{tokens.map((token, index) => {
-				// Use content-based key for stable React reconciliation
-				// This prevents flickering and out-of-order rendering during streaming
-				const tokenKey = generateTokenKey(token, index, keyPrefix);
-
-				return <RenderToken
-					key={tokenKey}
-					token={token}
-					inPTag={inPTag}
-					chatMessageLocation={chatMessageLocation}
-					tokenIdx={index + ''}
-					{...options}
-				/>
+			{segments.map((segment, index) => {
+				if (segment.type === 'code') {
+					// Code blocks are rendered properly even during streaming
+					const language = segment.language || 'plaintext';
+					return (
+						<BlockCode
+							key={`code-${index}`}
+							initValue={segment.content}
+							language={language}
+						/>
+					);
+				} else if (segment.type === 'inline-code') {
+					// Inline code
+					return (
+						<code key={`inline-${index}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1">
+							{segment.content}
+						</code>
+					);
+				} else {
+					// Regular text - render with proper line breaks
+					// Still allow some inline formatting but don't restructure
+					return (
+						<span key={`text-${index}`} className="whitespace-pre-wrap">
+							{segment.content.split('\n').map((line, lineIndex, lines) => (
+								<React.Fragment key={lineIndex}>
+									{renderInlineFormatting(line, chatMessageLocation, options)}
+									{lineIndex < lines.length - 1 && <br />}
+								</React.Fragment>
+							))}
+						</span>
+					);
+				}
 			})}
 		</>
 	);
+}
+
+// Parse streaming content into stable segments
+// This is more tolerant than full markdown parsing
+function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string }> {
+	const segments: Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string }> = [];
+
+	// Find code blocks (fenced with ```)
+	const codeBlockRegex = /```(\w*)\n([\s\S]*?)(```|$)/g;
+	let lastIndex = 0;
+	let match;
+
+	while ((match = codeBlockRegex.exec(text)) !== null) {
+		// Add text before code block
+		if (match.index > lastIndex) {
+			segments.push({
+				type: 'text',
+				content: text.slice(lastIndex, match.index)
+			});
+		}
+
+		// Add code block
+		const language = match[1] || 'plaintext';
+		const code = match[2];
+		const isComplete = match[3] === '```';
+
+		segments.push({
+			type: 'code',
+			content: isComplete ? code : code, // Show code even if incomplete
+			language
+		});
+
+		lastIndex = match.index + match[0].length;
+
+		// If incomplete, the regex won't match the closing ```
+		if (!isComplete) {
+			// Add remaining as code (incomplete)
+			segments[segments.length - 1].content = code;
+			lastIndex = text.length;
+		}
+	}
+
+	// Add remaining text
+	if (lastIndex < text.length) {
+		segments.push({
+			type: 'text',
+			content: text.slice(lastIndex)
+		});
+	}
+
+	// If no segments, return whole text
+	if (segments.length === 0) {
+		segments.push({ type: 'text', content: text });
+	}
+
+	return segments;
+}
+
+// Render inline formatting (bold, italic, inline code, links) without restructuring
+function renderInlineFormatting(text: string, chatMessageLocation: ChatMessageLocation | undefined, options: RenderTokenOptions): React.ReactNode {
+	// Handle inline code first (to avoid processing markdown inside code)
+	const parts: React.ReactNode[] = [];
+	const inlineCodeRegex = /`([^`]+)`/g;
+	let lastIndex = 0;
+	let match;
+	let keyIndex = 0;
+
+	while ((match = inlineCodeRegex.exec(text)) !== null) {
+		// Add text before inline code
+		if (match.index > lastIndex) {
+			parts.push(renderTextWithFormatting(text.slice(lastIndex, match.index), keyIndex++));
+		}
+
+		// Add inline code
+		parts.push(
+			<code key={`ic-${keyIndex++}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1 text-void-fg-1">
+				{match[1]}
+			</code>
+		);
+
+		lastIndex = match.index + match[0].length;
+	}
+
+	// Add remaining text
+	if (lastIndex < text.length) {
+		parts.push(renderTextWithFormatting(text.slice(lastIndex), keyIndex++));
+	}
+
+	// If no inline code, just render with basic formatting
+	if (parts.length === 0) {
+		return renderTextWithFormatting(text, 0);
+	}
+
+	return parts;
+}
+
+// Render text with basic inline formatting (bold, italic)
+function renderTextWithFormatting(text: string, keyBase: number): React.ReactNode {
+	// Simple regex-based formatting for streaming
+	// Bold: **text** or __text__
+	// Italic: *text* or _text_
+
+	// For streaming, we'll render these as-is if incomplete
+	// This prevents flickering when ** is being typed
+
+	// Check if there are unclosed formatting markers
+	const boldCount = (text.match(/\*\*/g) || []).length;
+	const italicStarCount = (text.match(/(?<!\*)\*(?!\*)/g) || []).length;
+	const italicUnderscoreCount = (text.match(/(?<!_)_(?!_)/g) || []).length;
+
+	// If odd number of markers, content is incomplete - render as-is
+	if (boldCount % 2 !== 0 || italicStarCount % 2 !== 0 || italicUnderscoreCount % 2 !== 0) {
+		// Try to format complete portions
+		return <>{text}</>;
+	}
+
+	// All markers are paired - we can safely format
+	// For simplicity during streaming, just return the text
+	// The full markdown parser will handle formatting when complete
+	return <>{text}</>;
 }
 
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {
