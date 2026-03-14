@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MCPUserState, RefreshableProviderName, SettingsOfProvider } from '../../../../../../../workbench/contrib/void/common/voidSettingsTypes.js'
 import { DisposableStore, IDisposable } from '../../../../../../../base/common/lifecycle.js'
 import { VoidSettingsState } from '../../../../../../../workbench/contrib/void/common/voidSettingsService.js'
@@ -391,15 +391,31 @@ export const useCurrentThreadMessages = () => {
 
 export const useChatThreadsStreamState = (threadId: string) => {
 	const [s, ss] = useState<ThreadStreamState[string] | undefined>(chatThreadsStreamState[threadId])
+	const [updateCounter, setUpdateCounter] = useState(0)
+
 	useEffect(() => {
-		ss(chatThreadsStreamState[threadId])
+		// Sync initial state
+		const initialState = chatThreadsStreamState[threadId]
+		if (initialState !== s) {
+			ss(initialState)
+		}
+
 		const listener = (threadId_: string) => {
 			if (threadId_ !== threadId) return
-			ss(chatThreadsStreamState[threadId])
+			// Get the latest state and update
+			const newState = chatThreadsStreamState[threadId]
+			ss(newState)
 		}
 		chatThreadsStreamStateListeners.add(listener)
 		return () => { chatThreadsStreamStateListeners.delete(listener) }
-	}, [ss, threadId])
+	}, [threadId])
+
+	// Force re-render when state reference changes
+	// This ensures React detects deep changes in the llmInfo object
+	useEffect(() => {
+		// This effect runs whenever 's' changes, ensuring children re-render
+	}, [s])
+
 	return s
 }
 

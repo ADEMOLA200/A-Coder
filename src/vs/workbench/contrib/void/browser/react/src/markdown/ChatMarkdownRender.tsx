@@ -757,6 +757,9 @@ const generateTokenKey = (token: Token, index: number, prefix: string): string =
 // 1. Code blocks are detected and rendered properly (they're critical for code)
 // 2. Everything else is rendered as styled text with proper line breaks
 // 3. When streaming completes, full markdown parsing is used
+//
+// IMPORTANT: We use content-based keys to prevent React from remounting components
+// when new content arrives. This prevents flickering and visual jumping.
 const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
 	// Parse the content into segments: code blocks and regular text
 	// This is more stable than full markdown parsing during streaming
@@ -766,13 +769,13 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 
 	return (
 		<>
-			{segments.map((segment, index) => {
+			{segments.map((segment) => {
 				if (segment.type === 'code') {
 					// Code blocks are rendered properly even during streaming
 					const language = segment.language || 'plaintext';
 					return (
 						<BlockCode
-							key={`code-${index}`}
+							key={segment.key}
 							initValue={segment.content}
 							language={language}
 						/>
@@ -780,7 +783,7 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 				} else if (segment.type === 'inline-code') {
 					// Inline code
 					return (
-						<code key={`inline-${index}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1">
+						<code key={segment.key} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1">
 							{segment.content}
 						</code>
 					);
@@ -788,9 +791,9 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 					// Regular text - render with proper line breaks
 					// Still allow some inline formatting but don't restructure
 					return (
-						<span key={`text-${index}`} className="whitespace-pre-wrap">
+						<span key={segment.key} className="whitespace-pre-wrap">
 							{segment.content.split('\n').map((line, lineIndex, lines) => (
-								<React.Fragment key={lineIndex}>
+								<React.Fragment key={`${segment.key}-line-${lineIndex}`}>
 									{renderInlineFormatting(line, chatMessageLocation, options)}
 									{lineIndex < lines.length - 1 && <br />}
 								</React.Fragment>
@@ -803,23 +806,38 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 	);
 }
 
+// Generate a stable hash for content-based keys
+const hashContent = (content: string): string => {
+	let hash = 0;
+	for (let i = 0; i < content.length && i < 100; i++) {
+		const char = content.charCodeAt(i);
+		hash = ((hash << 5) - hash) + char;
+		hash = hash & hash;
+	}
+	return Math.abs(hash).toString(36);
+};
+
 // Parse streaming content into stable segments
 // This is more tolerant than full markdown parsing
-function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string }> {
-	const segments: Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string }> = [];
+function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, key: string }> {
+	const segments: Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, key: string }> = [];
 
 	// Find code blocks (fenced with ```)
 	const codeBlockRegex = /```(\w*)\n([\s\S]*?)(```|$)/g;
 	let lastIndex = 0;
 	let match;
+	let segmentIndex = 0;
 
 	while ((match = codeBlockRegex.exec(text)) !== null) {
 		// Add text before code block
 		if (match.index > lastIndex) {
+			const textContent = text.slice(lastIndex, match.index);
 			segments.push({
 				type: 'text',
-				content: text.slice(lastIndex, match.index)
+				content: textContent,
+				key: `text-${segmentIndex}-${hashContent(textContent)}`
 			});
+			segmentIndex++;
 		}
 
 		// Add code block
@@ -829,9 +847,11 @@ function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'i
 
 		segments.push({
 			type: 'code',
-			content: isComplete ? code : code, // Show code even if incomplete
-			language
+			content: code,
+			language,
+			key: `code-${segmentIndex}-${language}-${hashContent(code)}`
 		});
+		segmentIndex++;
 
 		lastIndex = match.index + match[0].length;
 
@@ -845,15 +865,17 @@ function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'i
 
 	// Add remaining text
 	if (lastIndex < text.length) {
+		const textContent = text.slice(lastIndex);
 		segments.push({
 			type: 'text',
-			content: text.slice(lastIndex)
+			content: textContent,
+			key: `text-${segmentIndex}-${hashContent(textContent)}`
 		});
 	}
 
 	// If no segments, return whole text
 	if (segments.length === 0) {
-		segments.push({ type: 'text', content: text });
+		segments.push({ type: 'text', content: text, key: `text-0-${hashContent(text)}` });
 	}
 
 	return segments;
@@ -866,18 +888,18 @@ function renderInlineFormatting(text: string, chatMessageLocation: ChatMessageLo
 	const inlineCodeRegex = /`([^`]+)`/g;
 	let lastIndex = 0;
 	let match;
-	let keyIndex = 0;
 
 	while ((match = inlineCodeRegex.exec(text)) !== null) {
 		// Add text before inline code
 		if (match.index > lastIndex) {
-			parts.push(renderTextWithFormatting(text.slice(lastIndex, match.index), keyIndex++));
+			parts.push(renderTextWithFormatting(text.slice(lastIndex, match.index), `txt-${lastIndex}-${match.index}`));
 		}
 
-		// Add inline code
+		// Add inline code with stable key based on content
+		const codeContent = match[1];
 		parts.push(
-			<code key={`ic-${keyIndex++}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1 text-void-fg-1">
-				{match[1]}
+			<code key={`ic-${hashContent(codeContent)}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1 text-void-fg-1">
+				{codeContent}
 			</code>
 		);
 
@@ -886,19 +908,19 @@ function renderInlineFormatting(text: string, chatMessageLocation: ChatMessageLo
 
 	// Add remaining text
 	if (lastIndex < text.length) {
-		parts.push(renderTextWithFormatting(text.slice(lastIndex), keyIndex++));
+		parts.push(renderTextWithFormatting(text.slice(lastIndex), `txt-${lastIndex}-end`));
 	}
 
 	// If no inline code, just render with basic formatting
 	if (parts.length === 0) {
-		return renderTextWithFormatting(text, 0);
+		return renderTextWithFormatting(text, 'txt-only');
 	}
 
 	return parts;
 }
 
 // Render text with basic inline formatting (bold, italic)
-function renderTextWithFormatting(text: string, keyBase: number): React.ReactNode {
+function renderTextWithFormatting(text: string, keyBase: string): React.ReactNode {
 	// Simple regex-based formatting for streaming
 	// Bold: **text** or __text__
 	// Italic: *text* or _text_
@@ -914,13 +936,13 @@ function renderTextWithFormatting(text: string, keyBase: number): React.ReactNod
 	// If odd number of markers, content is incomplete - render as-is
 	if (boldCount % 2 !== 0 || italicStarCount % 2 !== 0 || italicUnderscoreCount % 2 !== 0) {
 		// Try to format complete portions
-		return <>{text}</>;
+		return <span key={keyBase}>{text}</span>;
 	}
 
 	// All markers are paired - we can safely format
 	// For simplicity during streaming, just return the text
 	// The full markdown parser will handle formatting when complete
-	return <>{text}</>;
+	return <span key={keyBase}>{text}</span>;
 }
 
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {

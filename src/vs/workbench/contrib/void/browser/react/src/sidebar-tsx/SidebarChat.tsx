@@ -88,19 +88,25 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 				<div key={index} className="relative group">
 					<img
 						src={`data:${image.mimeType};base64,${image.base64}`}
-						alt={image.name || `Image ${index + 1}`}
+						alt={image.name || `Attached image ${index + 1}`}
 						className="w-20 h-20 object-cover rounded border border-void-border-2"
+						onError={(e) => {
+							// Fallback for failed image loads
+							const target = e.target as HTMLImageElement;
+							target.style.display = 'none';
+						}}
 					/>
 					<button
 						onClick={() => onRemove(index)}
-						className="absolute -top-1 -right-1 bg-void-bg-1 border border-void-border-2 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+						className="absolute -top-1 -right-1 bg-void-bg-1 border border-void-border-2 rounded-full p-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-1"
 						data-tooltip-id="void-tooltip"
 						data-tooltip-content="Remove image"
+						aria-label={`Remove ${image.name || `image ${index + 1}`}`}
 					>
 						<X size={12} className="text-void-fg-3" />
 					</button>
 					{image.name && (
-						<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b">
+						<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b" title={image.name}>
 							{image.name}
 						</div>
 					)}
@@ -170,6 +176,14 @@ const TaskPlanView = ({
 		}
 	};
 
+	// Keyboard handler for expand/collapse
+	const handleHeaderKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			setIsExpanded(!isExpanded);
+		}
+	};
+
 	if (tasks.length === 0) {
 		return null; // Don't show anything if no tasks
 	}
@@ -178,8 +192,13 @@ const TaskPlanView = ({
 		<div className="mb-4 void-card-premium">
 			{/* Header */}
 			<div
-				className="flex items-center justify-between p-4 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
+				className="flex items-center justify-between p-4 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-inset"
 				onClick={() => setIsExpanded(!isExpanded)}
+				onKeyDown={handleHeaderKeyDown}
+				role="button"
+				tabIndex={0}
+				aria-expanded={isExpanded}
+				aria-controls="task-plan-content"
 			>
 				<div className="flex items-center gap-3">
 					<ChevronDown
@@ -211,7 +230,7 @@ const TaskPlanView = ({
 							e.stopPropagation();
 							onClearPlan();
 						}}
-						className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200"
+						className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
 						title="Clear all tasks"
 					>
 						<Trash2 className="w-4 h-4 text-void-fg-4" />
@@ -221,7 +240,7 @@ const TaskPlanView = ({
 
 			{/* Expanded content */}
 			{isExpanded && (
-				<div className="border-t border-void-border-2">
+				<div id="task-plan-content" className="border-t border-void-border-2">
 					{/* Task list */}
 					<div className="max-h-80 overflow-y-auto">
 						{tasks.map((task, index) => (
@@ -262,7 +281,7 @@ const TaskPlanView = ({
 								{/* Delete button */}
 								<button
 									onClick={() => onDeleteTask(task.id)}
-									className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 opacity-0 group-hover:opacity-100"
+									className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
 									title="Delete task"
 								>
 									<X className="w-4 h-4 text-void-fg-4" />
@@ -598,18 +617,83 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 	onClose: () => void,
 	onSelectLevel: (level: 'beginner' | 'intermediate' | 'advanced') => void
 }) => {
-	if (!isOpen) return null
+	const modalRef = useRef<HTMLDivElement>(null);
+	const previousActiveElement = useRef<HTMLElement | null>(null);
+
+	// Focus trap and keyboard handling
+	useEffect(() => {
+		if (!isOpen) return;
+
+		// Store the previously focused element
+		previousActiveElement.current = document.activeElement as HTMLElement;
+
+		// Focus the modal container
+		if (modalRef.current) {
+			const firstFocusable = modalRef.current.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+			if (firstFocusable) {
+				firstFocusable.focus();
+			} else {
+				modalRef.current.focus();
+			}
+		}
+
+		// Handle Escape key
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				onClose();
+				return;
+			}
+
+			// Focus trap: Keep focus within modal
+			if (e.key === 'Tab' && modalRef.current) {
+				const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+					'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+				);
+				const firstElement = focusableElements[0];
+				const lastElement = focusableElements[focusableElements.length - 1];
+
+				if (e.shiftKey && document.activeElement === firstElement) {
+					e.preventDefault();
+					lastElement.focus();
+				} else if (!e.shiftKey && document.activeElement === lastElement) {
+					e.preventDefault();
+					firstElement.focus();
+				}
+			}
+		};
+
+		document.addEventListener('keydown', handleKeyDown);
+
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown);
+			// Restore focus to previous element
+			if (previousActiveElement.current) {
+				previousActiveElement.current.focus();
+			}
+		};
+	}, [isOpen, onClose]);
+
+	if (!isOpen) return null;
 
 	return (
-		<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-			<div className="bg-void-bg-1 border border-void-border-1 rounded-xl shadow-2xl max-w-[500px] w-full max-h-[90vh] overflow-y-auto flex flex-col">
+		<div
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="student-modal-title"
+		>
+			<div
+				ref={modalRef}
+				className="bg-void-bg-1 border border-void-border-1 rounded-xl shadow-2xl max-w-[500px] w-full max-h-[90vh] overflow-y-auto flex flex-col focus:outline-none"
+				tabIndex={-1}
+			>
 				{/* Header */}
 				<div className="px-6 py-5 border-b border-void-border-1 flex items-start gap-4">
-					<div className="p-2 bg-void-accent/10 rounded-lg text-void-accent shrink-0">
+					<div className="p-2 bg-void-accent/10 rounded-lg text-void-accent shrink-0" aria-hidden="true">
 						<Brain size={24} />
 					</div>
 					<div>
-						<h2 className="text-lg font-semibold text-void-fg-1 leading-tight">Student Mode</h2>
+						<h2 id="student-modal-title" className="text-lg font-semibold text-void-fg-1 leading-tight">Student Mode</h2>
 						<p className="text-void-fg-3 text-sm mt-1 leading-relaxed">
 							A-Coder will act as your personal tutor.
 						</p>
@@ -864,7 +948,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>
-const DEFAULT_BUTTON_SIZE = 22;
+const DEFAULT_BUTTON_SIZE = 28; // Increased from 22 to meet 44x44px touch target minimum
 export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: ButtonProps & Required<Pick<ButtonProps, 'disabled'>> & { isQueueMode?: boolean }) => {
 	const isDark = useIsDark()
 
@@ -873,16 +957,18 @@ export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: But
 		className={`
 			rounded-xl flex-shrink-0 flex-grow-0 flex items-center justify-center
 			transition-all duration-200 ease-out
+			focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 focus:ring-offset-void-bg-1
 			${disabled
 				? 'bg-void-depth-base cursor-not-allowed opacity-50 border border-void-border-2'
 				: 'void-btn-primary cursor-pointer'
 			}
 			${className}
 		`}
-		style={{ width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE }}
+		style={{ width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE, minHeight: 28, minWidth: 28 }}
 		disabled={disabled}
 		data-tooltip-id='void-tooltip'
 		data-tooltip-content={isQueueMode ? 'Queue message (will send after current operation)' : 'Send message'}
+		aria-label={isQueueMode ? 'Queue message' : 'Send message'}
 		{...props}
 	>
 		<div className={`${disabled ? 'text-void-fg-4' : 'text-white'}`}>
@@ -897,13 +983,15 @@ export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLBut
 			rounded-xl flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center
 			transition-all duration-200 ease-out
 			void-btn-secondary
+			focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-void-bg-1
 			${className}
 		`}
 		type='button'
+		aria-label="Stop"
 		{...props}
 	>
 		<div className='text-red-500 dark:text-red-400'>
-			<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[7px]" />
+			<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[5px]" />
 		</div>
 	</button>
 }
@@ -956,7 +1044,7 @@ const ContinueButton = ({
 			<div className="relative" ref={menuRef}>
 				<button
 					onClick={() => setShowMenu(!showMenu)}
-					className={`p-1.5 rounded-md bg-void-bg-2 hover:bg-void-bg-3 transition-all duration-150 ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
+					className={`p-2 rounded-md bg-void-bg-2 hover:bg-void-bg-3 transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={autoContinueEnabled ? 'Auto-continue enabled' : 'Auto-continue settings'}
 					data-tooltip-place='top'
@@ -1157,7 +1245,7 @@ export const SelectedFiles = (
 								select-none
 								text-xs text-nowrap
 								border rounded-sm
-								${isThisSelectionProspective ? 'bg-void-bg-1 text-void-fg-3 opacity-80' : 'bg-void-bg-1 hover:brightness-95 text-void-fg-1'}
+								${isThisSelectionProspective ? 'bg-void-bg-1 text-void-fg-4' : 'bg-void-bg-1 hover:brightness-95 text-void-fg-1'}
 								${isThisSelectionProspective
 									? 'border-void-border-2'
 									: 'border-void-border-1'
@@ -1200,7 +1288,7 @@ export const SelectedFiles = (
 							}
 
 							{selection.type === 'File' && selection.state.wasAddedAsCurrentFile && messageIdx === undefined && currentURI?.fsPath === selection.uri.fsPath ?
-								<span className={`text-[8px] 'void-opacity-60 text-void-fg-4`}>
+								<span className="text-[8px] text-void-fg-4/60">
 									{`(Current File)`}
 								</span>
 								: null
@@ -1438,14 +1526,14 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 						<div className="absolute -left-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
 							<button
 								onClick={(e) => { e.stopPropagation(); onOpenEdit(); }}
-								className="p-1.5 bg-void-bg-2 border border-void-border-2 rounded-lg hover:bg-void-bg-3 text-void-fg-4 hover:text-void-accent transition-all"
+								className="p-2 bg-void-bg-2 border border-void-border-2 rounded-lg hover:bg-void-bg-3 text-void-fg-4 hover:text-void-accent transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
 							>
 								<Pencil size={14} />
 							</button>
 						</div>
 					)}
 				</div>
-				{mode === 'display' && <span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4 opacity-40 px-1">You</span>}
+					{mode === 'display' && <span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60 px-1">You</span>}
 			</div>
 		</div>
 	)
@@ -1505,7 +1593,7 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 						</div>
 					}
 				</div>
-				<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4 opacity-40 px-1">A-Coder</span>
+				<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60 px-1">A-Coder</span>
 			</div>
 		</div>
 	)
@@ -2257,7 +2345,7 @@ const CommandBarInChat = () => {
 
 
 			const detailsContent = <div className='flex px-4'>
-				<span className="text-void-fg-3 opacity-80">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
+				<span className="text-void-fg-3">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
 			</div>
 
 			const acceptRejectButtons = <div
@@ -2903,7 +2991,7 @@ export const SidebarChat = () => {
 					>
 						Load all {filteredMessages.length} messages
 					</button>
-					<div className="text-void-fg-4 text-xs opacity-60">
+					<div className="text-void-fg-4/60 text-xs">
 						↑ {hiddenAbove} earlier messages hidden
 					</div>
 				</div>
@@ -2930,7 +3018,7 @@ export const SidebarChat = () => {
 		// Placeholder for hidden messages below
 		if (hiddenBelow > 0) {
 			elements.push(
-				<div key="hidden-below" className="mb-4 text-center text-void-fg-4 text-sm py-4 opacity-60">
+				<div key="hidden-below" className="mb-4 text-center text-void-fg-4/60 text-sm py-4">
 					↓ {hiddenBelow} newer messages (scroll down to view)
 				</div>
 			);
@@ -3077,7 +3165,7 @@ export const SidebarChat = () => {
 			w-full h-full
 			overflow-x-hidden
 			overflow-y-auto
-			${previousMessagesHTML.length === 0 && !displayContentSoFar ? 'hidden' : ''}
+			${previousMessagesHTML.length === 0 && !displayContentSoFar && !isRunning ? 'hidden' : ''}
 		`}
 	>
 		{/* previous messages */}
@@ -3380,7 +3468,7 @@ export const SidebarChat = () => {
 		].map((text, index) => (
 			<div
 				key={index}
-				className='py-1 px-2 rounded text-sm bg-zinc-700/5 hover:bg-zinc-700/10 dark:bg-zinc-300/5 dark:hover:bg-zinc-300/10 cursor-pointer opacity-80 hover:opacity-100'
+				className='py-1 px-2 rounded text-sm bg-void-bg-2 hover:bg-void-bg-3 cursor-pointer text-void-fg-3 hover:text-void-fg-1 transition-colors'
 				onClick={() => onSubmit(text)}
 			>
 				{text}

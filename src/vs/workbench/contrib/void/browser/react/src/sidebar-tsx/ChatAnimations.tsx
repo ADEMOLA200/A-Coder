@@ -7,6 +7,24 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Brain, Eye, Loader2, File, Pencil, Database, Check, ChevronDown, Folder } from 'lucide-react';
 
 /**
+ * Check if user prefers reduced motion
+ */
+const usePrefersReducedMotion = () => {
+	const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+	useEffect(() => {
+		const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+		setPrefersReducedMotion(mediaQuery.matches);
+
+		const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+		mediaQuery.addEventListener('change', handler);
+		return () => mediaQuery.removeEventListener('change', handler);
+	}, []);
+
+	return prefersReducedMotion;
+};
+
+/**
  * Fade-in animation for messages - DISABLED for better UX
  */
 export const FadeIn = ({ children }: { children: React.ReactNode, delay?: number, duration?: number }) => {
@@ -59,9 +77,16 @@ export const TypingIndicator = ({
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const [displayMessage, setDisplayMessage] = useState(allMessages[messageIndex]);
 	const [isInitialShow, setIsInitialShow] = useState(true);
+	const prefersReducedMotion = usePrefersReducedMotion();
 
 	// Advance message every few seconds with smooth cross-fade
 	useEffect(() => {
+		// Skip animations if user prefers reduced motion
+		if (prefersReducedMotion) {
+			setIsTransitioning(false);
+			return;
+		}
+
 		let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 		const interval = window.setInterval(() => {
 			setIsInitialShow(false); // After first interval, it's no longer initial
@@ -75,7 +100,7 @@ export const TypingIndicator = ({
 			window.clearInterval(interval);
 			if (transitionTimer) clearTimeout(transitionTimer);
 		};
-	}, [allMessages.length]); // Only depend on length
+	}, [allMessages.length, prefersReducedMotion]); // Only depend on length and motion preference
 
 	// Update display message when index or allMessages changes
 	useEffect(() => {
@@ -84,6 +109,15 @@ export const TypingIndicator = ({
 
 	// Update display message when state changes
 	useEffect(() => {
+		if (prefersReducedMotion) {
+			const newMessages = MESSAGES_BY_STATE[state] || MESSAGES_BY_STATE.thinking;
+			const newIndex = Math.floor(Math.random() * newMessages.length);
+			setMessageIndex(newIndex);
+			setDisplayMessage(newMessages[newIndex]);
+			setIsTransitioning(false);
+			return;
+		}
+
 		setIsInitialShow(false);
 		setIsTransitioning(true);
 		setTimeout(() => {
@@ -93,12 +127,12 @@ export const TypingIndicator = ({
 			setDisplayMessage(newMessages[newIndex]);
 			setIsTransitioning(false);
 		}, 300);
-	}, [state]);
+	}, [state, prefersReducedMotion]);
 
 	return (
 		<div className="py-2 h-8 flex items-center">
 			<span
-				className={`text-sm select-none text-shimmer animate-text-shimmer transition-all duration-500 ease-in-out ${isTransitioning ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'} ${isInitialShow ? 'transition-none' : ''}`}
+				className={`text-sm select-none ${prefersReducedMotion ? '' : 'text-shimmer animate-text-shimmer'} transition-all duration-500 ease-in-out ${isTransitioning && !prefersReducedMotion ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'} ${isInitialShow ? 'transition-none' : ''}`}
 			>
 				{displayMessage}
 			</span>
@@ -121,13 +155,21 @@ export const ReActPhaseIndicator = ({
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const lastPhaseChange = useRef(Date.now());
 	const MIN_PHASE_DURATION = 500; // ms
+	const prefersReducedMotion = usePrefersReducedMotion();
 
 	useEffect(() => {
 		if (phase === displayPhase) return;
 
+		// Skip animations if user prefers reduced motion
+		if (prefersReducedMotion) {
+			setDisplayPhase(phase);
+			setIsTransitioning(false);
+			return;
+		}
+
 		const now = Date.now();
 		const timeSinceLastChange = now - lastPhaseChange.current;
-		
+
 		const updatePhase = () => {
 			setIsTransitioning(true);
 			setTimeout(() => {
@@ -143,7 +185,7 @@ export const ReActPhaseIndicator = ({
 		} else {
 			updatePhase();
 		}
-	}, [phase, displayPhase]);
+	}, [phase, displayPhase, prefersReducedMotion]);
 
 	if (!displayPhase) return null;
 
@@ -175,15 +217,15 @@ export const ReActPhaseIndicator = ({
 
 	return (
 		<div
-			className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 ${isTransitioning ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}
+			className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${prefersReducedMotion ? '' : 'transition-all duration-300'} ${isTransitioning && !prefersReducedMotion ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}
 			style={{
 				borderColor: `${config.color}33`,
 				backgroundColor: config.bgColor,
-				transform: isTransitioning ? 'scale(0.98)' : 'scale(1)',
+				transform: isTransitioning && !prefersReducedMotion ? 'scale(0.98)' : 'scale(1)',
 			}}
 		>
 			{/* Phase icon */}
-			<div 
+			<div
 				className="p-2 rounded-lg flex items-center justify-center shadow-sm"
 				style={{ backgroundColor: `${config.color}22`, color: config.color }}
 			>
@@ -199,17 +241,29 @@ export const ReActPhaseIndicator = ({
 					>
 						{config.text}
 					</span>
-					{/* Thinking dots for thought phase */}
-					{displayPhase === 'thought' && (
+					{/* Thinking dots for thought phase - skip animation for reduced motion */}
+					{displayPhase === 'thought' && !prefersReducedMotion && (
 						<div className="flex gap-1">
 							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0s' }} />
 							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.2s' }} />
 							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.4s' }} />
 						</div>
 					)}
-					{/* Spinner for action phase */}
-					{displayPhase === 'action' && (
+					{/* Static dots for reduced motion preference */}
+					{displayPhase === 'thought' && prefersReducedMotion && (
+						<div className="flex gap-1">
+							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
+							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
+							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
+						</div>
+					)}
+					{/* Spinner for action phase - skip for reduced motion */}
+					{displayPhase === 'action' && !prefersReducedMotion && (
 						<Loader2 className="w-3 h-3 animate-spin" style={{ color: config.color }} />
+					)}
+					{/* Static icon for reduced motion */}
+					{displayPhase === 'action' && prefersReducedMotion && (
+						<Loader2 className="w-3 h-3" style={{ color: config.color }} />
 					)}
 				</div>
 
@@ -245,14 +299,19 @@ export const ToolLoadingIndicator = ({
 }) => {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [prevStage, setPrevStage] = useState(stage);
+	const prefersReducedMotion = usePrefersReducedMotion();
 
 	// Smooth stage transitions
 	useEffect(() => {
+		if (prefersReducedMotion) {
+			setPrevStage(stage);
+			return;
+		}
 		if (prevStage !== stage) {
 			const timer = setTimeout(() => setPrevStage(stage), 150);
 			return () => clearTimeout(timer);
 		}
-	}, [stage, prevStage]);
+	}, [stage, prevStage, prefersReducedMotion]);
 
 	// Extract file info for file-related tools
 	const getFileInfo = () => {
@@ -324,7 +383,7 @@ export const ToolLoadingIndicator = ({
 	};
 
 	const currentConfig = stageConfig[stage];
-	const isTransitioning = prevStage !== stage;
+	const isTransitioning = prevStage !== stage && !prefersReducedMotion;
 
 	return (
 		<div className={`flex flex-col gap-2 py-3 px-1 ${isTransitioning ? 'opacity-70 transition-all duration-150' : ''}`}>
@@ -358,7 +417,12 @@ export const ToolLoadingIndicator = ({
 							<span className="text-[10px] font-bold uppercase tracking-widest opacity-60" style={{ color: currentConfig.color }}>
 								{currentConfig.text}
 							</span>
-							<Loader2 className="w-2.5 h-2.5 animate-spin" style={{ color: currentConfig.color }} />
+							{/* Only animate spinner if reduced motion is not preferred */}
+							{prefersReducedMotion ? (
+								<Loader2 className="w-2.5 h-2.5" style={{ color: currentConfig.color }} />
+							) : (
+								<Loader2 className="w-2.5 h-2.5 animate-spin" style={{ color: currentConfig.color }} />
+							)}
 						</div>
 					</div>
 				</div>
@@ -367,8 +431,8 @@ export const ToolLoadingIndicator = ({
 				<div className="flex items-center gap-2">
 					{progress !== undefined && (
 						<div className="w-12 h-1 bg-void-bg-3 rounded-full overflow-hidden">
-							<div 
-								className="h-full transition-all duration-500 ease-out"
+							<div
+								className={`h-full ${prefersReducedMotion ? '' : 'transition-all duration-500 ease-out'}`}
 								style={{ width: `${progress * 100}%`, backgroundColor: currentConfig.color }}
 							/>
 						</div>
@@ -376,9 +440,11 @@ export const ToolLoadingIndicator = ({
 					{hasDetails && (
 						<button
 							onClick={() => setIsExpanded(!isExpanded)}
-							className={`p-1 hover:bg-void-bg-3 rounded-md transition-all ${isExpanded ? 'text-void-accent bg-void-accent/5' : 'text-void-fg-4'}`}
+							className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center hover:bg-void-bg-3 rounded-md transition-all focus:outline-none focus:ring-2 focus:ring-void-accent ${isExpanded ? 'text-void-accent bg-void-accent/5' : 'text-void-fg-4'}`}
+							aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+							aria-expanded={isExpanded}
 						>
-							<ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+							<ChevronDown size={14} className={`${prefersReducedMotion ? '' : 'transition-transform duration-200'} ${isExpanded ? 'rotate-180' : ''}`} />
 						</button>
 					)}
 				</div>
@@ -387,7 +453,7 @@ export const ToolLoadingIndicator = ({
 			{/* Enhanced collapsible file details */}
 			<ExpandCollapse isExpanded={isExpanded}>
 				{hasDetails && fileInfo && (
-					<div className="mx-2 p-3 bg-void-bg-4/50 rounded-xl border border-void-border-2/50 animate-in fade-in zoom-in-95 duration-200">
+					<div className={`mx-2 p-3 bg-void-bg-4/50 rounded-xl border border-void-border-2/50 ${prefersReducedMotion ? '' : 'animate-in fade-in zoom-in-95 duration-200'}`}>
 						<div className="flex items-center gap-2 text-[10px] font-mono text-void-fg-3 truncate">
 							<Folder size={10} className="opacity-50" />
 							{fileInfo.path}
@@ -403,15 +469,18 @@ export const ToolLoadingIndicator = ({
 /**
  * Expand/collapse animation for tool calls
  * Uses max-height for GPU-accelerated animation
+ * Respects prefers-reduced-motion for accessibility
  */
 export const ExpandCollapse = ({ isExpanded, children }: { isExpanded: boolean, children: React.ReactNode }) => {
+	const prefersReducedMotion = usePrefersReducedMotion();
+
 	return (
 		<div
 			style={{
 				maxHeight: isExpanded ? '500px' : '0px',
 				opacity: isExpanded ? 1 : 0,
 				overflow: 'hidden',
-				transition: 'max-height 200ms ease-out, opacity 150ms ease-out',
+				transition: prefersReducedMotion ? 'none' : 'max-height 200ms ease-out, opacity 150ms ease-out',
 			}}
 		>
 			{children}

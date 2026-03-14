@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -36,7 +36,7 @@ export const SettingRow = ({ label, description, children, className = '' }: { l
 	<div className={`flex items-start justify-between gap-10 py-3 ${className}`}>
 		<div className="flex flex-col gap-1.5 flex-1 min-w-0">
 			<span className="text-[13px] font-medium text-void-fg-1">{label}</span>
-			{description && <div className="text-[12px] text-void-fg-3 leading-relaxed opacity-80">{description}</div>}
+			{description && <div className="text-[12px] text-void-fg-3/80 leading-relaxed">{description}</div>}
 		</div>
 		<div className="flex-shrink-0 pt-0.5">{children}</div>
 	</div>
@@ -53,7 +53,7 @@ export const SettingCard = ({ title, description, children, className = '' }: { 
 	<div className={`py-10 first:pt-0 ${className}`}>
 		<div className="mb-8">
 			<h3 className="text-[18px] font-semibold text-void-fg-1 tracking-tight">{title}</h3>
-			{description && <p className="text-[13px] text-void-fg-3 mt-1.5 leading-relaxed opacity-90">{description}</p>}
+			{description && <p className="text-[13px] text-void-fg-3/70 mt-1.5 leading-relaxed">{description}</p>}
 		</div>
 		<div className="space-y-6">
 			{children}
@@ -213,13 +213,14 @@ const RefreshModelButton = ({ providerName }: { providerName: RefreshableProvide
 				: `Refresh ${providerTitle} models`}
 			</span>
 			<button
-				className={`p-2 rounded-md hover:bg-void-bg-3 transition-colors ${state === 'refreshing' ? 'opacity-50 cursor-not-allowed' : ''}`}
+				className={`p-2 rounded-md hover:bg-void-bg-3 transition-colors focus:outline-none focus:ring-2 focus:ring-void-accent min-w-[44px] min-h-[44px] flex items-center justify-center ${state === 'refreshing' ? 'opacity-50 cursor-not-allowed' : ''}`}
 				disabled={state === 'refreshing' || justFinished !== null}
 				onClick={() => {
 					refreshModelService.startRefreshingModels(providerName, { enableProviderOnSuccess: false, doNotFire: false })
 					metricsService.capture('Click', { providerName, action: 'Refresh Models' })
 				}}
 				title="Refresh Models"
+				aria-label="Refresh Models"
 			>
 				{justFinished === 'finished' ? <Check className='stroke-green-500 size-4' />
 					: justFinished === 'error' ? <X className='stroke-red-500 size-4' />
@@ -646,7 +647,7 @@ const ProviderSetting = ({ providerName, settingName, subTextMd }: { providerNam
 				passwordBlur={isPasswordField}
 				compact={true}
 			/>
-			{!subTextMd ? null : <div className='py-1 px-3 opacity-50 text-sm'>
+			{!subTextMd ? null : <div className='py-1 px-3 text-void-fg-4/50 text-sm'>
 				{subTextMd}
 			</div>}
 		</div>
@@ -1049,7 +1050,7 @@ export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }:
 		<SettingsButton className={`w-full py-3 px-4 ${className}`} disabled={transferState.type !== 'done'} onClick={onClick} variant="secondary">
 			{transferState.type === 'done' ? (
 				<>
-					<ArrowRightLeft size={16} className="text-void-accent opacity-80" />
+					<ArrowRightLeft size={16} className="text-void-accent/80" />
 					<span>Transfer from {fromEditor}</span>
 				</>
 			)
@@ -2478,13 +2479,18 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																			placeholder='http://localhost:11434/v1'
 																			compact={true}
 																		/>
-																		<p className="text-[10px] text-void-fg-3 mt-1">The base URL of your OpenAI-compatible image generation API (e.g., http://localhost:11434/v1 for Ollama).</p>
+																		<p className="text-[10px] text-void-fg-3/80 mt-1">The base URL of your OpenAI-compatible image generation API (e.g., http://localhost:11434/v1 for Ollama).</p>
 																	</div>
 
 																	<div>
 																		<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Image Model</label>
-																		<div className="text-sm text-void-fg-1">x/flux2-klein:4b</div>
-																		<p className="text-[10px] text-void-fg-3 mt-1">The image model is fixed to x/flux2-klein:4b.</p>
+																		<VoidSimpleInputBox
+																			value={settingsState.globalSettings.imageGenerationModel}
+																			onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('imageGenerationModel', newVal)}
+																			placeholder='x/flux2-klein:4b'
+																			compact={true}
+																		/>
+																		<p className="text-[10px] text-void-fg-3/80 mt-1">The model to use for image generation (e.g., x/flux2-klein:4b, dall-e-3, stable-diffusion).</p>
 																	</div>
 																</div>
 															</SettingBox>
@@ -2501,7 +2507,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 							<section className="space-y-2">
 								<div className="mb-8">
 									<h2 className="text-2xl font-bold text-void-fg-1 tracking-tight">General</h2>
-									<p className="text-[13px] text-void-fg-3 mt-1.5 opacity-80">System preferences and application maintenance.</p>
+									<p className="text-[13px] text-void-fg-3/80 mt-1.5">System preferences and application maintenance.</p>
 								</div>
 
 								{/* AI Instructions Card */}
@@ -2555,7 +2561,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 												<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 													<div>
 														<h4 className="text-[13px] font-medium text-void-fg-1">Application Settings</h4>
-														<p className="text-[12px] text-void-fg-3 opacity-80">Export or import your provider configurations and UI preferences.</p>
+														<p className="text-[12px] text-void-fg-3/80">Export or import your provider configurations and UI preferences.</p>
 													</div>
 													<div className="flex gap-2">
 														<input key={2 * s} ref={fileInputSettingsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Settings')} />
@@ -2569,7 +2575,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 												<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 													<div>
 														<h4 className="text-[13px] font-medium text-void-fg-1">Chat History</h4>
-														<p className="text-[12px] text-void-fg-3 opacity-80">Backup your conversations and tool usage history.</p>
+														<p className="text-[12px] text-void-fg-3/80">Backup your conversations and tool usage history.</p>
 													</div>
 													<div className="flex gap-2">
 														<input key={2 * s + 1} ref={fileInputChatsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Chats')} />
@@ -2839,14 +2845,16 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									</div>
 
 									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-										<a href="https://github.com/hamishfromatech/a-coder" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98]">
-											<span className="text-sm font-medium">GitHub</span>
+										<a href="https://discord.gg/KxxAuBxp" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
+											<MessageCircle size={18} />
+											<span className="text-sm font-medium">Discord</span>
 										</a>
-										<a href="https://theatechcorporation.com" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98]">
+										<a href="https://theatechcorporation.com" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
+											<Globe size={18} />
 											<span className="text-sm font-medium">Website</span>
 										</a>
 
-										<a href="https://theatechcorporation.com/book" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98]">
+										<a href="https://theatechcorporation.com/book" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
 											<span className="text-sm font-medium">Buy Our Book</span>
 										</a>
 									</div>
