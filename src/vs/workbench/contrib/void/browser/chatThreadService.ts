@@ -104,6 +104,7 @@ const splitThinkTags = (input: string): { displayText: string; reasoningText: st
 				// Found closed tag
 				const content = currentText.substring(openIdx + openTag.length, closeIdx).trim()
 				if (content) reasoningParts.push(content)
+				// KEEP the text after the close tag
 				currentText = currentText.substring(0, openIdx) + currentText.substring(closeIdx + closeTag.length)
 				lastIndex = openIdx
 			} else {
@@ -111,7 +112,6 @@ const splitThinkTags = (input: string): { displayText: string; reasoningText: st
 				const content = currentText.substring(openIdx + openTag.length).trim()
 				if (content) reasoningParts.push(content)
 
-				// Keep the open tag if it's not closed, so user sees it's streaming
 				// but only return the text BEFORE the tag as display content
 				currentText = currentText.substring(0, openIdx)
 				break // No more closed tags possible after an unclosed one
@@ -1479,6 +1479,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				let lastChunks: string[] = [];
 				const MAX_CHUNKS_TO_TRACK = 10;
 				const REPETITION_THRESHOLD = 5; // If same chunk appears 5 times, it's looping
+				
+				// Out-of-order protection: enforce monotonic growth of raw text
+				let maxRawLength = 0;
 
 				const llmCancelToken = this._llmMessageService.sendLLMMessage({
 					messagesType: 'chatMessages',
@@ -1491,6 +1494,25 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					separateSystemMessage: separateSystemMessage,
 					onText: (params) => {
 						let { fullText, fullReasoning, textDelta, reasoningDelta, toolCalls, _rawTextBeforeStripping } = params;
+						
+						// Enforce monotonic updates for raw text to prevent out-of-order rendering
+						// We use raw text because display text can shrink when XML tags are stripped
+						const currentRawLen = (_rawTextBeforeStripping || fullText).length;
+						
+						// If we receive a shorter text than seen before, it's likely an out-of-order packet
+						// EXCEPT if it's a retry (length drops significantly to near zero)
+						if (currentRawLen < maxRawLength) {
+							// Allow reset if new length is very small (start of new stream)
+							if (currentRawLen < 100 && maxRawLength > 200) {
+								maxRawLength = currentRawLen; // Reset detected
+							} else {
+								// Ignore out-of-order update
+								return;
+							}
+						} else {
+							maxRawLength = currentRawLen;
+						}
+
 						// Backward compatibility for Main process running old code
 						if (!toolCalls && (params as any).toolCall) {
 							toolCalls = [(params as any).toolCall];
@@ -1499,20 +1521,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						let parsed: { displayText: string, reasoningText: string };
 
 						// PERFORMANCE: Use deltas if available to avoid O(N^2) processing
-						const currentStreamState = this.streamState[threadId];
-						if (textDelta !== undefined || reasoningDelta !== undefined) {
-							const prevLlmInfo = currentStreamState?.isRunning === 'LLM' ? currentStreamState.llmInfo : undefined;
-							const prevDisplayText = prevLlmInfo?.displayContentSoFar ?? '';
-							const prevReasoningText = prevLlmInfo?.reasoningSoFar ?? '';
-
-							// Note: fullText and fullReasoning are still used as fallback or for final consistency
-							parsed = {
-								displayText: textDelta !== undefined ? prevDisplayText + textDelta : fullText,
-								reasoningText: reasoningDelta !== undefined ? prevReasoningText + reasoningDelta : fullReasoning
-							};
-						} else {
-							parsed = partitionReasoningContent(fullText, fullReasoning)
-						}
+						// Actually, we must ALWAYS partition to handle <think> tags that might be in the stream
+						parsed = partitionReasoningContent(fullText, fullReasoning)
 
 						// If parsed content is empty and we have raw text, try to partition the raw text
 						if (!parsed.displayText && !parsed.reasoningText && _rawTextBeforeStripping) {
