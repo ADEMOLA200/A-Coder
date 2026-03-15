@@ -4,16 +4,15 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { BookOpen, Trophy, Target, Flame, Settings, Share, Bookmark, Star, ChevronDown, ChevronUp, Menu, X } from 'lucide-react';
+import { BookOpen, Trophy, Target, Flame, Settings, Menu, X, Check, AlertCircle } from 'lucide-react';
 import '../styles.css';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { useAccessor, useIsDark } from '../util/services.js';
 import { LessonThemeProvider, useLessonTheme } from '../util/LessonThemeProvider.js';
-import { ProgressTracker, SectionCompletionTracker, MiniProgressBar, ScoreCard } from '../learning-tsx/ProgressTracker.js';
+import { ProgressTracker } from '../learning-tsx/ProgressTracker.js';
 import { CollapsibleLessonSection, ProgressSection, TableOfContents } from '../learning-tsx/CollapsibleLessonSection.js';
 import { InlineExerciseBlock } from '../learning-tsx/InlineExerciseBlock.js';
-import { HintSystem, InlineHintButton } from '../learning-tsx/HintSystem.js';
-import { CelebrationEffect, CelebrationType, useCelebration } from '../learning-tsx/CelebrationEffect.js';
+import { useCelebration } from '../learning-tsx/CelebrationEffect.js';
 
 export interface LearningPreviewProps {
 	title: string;
@@ -41,7 +40,6 @@ export interface LearningPreviewProps {
 	}>;
 }
 
-// Lesson state tracking
 interface LessonState {
 	sections: Record<string, { completed: boolean; expanded: boolean; read: boolean; bookmarked: boolean }>;
 	exercises: Record<string, { attempts: number; solved: boolean; hintsUsed: number }>;
@@ -52,8 +50,33 @@ interface LessonState {
 	activeSection: string | null;
 }
 
-// Parse content into sections
-function parseContentIntoSections(content: string, exerciseIds: string[] = []): Array<{ id: string; title: string; content: string }> {
+// Check for reduced motion preference
+const prefersReducedMotion = () => {
+	if (typeof window === 'undefined') return false;
+	return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
+// Semantic color tokens for theming (avoid hard-coded colors)
+const semanticColors = {
+	error: {
+		bg: 'bg-red-500/10 dark:bg-red-500/10',
+		border: 'border-red-500/20 dark:border-red-500/20',
+		text: 'text-red-400 dark:text-red-400',
+	},
+	warning: {
+		bg: 'bg-amber-500/10 dark:bg-amber-500/10',
+		border: 'border-amber-500/20 dark:border-amber-500/20',
+		text: 'text-amber-400 dark:text-amber-400',
+	},
+	success: {
+		bg: 'bg-emerald-500/10 dark:bg-emerald-500/10',
+		border: 'border-emerald-500/20 dark:border-emerald-500/20',
+		text: 'text-emerald-400 dark:text-emerald-400',
+	},
+};
+
+// Parse markdown into sections
+function parseContentIntoSections(content: string): Array<{ id: string; title: string; content: string }> {
 	const sections: Array<{ id: string; title: string; content: string }> = [];
 	const sectionRegex = /#{3,}\s+(.+?)\n/g;
 	let lastIndex = 0;
@@ -89,7 +112,7 @@ function parseContentIntoSections(content: string, exerciseIds: string[] = []): 
 	return sections;
 }
 
-// Component for displaying inline exercises in markdown
+// Exercise renderer
 const InlineExerciseRenderer: React.FC<{
 	exercise: LearningPreviewProps['exercises'][0];
 	threadId?: string;
@@ -103,7 +126,9 @@ const InlineExerciseRenderer: React.FC<{
 	const handleSubmit = async (studentCode: string) => {
 		const result = await onSubmit?.(studentCode);
 		if (result?.isCorrect) {
-			triggerCelebration('confetti', 1500, 'medium');
+			if (!prefersReducedMotion()) {
+				triggerCelebration('confetti', 1500, 'medium');
+			}
 			onComplete?.();
 		}
 		return result;
@@ -125,86 +150,110 @@ const InlineExerciseRenderer: React.FC<{
 	);
 };
 
-// Learning Dashboard Component
+// Dashboard Modal
 const LearningDashboard: React.FC<{
 	progress: LessonState;
-	stats: any;
+	stats: { streak: number; lessonsCompleted: number; exercisesSolved: number };
 	onClose: () => void;
-}> = ({ progress, stats, onClose }) => {
+}> = ({ stats, onClose }) => {
 	const { theme, getColor } = useLessonTheme();
+	const modalRef = React.useRef<HTMLDivElement>(null);
+	const onCloseRef = React.useRef(onClose);
+
+	// Keep ref updated
+	React.useEffect(() => {
+		onCloseRef.current = onClose;
+	}, [onClose]);
+
+	// Focus trap and escape key handler - run once on mount
+	React.useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				onCloseRef.current();
+			}
+		};
+		document.addEventListener('keydown', handleKeyDown);
+		// Focus the modal on open
+		modalRef.current?.focus();
+		return () => document.removeEventListener('keydown', handleKeyDown);
+	}, []);
 
 	return (
 		<div
-			className="learning-dashboard fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center"
+			className="fixed inset-0 bg-black/60 z-modal flex items-center justify-center"
 			onClick={onClose}
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="dashboard-title"
 		>
 			<div
-				className="rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden"
-				style={{
-					backgroundColor: theme.colors.background,
-					border: `1px solid ${theme.colors.border}`
-				}}
+				ref={modalRef}
+				tabIndex={-1}
+				className="rounded-lg shadow-2xl max-w-md w-full mx-4 max-h-[85vh] overflow-hidden"
+				style={{ backgroundColor: theme.colors.background, border: `1px solid ${theme.colors.border}` }}
 				onClick={(e) => e.stopPropagation()}
 			>
-				{/* Header */}
-				<div className="px-6 py-4 border-b flex items-center justify-between" style={{ backgroundColor: theme.colors.backgroundLight, borderColor: theme.colors.border }}>
+				<div
+					className="flex items-center justify-between px-4 py-3 border-b"
+					style={{ backgroundColor: theme.colors.backgroundLight, borderColor: theme.colors.border }}
+				>
 					<div className="flex items-center gap-2">
-						<Trophy size={20} style={{ color: getColor('accent') }} />
-						<h2 className="text-lg font-semibold" style={{ color: getColor('text') }}>
-							Learning Dashboard
+						<Trophy size={18} style={{ color: getColor('accent') }} aria-hidden="true" />
+						<h2 id="dashboard-title" className="text-base font-semibold" style={{ color: getColor('text') }}>
+							Progress
 						</h2>
 					</div>
 					<button
 						onClick={onClose}
-						className="p-2 hover:bg-opacity-20 rounded-lg transition-colors"
-						style={{ backgroundColor: `${getColor('accent')}10` }}
+						aria-label="Close"
+						className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+						style={{
+							backgroundColor: 'transparent',
+							color: getColor('text-muted'),
+							'--tw-ring-color': getColor('accent'),
+							'--tw-ring-offset-color': theme.colors.background,
+						} as React.CSSProperties}
 					>
-						<X size={20} style={{ color: getColor('text-muted') }} />
+						<X size={18} aria-hidden="true" />
 					</button>
 				</div>
 
-				{/* Content */}
-				<div className="p-6 space-y-6 overflow-y-auto max-h-[60vh]">
+				<div className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
 					{/* Streak */}
-					<div className="flex items-center gap-3 p-4 rounded-xl" style={{ backgroundColor: `${getColor('accent')}10`, border: `1px solid ${getColor('accent')}30` }}>
-						<div className="p-3 rounded-full" style={{ backgroundColor: `${getColor('accent')}20` }}>
-							<Flame size={24} style={{ color: getColor('accent') }} />
+					<div
+						className="flex items-center gap-3 p-3 rounded-lg"
+						style={{ backgroundColor: `${getColor('accent')}10`, border: `1px solid ${getColor('accent')}25` }}
+					>
+						<div className="p-2 rounded-lg" style={{ backgroundColor: `${getColor('accent')}15` }}>
+							<Flame size={18} style={{ color: getColor('accent') }} aria-hidden="true" />
 						</div>
-						<div>
-							<div className="text-xs" style={{ color: getColor('text-muted') }}>Learning Streak</div>
-							<div className="text-2xl font-bold" style={{ color: getColor('accent') }}>
-								{stats?.streak || 3} days
-							</div>
+						<div className="min-w-0">
+							<div className="text-xs font-medium" style={{ color: getColor('text-muted') }}>Streak</div>
+							<div className="text-lg font-bold" style={{ color: getColor('accent') }}>{stats.streak} days</div>
 						</div>
 					</div>
 
-					{/* Stats Grid */}
-					<div className="grid grid-cols-2 gap-4">
-						<div className="p-4 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
+					{/* Stats */}
+					<div className="grid grid-cols-2 gap-2">
+						<div className="p-3 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
 							<div className="text-xs mb-1" style={{ color: getColor('text-muted') }}>Lessons</div>
-							<div className="text-2xl font-bold" style={{ color: getColor('text') }}>
-								{stats?.lessonsCompleted || 2}
-							</div>
+							<div className="text-lg font-bold" style={{ color: getColor('text') }}>{stats.lessonsCompleted}</div>
 						</div>
-						<div className="p-4 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
+						<div className="p-3 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
 							<div className="text-xs mb-1" style={{ color: getColor('text-muted') }}>Exercises</div>
-							<div className="text-2xl font-bold" style={{ color: getColor('text') }}>
-								{stats?.exercisesSolved || 5}
-							</div>
+							<div className="text-lg font-bold" style={{ color: getColor('text') }}>{stats.exercisesSolved}</div>
 						</div>
 					</div>
 
-					{/* Recent Progress */}
+					{/* Recent */}
 					<div>
-						<h3 className="text-sm font-semibold mb-3" style={{ color: getColor('text') }}>
-							Recent Progress
-						</h3>
-						<div className="space-y-2">
+						<h3 className="text-sm font-medium mb-2" style={{ color: getColor('text') }}>Recent</h3>
+						<div className="space-y-1">
 							{['Loops', 'Arrays', 'Functions'].map((lesson) => (
-								<div key={lesson} className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
-									<BookOpen size={16} style={{ color: getColor('text-muted') }} />
-									<span className="flex-1 text-sm" style={{ color: getColor('text') }}>{lesson}</span>
-									<Star size={14} style={{ color: getColor('accent') }} />
+								<div key={lesson} className="flex items-center gap-2 p-2 rounded-lg" style={{ backgroundColor: theme.colors.backgroundLight }}>
+									<BookOpen size={14} style={{ color: getColor('text-muted') }} aria-hidden="true" />
+									<span className="flex-1 text-sm truncate" style={{ color: getColor('text') }}>{lesson}</span>
+									<Target size={14} style={{ color: getColor('accent') }} aria-label="Completed" />
 								</div>
 							))}
 						</div>
@@ -215,7 +264,7 @@ const LearningDashboard: React.FC<{
 	);
 };
 
-// Main LearningPreview Component
+// Main Component
 export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	title,
 	content,
@@ -225,14 +274,12 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	onSectionToggle,
 	onSectionComplete,
 	onBookmarkToggle,
-	onNoteAdd,
 	exercises = [],
 	sections: providedSections,
 }) => {
 	const isDark = useIsDark();
 	const { theme, getColor } = useLessonTheme();
 
-	// Lesson state
 	const [lessonState, setLessonState] = useState<LessonState>({
 		sections: {},
 		exercises: {},
@@ -244,11 +291,13 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	});
 
 	const [showDashboard, setShowDashboard] = useState(false);
-	const [showMenu, setShowMenu] = useState(false);
-	const timerRef = useRef<NodeJS.Timeout>();
+	const [error, setError] = useState<string | null>(null);
+	const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-	// Parse content into sections
-	const parsedSections = providedSections || parseContentIntoSections(content, exercises.map(e => e.id));
+	const parsedSections = useMemo(
+		() => providedSections || parseContentIntoSections(content),
+		[providedSections, content]
+	);
 
 	// Time tracking
 	useEffect(() => {
@@ -260,14 +309,19 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 		}, 1000);
 
 		return () => {
-			if (timerRef.current) clearInterval(timerRef.current);
+			if (timerRef.current) {
+				clearInterval(timerRef.current);
+				timerRef.current = null;
+			}
 		};
 	}, []);
 
-	// Initialize section states
+	// Initialize sections
 	useEffect(() => {
 		setLessonState(prev => {
 			const newSections = { ...prev.sections };
+			let hasChanges = false;
+
 			parsedSections.forEach(section => {
 				if (!newSections[section.id]) {
 					newSections[section.id] = {
@@ -276,9 +330,11 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 						read: false,
 						bookmarked: false,
 					};
+					hasChanges = true;
 				}
 			});
-			return { ...prev, sections: newSections };
+
+			return hasChanges ? { ...prev, sections: newSections } : prev;
 		});
 	}, [parsedSections]);
 
@@ -288,11 +344,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			...prev,
 			sections: {
 				...prev.sections,
-				[sectionId]: {
-					...prev.sections[sectionId],
-					expanded: isExpanded,
-					read: isExpanded ? true : prev.sections[sectionId].read,
-				},
+				[sectionId]: { ...prev.sections[sectionId], expanded: isExpanded, read: isExpanded ? true : prev.sections[sectionId].read },
 			},
 		}));
 		onSectionToggle?.(sectionId, isExpanded);
@@ -303,10 +355,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			...prev,
 			sections: {
 				...prev.sections,
-				[sectionId]: {
-					...prev.sections[sectionId],
-					completed: !prev.sections[sectionId].completed,
-				},
+				[sectionId]: { ...prev.sections[sectionId], completed: !prev.sections[sectionId].completed },
 			},
 		}));
 		onSectionComplete?.(sectionId);
@@ -317,41 +366,40 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			...prev,
 			sections: {
 				...prev.sections,
-				[sectionId]: {
-					...prev.sections[sectionId],
-					bookmarked: !prev.sections[sectionId].bookmarked,
-				},
+				[sectionId]: { ...prev.sections[sectionId], bookmarked: !prev.sections[sectionId].bookmarked },
 			},
 		}));
 		onBookmarkToggle?.(lessonId || '', sectionId);
 	}, [lessonId, onBookmarkToggle]);
 
-	// Calculate progress
+	// Derived state
 	const progress = useMemo(() => {
 		const completedCount = Object.values(lessonState.sections).filter(s => s.completed).length;
 		const totalCount = parsedSections.length;
 		return totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 	}, [lessonState.sections, parsedSections]);
 
-	const sectionList = parsedSections.map(section => ({
+	const sectionList = useMemo(() => parsedSections.map(section => ({
 		id: section.id,
 		title: section.title,
 		isCompleted: lessonState.sections[section.id]?.completed || false,
 		isExpanded: lessonState.sections[section.id]?.expanded || false,
-	}));
+	})), [parsedSections, lessonState.sections]);
 
-	// Format time
-	const formatTime = (seconds: number): string => {
+	const formatTime = useCallback((seconds: number): string => {
 		if (seconds < 60) return `${seconds}s`;
 		if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 		return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-	};
+	}, []);
 
-	// Get section icon
-	const getSectionIcon = (sectionId: string): React.ReactNode => {
-		if (lessonState.sections[sectionId]?.completed) return <Trophy size={16} />;
-		return <BookOpen size={16} />;
-	};
+	const getSectionIcon = useCallback((sectionId: string): React.ReactNode => {
+		return lessonState.sections[sectionId]?.completed
+			? <Check size={16} aria-hidden="true" />
+			: <BookOpen size={16} aria-hidden="true" />;
+	}, [lessonState.sections]);
+
+	// Base button styles
+	const btn = 'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors';
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
@@ -363,110 +411,113 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 				/>
 			)}
 
-			<div className="void-preview-container h-full flex flex-col overflow-hidden font-sans"
-				style={{ backgroundColor: theme.colors.background, color: theme.colors.text }}
-			>
-
-				{/* Top Header */}
-				<header className="px-6 py-4 flex-shrink-0 flex items-center justify-between border-b z-20"
+			{/* Error Banner - uses theme-compatible error styling */}
+			{error && (
+				<div
+					className="flex items-center gap-2 px-4 py-3"
 					style={{
-						backgroundColor: `${theme.colors.backgroundLight}80`,
-						borderColor: theme.colors.border,
-						backdropFilter: 'blur(12px)'
+						backgroundColor: `${getColor('accent')}08`,
+						borderBottom: `1px solid ${getColor('accent')}20`,
+					}}
+					role="alert"
+					aria-live="polite"
+				>
+					<AlertCircle size={16} style={{ color: getColor('accent'), flexShrink: 0 }} aria-hidden="true" />
+					<span className="text-sm" style={{ color: getColor('text') }}>{error}</span>
+				</div>
+			)}
+
+			<div className="h-full flex flex-col overflow-hidden font-sans" style={{ backgroundColor: theme.colors.background, color: theme.colors.text }}>
+
+				{/* Skip to content - focuses main element for keyboard users */}
+				<a
+					href="#lesson-content"
+					className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-modal focus:px-4 focus:py-2 focus:rounded-lg focus:no-underline"
+					style={{ backgroundColor: getColor('accent'), color: 'white' }}
+					onClick={(e) => {
+						e.preventDefault();
+						document.getElementById('lesson-content')?.focus();
 					}}
 				>
-					<div className="flex items-center gap-3 overflow-hidden">
-						<div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border"
-							style={{
-								backgroundColor: `${getColor('accent')}10`,
-								borderColor: `${getColor('accent')}20`
-							}}
+					Skip to content
+				</a>
+
+				{/* Header - compact spacing for related elements */}
+				<header className="flex-shrink-0 flex items-center justify-between border-b px-4 py-3" style={{ backgroundColor: theme.colors.backgroundLight, borderColor: theme.colors.border }}>
+					<div className="flex items-center gap-3 min-w-0">
+						<div
+							className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+							style={{ backgroundColor: `${getColor('accent')}15` }}
 						>
-							<BookOpen className="w-5 h-5" style={{ color: getColor('accent') }} />
+							<BookOpen size={18} style={{ color: getColor('accent') }} aria-hidden="true" />
 						</div>
-						<div className="flex flex-col min-w-0">
-							<h1 className="text-sm font-semibold truncate tracking-tight" style={{ color: getColor('text') }}>{title}</h1>
-							<div className="flex items-center gap-2">
-								<span className="text-[10px] font-medium uppercase tracking-wider opacity-60" style={{ color: getColor('text-muted') }}>
-									Lesson
+						<div className="flex flex-col gap-0.5 min-w-0">
+							<h1 className="text-sm font-semibold truncate" style={{ color: getColor('text') }}>{title}</h1>
+							<div className="flex items-center gap-2 text-xs">
+								<span style={{ color: getColor('text-muted') }}>
+									{lessonState.showProgress ? `${Math.round(progress)}% complete` : 'Lesson'}
 								</span>
-								{lessonState.showProgress && (
-									<>
-										<span className="text-[10px] opacity-30">•</span>
-										<span className="text-[10px] opacity-60" style={{ color: getColor('text-muted') }}>
-											{Math.round(progress)}% Complete
-										</span>
-									</>
-								)}
-								<>
-									<span className="text-[10px] opacity-30">•</span>
-									<span className="text-[10px] opacity-60" style={{ color: getColor('text-muted') }}>
-										{formatTime(lessonState.timeSpent)}
-									</span>
-								</>
+								<span style={{ color: getColor('text-muted'), opacity: 0.4 }}>·</span>
+								<span style={{ color: getColor('text-muted') }}>{formatTime(lessonState.timeSpent)}</span>
 							</div>
 						</div>
 					</div>
 
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1">
 						<button
 							onClick={() => setShowDashboard(true)}
-							className="p-2 rounded-lg transition-colors"
-							style={{ color: getColor('text-muted') }}
-							title="Learning Dashboard"
+							aria-label="View progress"
+							className={`${btn} p-2`}
+							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
 						>
-							<Trophy size={18} />
+							<Trophy size={16} aria-hidden="true" />
 						</button>
 						<button
 							onClick={() => setLessonState(prev => ({ ...prev, showSidebar: !prev.showSidebar }))}
-							className="p-2 rounded-lg transition-colors"
-							style={{ color: getColor('text-muted') }}
-							title="Table of Contents"
+							aria-label={lessonState.showSidebar ? 'Close sidebar' : 'Open sidebar'}
+							aria-expanded={lessonState.showSidebar}
+							className={`${btn} p-2`}
+							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
 						>
-							{lessonState.showSidebar ? <X size={18} /> : <Menu size={18} />}
+							{lessonState.showSidebar ? <X size={16} aria-hidden="true" /> : <Menu size={16} aria-hidden="true" />}
 						</button>
 						<button
-							onClick={() => setShowMenu(!showMenu)}
-							className="p-2 rounded-lg transition-colors"
-							style={{ color: getColor('text-muted') }}
+							onClick={() => {/* Settings */}}
+							aria-label="Settings"
+							className={`${btn} p-2`}
+							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
 						>
-							<Settings size={18} />
+							<Settings size={16} aria-hidden="true" />
 						</button>
 					</div>
 				</header>
 
-				{/* Main Content Area */}
-				<div className="flex-1 overflow-hidden relative z-10 flex">
-					{/* Sidebar (Table of Contents) */}
+				{/* Content */}
+				<div className="flex-1 overflow-hidden flex">
+					{/* Sidebar */}
 					{lessonState.showSidebar && (
-						<div className="w-64 border-r overflow-y-auto custom-scrollbar"
-							style={{ backgroundColor: `${theme.colors.backgroundLight}50`, borderColor: theme.colors.border }}
+						<nav
+							className="w-64 border-r overflow-y-auto custom-scrollbar flex-shrink-0"
+							style={{ backgroundColor: `${theme.colors.backgroundLight}80`, borderColor: theme.colors.border }}
+							aria-label="Table of contents"
 						>
 							<div className="p-4 space-y-4">
-								<ProgressTracker
-									lessonId={lessonId || title}
-									threadId={threadId}
-									showDetailed={true}
-									showStreak={true}
-									showBadges={false}
-								/>
+								<ProgressTracker lessonId={lessonId || title} threadId={threadId} showDetailed showStreak showBadges={false} />
 								<TableOfContents
 									sections={sectionList}
 									onSectionClick={(sectionId) => {
 										handleSectionToggle(sectionId, true);
-										const element = document.getElementById(sectionId);
-										if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+										document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 									}}
 								/>
 							</div>
-						</div>
+						</nav>
 					)}
 
-					{/* Scroll Area */}
-					<div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center">
-						{/* Main Content */}
-						<main className="w-full max-w-4xl mx-auto px-6 py-8 md:px-12 space-y-6">
-							{/* Progress Section */}
+					{/* Main */}
+					<main id="lesson-content" className="flex-1 overflow-y-auto custom-scrollbar" tabIndex={-1}>
+						<article className="max-w-3xl mx-auto px-6 py-8 md:px-12 space-y-6">
+							{/* Progress */}
 							{lessonState.showProgress && (
 								<ProgressSection
 									totalSections={parsedSections.length}
@@ -474,98 +525,67 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 									estimatedTime="10 min"
 									onJumpToSection={(sectionId) => {
 										handleSectionToggle(sectionId, true);
-										const element = document.getElementById(sectionId);
-										if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+										document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 									}}
 								/>
 							)}
 
-							{/* Lesson Badge */}
-							<div className="mb-4 flex justify-center">
-								<span className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest"
-									style={{
-										backgroundColor: `${getColor('accent')}20`,
-										color: getColor('accent'),
-										border: `1px solid ${getColor('accent')}30`,
-									}}
-								>
-									Lesson
-								</span>
-							</div>
-
-							{/* Render Sections */}
-							{parsedSections.map((section, idx) => (
-								<CollapsibleLessonSection
-									key={section.id}
-									id={section.id}
-									lessonId={lessonId || title}
-									title={section.title}
-									icon={getSectionIcon(section.id)}
-									defaultExpanded={idx === 0}
-									onToggle={handleSectionToggle}
-									onMarkComplete={handleSectionComplete}
-									isCompleted={lessonState.sections[section.id]?.completed}
-									isBookmarked={lessonState.sections[section.id]?.bookmarked}
-									onToggleBookmark={handleBookmarkToggle}
-									order={idx + 1}
-								>
-									<div className="prose prose-invert max-w-none" style={{ color: getColor('text') }}>
-										<ChatMarkdownRender
-											string={section.content}
-											chatMessageLocation={undefined}
-											isApplyEnabled={false}
-											isLinkDetectionEnabled={true}
-										/>
+							{/* Sections */}
+							{parsedSections.length === 0 ? (
+								<div className="text-center py-16">
+									<div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: `${getColor('accent')}10` }}>
+										<BookOpen size={28} style={{ color: getColor('accent') }} aria-hidden="true" />
 									</div>
+									<h3 className="text-base font-semibold mb-2" style={{ color: getColor('text') }}>No lesson content available</h3>
+									<p className="text-sm mb-4" style={{ color: getColor('text-muted') }}>
+										Select a lesson from the sidebar to begin learning, or check back later.
+									</p>
+								</div>
+							) : (
+								parsedSections.map((section, idx) => (
+									<CollapsibleLessonSection
+										key={section.id}
+										id={section.id}
+										lessonId={lessonId || title}
+										title={section.title}
+										icon={getSectionIcon(section.id)}
+										defaultExpanded={idx === 0}
+										onToggle={handleSectionToggle}
+										onMarkComplete={handleSectionComplete}
+										isCompleted={lessonState.sections[section.id]?.completed}
+										isBookmarked={lessonState.sections[section.id]?.bookmarked}
+										onToggleBookmark={handleBookmarkToggle}
+										order={idx + 1}
+									>
+										<div className="prose prose-invert max-w-none" style={{ color: getColor('text') }}>
+											<ChatMarkdownRender string={section.content} chatMessageLocation={undefined} isApplyEnabled={false} isLinkDetectionEnabled />
+										</div>
+										{section.exerciseIds?.map(exerciseId => {
+											const exercise = exercises.find(e => e.id === exerciseId);
+											if (!exercise) return null;
+											return (
+												<div key={exercise.id} className="mt-6">
+													<InlineExerciseRenderer exercise={exercise} threadId={threadId} lessonId={lessonId || title} />
+												</div>
+											);
+										})}
+									</CollapsibleLessonSection>
+								))
+							)}
 
-									{/* Render exercises for this section */}
-									{section.exerciseIds?.map(exerciseId => {
-										const exercise = exercises.find(e => e.id === exerciseId);
-										if (!exercise) return null;
-
-										return (
-											<div key={exercise.id} className="mt-6">
-												<InlineExerciseRenderer
-													exercise={exercise}
-													threadId={threadId}
-													lessonId={lessonId || title}
-													onComplete={() => {
-														// Mark section as progress when exercise solved
-													}}
-												/>
-											</div>
-										);
-									})}
-								</CollapsibleLessonSection>
-							))}
-
-							{/* Footer Disclaimer */}
-							<div className="mt-8 text-center">
-								<p className="text-xs opacity-40" style={{ color: getColor('text-muted') }}>
-									Interactive Lesson • Generated by A-Coder
-								</p>
-							</div>
-
-							{/* Bottom Spacing */}
-							<div className="h-32" />
-						</main>
-					</div>
+							<div className="h-16" />
+						</article>
+					</main>
 				</div>
-
-				{/* Celebration effect Container */}
-				<div id="celebration-container" className="fixed inset-0 pointer-events-none z-50" />
 			</div>
 		</div>
 	);
 };
 
-// Export wrapped version with LessonThemeProvider
-export const LearningPreviewWithTheme: React.FC<LearningPreviewProps> = (props) => {
-	return (
-		<LessonThemeProvider lessonId={props.lessonId || props.title} topic={props.lessonTopic}>
-			<LearningPreview {...props} />
-		</LessonThemeProvider>
-	);
-};
+export const LearningPreviewWithTheme: React.FC<LearningPreviewProps> = (props) => (
+	<LessonThemeProvider lessonId={props.lessonId || props.title} topic={props.lessonTopic}>
+		<LearningPreview {...props} />
+	</LessonThemeProvider>
+);
 
 export default LearningPreviewWithTheme;

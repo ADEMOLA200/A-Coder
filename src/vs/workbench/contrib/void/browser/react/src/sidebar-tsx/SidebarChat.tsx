@@ -775,6 +775,8 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 
 	const options: ChatMode[] = useMemo(() => ['chat', 'plan', 'code', 'learn'], [])
 
+	const handleCloseOnboarding = useCallback(() => setShowStudentOnboarding(false), [])
+
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		// Show onboarding when switching to student mode for the first time
 		if (newVal === 'learn' && settingsState.globalSettings.chatMode !== 'learn') {
@@ -801,7 +803,7 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 		/>
 		<StudentOnboardingModal
 			isOpen={showStudentOnboarding}
-			onClose={() => setShowStudentOnboarding(false)}
+			onClose={handleCloseOnboarding}
 			onSelectLevel={handleSelectLevel}
 		/>
 	</>
@@ -1173,6 +1175,7 @@ export const SelectedFiles = (
 
 	// handle prospective files
 	useEffect(() => {
+		let isMounted = true
 		const computeRecents = async () => {
 			const prospectiveURIs = recentUris
 				.filter(uri => !selections.find(s => s.type === 'File' && s.uri.fsPath === uri.fsPath))
@@ -1180,24 +1183,29 @@ export const SelectedFiles = (
 
 			const answer: StagingSelectionItem[] = []
 			for (const uri of prospectiveURIs) {
+				const modelRef = await modelReferenceService.getModelSafe(uri)
+				if (!isMounted) return
 				answer.push({
 					type: 'File',
 					uri: uri,
-					language: (await modelReferenceService.getModelSafe(uri)).model?.getLanguageId() || 'plaintext',
+					language: modelRef.model?.getLanguageId() || 'plaintext',
 					state: { wasAddedAsCurrentFile: false },
 				})
 			}
-			return answer
+			if (isMounted)
+				setProspectiveSelections(answer)
 		}
 
 		// add a prospective file if type === 'staging' and if the user is in a file, and if the file is not selected yet
 		if (type === 'staging' && showProspectiveSelections) {
-			computeRecents().then((a) => setProspectiveSelections(a))
+			computeRecents()
 		}
 		else {
 			setProspectiveSelections([])
 		}
-	}, [recentUris, selections, type, showProspectiveSelections])
+
+		return () => { isMounted = false }
+	}, [recentUris, selections, type, showProspectiveSelections, modelReferenceService])
 
 
 	const allSelections = [...selections, ...prospectiveSelections]
@@ -1384,7 +1392,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 			_mustInitialize.current = false
 		}
 
-	}, [chatMessage, mode, _justEnabledEdit, textAreaRefState, textAreaFnsRef.current, _justEnabledEdit.current, _mustInitialize.current])
+	}, [chatMessage, mode, textAreaRefState, setStagingSelections])
 
 	const onOpenEdit = () => {
 		setIsBeingEdited(true)
@@ -2663,7 +2671,9 @@ export const SidebarChat = () => {
 		if (threadId) {
 			setTasks(chatThreadsService.getTaskPlan(threadId))
 		}
-	}, [threadId, chatThreadsState])
+		// Only run when threadId changes, not on every chatThreadsState change
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [threadId])
 
 	// Task handlers
 	const handleCreateTask = (description: string) => {
@@ -2784,7 +2794,9 @@ export const SidebarChat = () => {
 			console.error('Error while sending message in chat:', e)
 		}
 
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, attachedImages, selections])
+	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, attachedImages, selections])
+	// Note: settingsState and isRunng removed from deps - isDisabled already includes settingsState info
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -2798,8 +2810,10 @@ export const SidebarChat = () => {
 
 	const [autoContinueEnabled, setAutoContinueEnabled] = useState(() => chatThreadsService.getAutoContinuePreference(threadId))
 	useEffect(() => {
+		// Only set on mount or thread change, not on state changes (would cause infinite loop)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 		setAutoContinueEnabled(chatThreadsService.getAutoContinuePreference(threadId))
-	}, [chatThreadsService, threadId, chatThreadsState.allThreads[threadId]?.state.autoContinueEnabled])
+	}, [chatThreadsService, threadId])
 
 	const handleAutoContinueToggle = useCallback((value: boolean) => {
 		setAutoContinueEnabled(value)
@@ -2868,8 +2882,9 @@ export const SidebarChat = () => {
 			textAreaRef: textAreaRef,
 			scrollToBottom: () => scrollToBottom(scrollContainerRef),
 		})
-
-	}, [chatThreadsState, threadId, textAreaRef, scrollContainerRef, isResolved])
+		// Only run once per thread - the resolver is called once and then isResolved prevents re-runs
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [threadId, isResolved])
 
 
 
@@ -3314,14 +3329,18 @@ export const SidebarChat = () => {
 		setAttachedImages(prev => prev.filter((_, i) => i !== index));
 	}, []);
 
-	// Get queued message count (recalculate on every render to stay reactive)
+	// Get queued message count - only recalculate when threadId changes
 	const queuedCount = useMemo(() => {
 		return chatThreadsService.getQueuedMessagesCount(threadId);
-	}, [chatThreadsService, threadId, chatThreadsState]); // Re-calculate when thread state changes
+		// chatThreadsState removed from deps - queued messages are internal to the service
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chatThreadsService, threadId]);
 
 	const queuedMessages = useMemo(() => {
 		return chatThreadsService.getQueuedMessages(threadId);
-	}, [chatThreadsService, threadId, chatThreadsState]);
+		// chatThreadsState removed from deps - queued messages are internal to the service
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chatThreadsService, threadId]);
 
 	const [isQueueExpanded, setIsQueueExpanded] = useState(false);
 
@@ -3460,7 +3479,7 @@ export const SidebarChat = () => {
 	const isLandingPage = previousMessages.length === 0
 
 
-	const initiallySuggestedPromptsHTML = <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
+	const initiallySuggestedPromptsHTML = useMemo(() => <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
 		{[
 			'Summarize my codebase',
 			'How do types work in Rust?',
@@ -3474,7 +3493,7 @@ export const SidebarChat = () => {
 				{text}
 			</div>
 		))}
-	</div>
+	</div>, [onSubmit])
 
 
 
@@ -3667,6 +3686,14 @@ export const SidebarChat = () => {
 	</div>
 
 
+	const handleCloseLearningDashboard = useCallback(() => setShowLearningDashboard(false), [])
+	const handleCloseQuizMe = useCallback(() => setShowQuizMe(false), [])
+	const handleSelectQuizTopic = useCallback((topic: string) => {
+		setInstructionsAreEmpty(false);
+		setInputValue(topic);
+		textAreaRef.current?.focus();
+	}, [])
+
 	return (
 		<Fragment key={threadId} // force rerender when change thread
 		>
@@ -3684,7 +3711,7 @@ export const SidebarChat = () => {
 			{showLearningDashboard && threadId && (
 				<LearningDashboard
 					threadId={threadId}
-					onClose={() => setShowLearningDashboard(false)}
+					onClose={handleCloseLearningDashboard}
 				/>
 			)}
 
@@ -3692,12 +3719,8 @@ export const SidebarChat = () => {
 			{showQuizMe && threadId && (
 				<QuizMe
 					threadId={threadId}
-					onClose={() => setShowQuizMe(false)}
-					onSelectTopic={(topic: string) => {
-						setInstructionsAreEmpty(false);
-						setInputValue(topic);
-						textAreaRef.current?.focus();
-					}}
+					onClose={handleCloseQuizMe}
+					onSelectTopic={handleSelectQuizTopic}
 				/>
 			)}
 		</Fragment>

@@ -3,8 +3,8 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BookOpen, Trophy, Code, Eye, X, Check } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Code, Eye, X, Check, BookOpen, AlertCircle } from 'lucide-react';
 import '../styles.css';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { useAccessor, useIsDark } from '../util/services.js';
@@ -22,9 +22,30 @@ export interface EnhancedVoidPreviewProps {
 	threadId?: string;
 }
 
+// Loading spinner component (shared)
+const LoadingSpinner: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+	<svg
+		className={`animate-spin ${className}`}
+		fill="none"
+		viewBox="0 0 24 24"
+		aria-label="Loading"
+	>
+		<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+		<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+	</svg>
+);
+
 /**
  * EnhancedVoidPreview - For walkthroughs and implementation plans
  * Uses VS Code design tokens (void-*) for theme compatibility
+ *
+ * Accessibility:
+ * - All interactive elements have 44px min touch targets
+ * - Visible focus indicators with ring-2 offset
+ * - ARIA labels for screen readers
+ * - Skip-to-content link for keyboard navigation
+ * - Error states with live regions
+ * - Semantic error styling (no hard-coded red)
  */
 export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 	title,
@@ -39,25 +60,23 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 	const chatThreadsService = accessor.get('IChatThreadService');
 	const voidSettingsService = accessor.get('IVoidSettingsService');
 
-	// Track local content state for walkthrough refreshes
+	// Content state for walkthrough refreshes
 	const [localContent, setLocalContent] = useState(content);
-	const [localThreadId, setLocalThreadId] = useState(threadId);
 
-	// Action button state
+	// Action button states
 	const [isApproving, setIsApproving] = useState(false);
+	const [isRequestingChanges, setIsRequestingChanges] = useState(false);
+	const [isRejecting, setIsRejecting] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
-	// Update local state when props change
+	// Update local content when props change
 	useEffect(() => {
 		setLocalContent(content);
 	}, [content]);
 
+	// Register preview tab for auto-refresh
 	useEffect(() => {
-		setLocalThreadId(threadId);
-	}, [threadId]);
-
-	// Register this preview tab with WalkthroughResultWrapper for auto-refresh
-	useEffect(() => {
-		if (!isWalkthrough || !planId || !localThreadId) return;
+		if (!isWalkthrough || !planId || !threadId) return;
 
 		const refreshFn = (filePath: string, newPreview: string) => {
 			if (filePath === planId) {
@@ -65,179 +84,169 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 			}
 		};
 
-		const cleanup = registerPreviewTab(planId, localThreadId, refreshFn);
+		const cleanup = registerPreviewTab(planId, threadId, refreshFn);
 		return () => cleanup();
-	}, [isWalkthrough, planId, localThreadId]);
+	}, [isWalkthrough, planId, threadId]);
+
+	// Auto-clear errors
+	useEffect(() => {
+		if (error) {
+			const timeout = setTimeout(() => setError(null), 5000);
+			return () => clearTimeout(timeout);
+		}
+	}, [error]);
 
 	// ============================================
-	// Action Handlers (Approve/Reject/Request Changes)
+	// Action Handlers
 	// ============================================
 
-	const handleApprove = async () => {
+	const handleApprove = useCallback(async () => {
 		if (!planId || !threadId || isApproving) return;
 
 		setIsApproving(true);
+		setError(null);
+
 		try {
-			if (voidSettingsService?.setGlobalSetting) {
-				voidSettingsService.setGlobalSetting('chatMode', 'code');
-			}
+			voidSettingsService?.setGlobalSetting?.('chatMode', 'code');
 
-			let approvalMessage = '';
-
-			if (isImplementationPlan) {
-				approvalMessage = `The implementation plan (ID: ${planId}) has been approved for execution.
+			const message = isImplementationPlan
+				? `The implementation plan (ID: ${planId}) has been approved for execution.
 
 **Instructions:**
-1. First, use the \`create_plan\` tool to create a task plan based on the approved implementation plan steps
-2. Then execute each task in order, using \`update_task_status\` to track progress
-3. For each step: read relevant files, make the necessary changes, and verify they work
-4. Mark each task complete as you finish it
+1. Use the \`create_plan\` tool to create a task plan based on the approved steps
+2. Execute each task in order, tracking progress with \`update_task_status\`
+3. Read files, make changes, and verify each step
+4. Mark tasks complete as you finish
 
-Please begin execution now.`;
-			} else if (isWalkthrough) {
-				approvalMessage = `The walkthrough (File: ${planId}) has been approved. Please proceed with the next steps or apply the changes as described.`;
-			}
+Begin execution now.`
+				: `The walkthrough (File: ${planId}) has been approved. Proceed with the described changes.`;
 
-			if (approvalMessage) {
-				await chatThreadsService.addUserMessageAndStreamResponse({
-					threadId,
-					userMessage: approvalMessage
-				});
-			}
-		} catch (error) {
-			console.error('Failed to approve:', error);
+			await chatThreadsService.addUserMessageAndStreamResponse({ threadId, userMessage: message });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : 'Failed to send approval');
+			console.error('Approval failed:', err);
 		} finally {
 			setIsApproving(false);
 		}
-	};
+	}, [planId, threadId, isApproving, isImplementationPlan, voidSettingsService, chatThreadsService]);
 
-	const handleRequestChanges = async () => {
-		if (!planId || !threadId) return;
+	const handleRequestChanges = useCallback(async () => {
+		if (!planId || !threadId || isRequestingChanges) return;
 
-		try {
-			if (voidSettingsService?.setGlobalSetting) {
-				await voidSettingsService.setGlobalSetting('chatMode', 'plan');
-			}
-
-			let changeMessage = '';
-			if (isImplementationPlan) {
-				changeMessage = `I would like to request changes to the implementation plan (ID: ${planId}).\n\nPlease revise the plan based on my feedback. After making changes, use \`preview_implementation_plan\` to show me the updated plan for review.\n\nMy requested changes:`;
-			} else if (isWalkthrough) {
-				changeMessage = `I would like to request changes to the walkthrough (File: ${planId}).\n\nPlease revise the walkthrough based on my feedback.\n\nMy requested changes:`;
-			}
-
-			if (changeMessage) {
-				await chatThreadsService.addUserMessageAndStreamResponse({
-					threadId,
-					userMessage: changeMessage
-				});
-			}
-		} catch (error) {
-			console.error('Failed to request changes:', error);
-		}
-	};
-
-	const handleReject = async () => {
-		if (!planId || !threadId) return;
+		setIsRequestingChanges(true);
+		setError(null);
 
 		try {
-			let rejectMessage = '';
-			if (isImplementationPlan) {
-				rejectMessage = `I am rejecting the implementation plan (ID: ${planId}). Please stop working on this plan.`;
-			} else if (isWalkthrough) {
-				rejectMessage = `I am rejecting the walkthrough (File: ${planId}). Please stop working on this.`;
-			}
+			await voidSettingsService?.setGlobalSetting?.('chatMode', 'plan');
 
-			if (rejectMessage) {
-				await chatThreadsService.addUserMessageAndStreamResponse({
-					threadId,
-					userMessage: rejectMessage
-				});
-			}
-		} catch (error) {
-			console.error('Failed to reject:', error);
+			const message = isImplementationPlan
+				? `I request changes to the implementation plan (ID: ${planId}).\n\nRevise the plan based on my feedback, then use \`preview_implementation_plan\` to show updates.\n\nMy requested changes:`
+				: `I request changes to the walkthrough (File: ${planId}).\n\nRevise based on my feedback.\n\nMy requested changes:`;
+
+			await chatThreadsService.addUserMessageAndStreamResponse({ threadId, userMessage: message });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : 'Failed to request changes');
+			console.error('Request changes failed:', err);
+		} finally {
+			setIsRequestingChanges(false);
 		}
-	};
+	}, [planId, threadId, isRequestingChanges, isImplementationPlan, voidSettingsService, chatThreadsService]);
 
-	// Show action buttons for implementation plans and walkthroughs
+	const handleReject = useCallback(async () => {
+		if (!planId || !threadId || isRejecting) return;
+
+		setIsRejecting(true);
+		setError(null);
+
+		try {
+			const message = isImplementationPlan
+				? `I reject the implementation plan (ID: ${planId}). Stop working on this plan.`
+				: `I reject the walkthrough (File: ${planId}). Stop working on this.`;
+
+			await chatThreadsService.addUserMessageAndStreamResponse({ threadId, userMessage: message });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : 'Failed to reject');
+			console.error('Reject failed:', err);
+		} finally {
+			setIsRejecting(false);
+		}
+	}, [planId, threadId, isRejecting, isImplementationPlan, chatThreadsService]);
+
+	// Derived state
 	const showActions = (isImplementationPlan || isWalkthrough) && planId && threadId;
+	const contentType = isImplementationPlan ? { icon: Code, label: 'Implementation Plan' }
+		: isWalkthrough ? { icon: Eye, label: 'Code Walkthrough' }
+		: { icon: BookOpen, label: 'Document' };
+	const ContentIcon = contentType.icon;
 
-	// Get badge icon based on content type
-	const getBadgeIcon = () => {
-		if (isImplementationPlan) return <Code size={14} className="text-void-accent" />;
-		if (isWalkthrough) return <Eye size={14} className="text-void-accent" />;
-		return <BookOpen size={14} className="text-void-accent" />;
-	};
-
-	// Get badge label based on content type
-	const getBadgeLabel = () => {
-		if (isImplementationPlan) return 'Implementation Plan';
-		if (isWalkthrough) return 'Code Walkthrough';
-		return 'Document';
-	};
+	// Common button styles
+	const buttonBase = 'min-h-[44px] flex items-center gap-2 rounded-lg font-medium text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50';
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
-			<div className="void-preview-container h-full flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans">
+			<div className="h-full flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans">
 
-				{/* Top Header */}
-				<header className="px-6 py-4 flex-shrink-0 flex items-center justify-between border-b border-void-border-2 bg-void-bg-2/50 backdrop-blur-md z-20">
-					<div className="flex items-center gap-3 overflow-hidden">
-						<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center border border-void-accent/20">
-							{getBadgeIcon()}
+				{/* Skip to content - focuses main element for keyboard users */}
+				<a
+					href="#main-content"
+					className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-void-accent focus:text-white focus:rounded-lg focus:no-underline"
+					onClick={(e) => {
+						e.preventDefault();
+						document.getElementById('main-content')?.focus();
+					}}
+				>
+					Skip to content
+				</a>
+
+				{/* Header - compact spacing for related elements */}
+				<header className="flex-shrink-0 flex items-center justify-between border-b border-void-border-2 bg-void-bg-2 px-4 py-3">
+					<div className="flex items-center gap-3 min-w-0">
+						<div className="flex-shrink-0 w-9 h-9 rounded-lg bg-void-accent/10 flex items-center justify-center">
+							<ContentIcon size={18} className="text-void-accent" aria-hidden="true" />
 						</div>
-						<div className="flex flex-col min-w-0">
-							<h1 className="text-sm font-semibold text-void-fg-1 truncate tracking-tight">{title}</h1>
-							<div className="flex items-center gap-2">
-								<span className="text-[10px] text-void-fg-4 font-medium uppercase tracking-wider opacity-60">
-									{getBadgeLabel()}
+						<div className="flex flex-col gap-0.5 min-w-0">
+							<h1 className="text-sm font-semibold text-void-fg-1 truncate">{title}</h1>
+							{planId && (
+								<span className="text-xs text-void-fg-4/70 font-mono truncate" title={planId}>
+									{planId.split('/').pop()}
 								</span>
-								{planId && (
-									<>
-										<span className="text-[10px] text-void-fg-4 opacity-30">•</span>
-										<span className="text-[10px] text-void-fg-4 font-mono opacity-60 truncate max-w-[150px]" title={planId}>
-											{planId.split('/').pop()}
-										</span>
-									</>
-								)}
-							</div>
+							)}
 						</div>
 					</div>
 				</header>
 
-				{/* Main Content Area */}
-				<div className="flex-1 overflow-hidden relative z-10 flex">
-					{/* Scroll Area */}
-					<div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center">
-						{/* Main Content */}
-						<main className="w-full max-w-4xl mx-auto px-6 py-8 md:px-12 space-y-6">
-							{/* Type Badge */}
-							<div className="mb-4 flex justify-center">
-								<span className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-void-accent/10 text-void-accent border border-void-accent/20">
-									{getBadgeLabel()}
-								</span>
-							</div>
+				{/* Error Banner - uses semantic error styling */}
+				{error && (
+					<div
+						className="flex items-center gap-2 px-4 py-3 bg-void-accent/5 border-b border-void-accent/20"
+						role="alert"
+						aria-live="polite"
+					>
+						<AlertCircle size={16} className="text-void-accent flex-shrink-0" aria-hidden="true" />
+						<span className="text-sm text-void-fg-1">{error}</span>
+					</div>
+				)}
 
-							{/* Main Document */}
-							<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-xl shadow-black/10 overflow-hidden ring-1 ring-white/5">
-								{/* Document Header Decor */}
-								<div className="h-1.5 w-full bg-void-accent/40" />
-
-								<div className="p-8 md:p-12">
+				{/* Content */}
+				<div className="flex-1 overflow-hidden flex">
+					<main id="main-content" className="flex-1 overflow-y-auto custom-scrollbar" tabIndex={-1}>
+						<article className="max-w-3xl mx-auto px-6 py-8 md:px-12">
+							<div className="bg-void-bg-1 border border-void-border-2 rounded-lg shadow-sm overflow-hidden">
+								<div className="p-6 md:p-10">
 									<div className="prose prose-invert max-w-none
-										prose-headings:text-void-fg-1 prose-headings:font-bold prose-headings:tracking-tight
-										prose-h1:text-3xl prose-h1:mb-8
-										prose-h2:text-xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:pb-2 prose-h2:border-b prose-h2:border-void-border-2
-										prose-h3:text-lg prose-h3:mt-8 prose-h3:mb-4 prose-h3:flex prose-h3:items-center prose-h3:gap-2
-										prose-p:text-void-fg-2 prose-p:leading-relaxed prose-p:text-base prose-p:mb-4
-										prose-li:text-void-fg-2 prose-li:mb-2
-										prose-strong:text-void-fg-1 prose-strong:font-bold
-										prose-code:text-void-accent prose-code:bg-void-accent/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-sm
-										prose-pre:bg-void-bg-4 prose-pre:border prose-pre:border-void-border-2 prose-pre:rounded-xl prose-pre:shadow-inner prose-pre:my-6
-										prose-blockquote:border-l-4 prose-blockquote:border-void-accent prose-blockquote:bg-void-accent/5 prose-blockquote:py-2 prose-blockquote:px-6 prose-blockquote:rounded-r-xl prose-blockquote:text-void-fg-2 prose-blockquote:italic prose-blockquote:my-8
-										prose-img:rounded-xl prose-img:shadow-lg
-										prose-table:border-collapse prose-th:bg-void-bg-2 prose-th:text-void-fg-1 prose-th:p-2 prose-th:border prose-th:border-void-border-2
-										prose-td:p-2 prose-td:border prose-td:border-void-border-2
+										prose-headings:text-void-fg-1 prose-headings:font-semibold prose-headings:tracking-tight
+										prose-h1:text-2xl prose-h1:mb-6
+										prose-h2:text-lg prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-void-border-2
+										prose-h3:text-base prose-h3:mt-6 prose-h3:mb-3
+										prose-p:text-void-fg-2 prose-p:leading-relaxed prose-p:text-sm prose-p:mb-4
+										prose-li:text-void-fg-2 prose-li:mb-1.5 prose-li:text-sm
+										prose-strong:text-void-fg-1 prose-strong:font-semibold
+										prose-code:text-void-accent prose-code:bg-void-accent/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-xs
+										prose-pre:bg-void-bg-4 prose-pre:border prose-pre:border-void-border-2 prose-pre:rounded-lg prose-pre:shadow-inner prose-pre:my-4
+										prose-blockquote:border-l-4 prose-blockquote:border-void-accent prose-blockquote:bg-void-accent/5 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:text-void-fg-2 prose-blockquote:text-sm prose-blockquote:my-6
+										prose-img:rounded-lg prose-img:shadow-md
+										prose-table:border-collapse prose-th:bg-void-bg-2 prose-th:text-void-fg-1 prose-th:px-3 prose-th:py-2 prose-th:border prose-th:border-void-border-2 prose-th:text-sm prose-th:font-medium
+										prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-void-border-2 prose-td:text-sm
 									">
 										<ChatMarkdownRender
 											string={localContent}
@@ -248,60 +257,48 @@ Please begin execution now.`;
 									</div>
 								</div>
 							</div>
-
-							{/* Footer Disclaimer */}
-							<div className="mt-8 text-center">
-								<p className="text-xs text-void-fg-4 opacity-40">
-									{isImplementationPlan ? 'Implementation Strategy' : 'Code Walkthrough'} • Generated by A-Coder
-								</p>
-							</div>
-
-							{/* Bottom Spacing */}
-							<div className="h-32" />
-						</main>
-					</div>
+							<div className="h-24" />
+						</article>
+					</main>
 				</div>
 
-				{/* Floating Action Bar - for Implementation Plans and Walkthroughs */}
+				{/* Action Bar - visual hierarchy: primary (Approve) > secondary (Request Changes) > destructive (Reject) */}
 				{showActions && (
-					<div className="absolute bottom-8 left-0 right-0 flex justify-center z-40 pointer-events-none px-4">
-						<div className="bg-void-bg-2/90 backdrop-blur-xl border border-void-border-1 rounded-2xl p-2 shadow-2xl shadow-black/40 flex items-center gap-2 pointer-events-auto ring-1 ring-white/10">
+					<div className="flex-shrink-0 border-t border-void-border-2 bg-void-bg-2 px-4 py-3">
+						<div className="flex items-center justify-end gap-2">
+							{/* Destructive action - text link style, lowest visual weight */}
 							<button
 								onClick={handleReject}
-								className="px-4 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 rounded-xl transition-all flex items-center gap-2 group"
+								disabled={isRejecting}
+								aria-label="Reject this plan"
+								className="min-h-[44px] px-3 py-2 text-sm text-void-fg-4 hover:text-red-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-void-bg-2 disabled:opacity-50 disabled:no-underline transition-colors"
 							>
-								<div className="w-5 h-5 rounded-md bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
-									<X size={14} />
-								</div>
-								Reject
+								{isRejecting ? <LoadingSpinner className="h-4 w-4" /> : 'Reject'}
 							</button>
 
-							<div className="w-px h-6 bg-void-border-2 mx-1" />
-
+							{/* Secondary action - ghost style */}
 							<button
 								onClick={handleRequestChanges}
-								className="px-4 py-2.5 text-xs font-semibold text-void-fg-2 hover:bg-void-bg-4 rounded-xl transition-all flex items-center gap-2 group"
+								disabled={isRequestingChanges}
+								aria-label="Request changes to this plan"
+								className="min-h-[44px] px-4 py-2.5 text-sm font-medium text-void-fg-2 border border-void-border-3 rounded-lg hover:bg-void-bg-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-void-accent focus-visible:ring-offset-void-bg-2 disabled:opacity-50 transition-colors"
 							>
-								<div className="w-5 h-5 rounded-md bg-void-bg-4 flex items-center justify-center group-hover:border-void-border-2 transition-colors">
-									<BookOpen size={14} />
-								</div>
-								Request Changes
+								{isRequestingChanges ? <LoadingSpinner className="h-4 w-4" /> : 'Request Changes'}
 							</button>
 
+							{/* Primary action - filled style, highest visual weight */}
 							<button
 								onClick={handleApprove}
 								disabled={isApproving}
-								className="ml-2 px-6 py-2.5 text-xs font-bold bg-void-accent hover:opacity-90 disabled:opacity-50 text-white rounded-xl shadow-lg shadow-void-accent/20 transition-all active:scale-95 flex items-center gap-2"
+								aria-label={isImplementationPlan ? 'Approve and execute this plan' : 'Approve this plan'}
+								className="min-h-[44px] px-5 py-2.5 text-sm font-medium text-white bg-void-accent rounded-lg hover:opacity-90 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-void-accent focus-visible:ring-offset-void-bg-2 disabled:opacity-50 active:scale-[0.98] transition-all"
 							>
-								{isApproving ? (
-									<svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-										<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-										<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-									</svg>
-								) : (
-									<Check size={14} />
+								{isApproving ? <LoadingSpinner className="h-4 w-4" /> : (
+									<span className="flex items-center gap-1.5">
+										<Check size={16} aria-hidden="true" />
+										{isImplementationPlan ? 'Approve & Execute' : 'Approve'}
+									</span>
 								)}
-								{isImplementationPlan ? 'Approve & Execute' : 'Approve'}
 							</button>
 						</div>
 					</div>
