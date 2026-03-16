@@ -2889,15 +2889,6 @@ export const SidebarChat = () => {
 
 
 
-	// PERFORMANCE: Virtualization - render messages on demand using intersection observer
-	// Compaction is from TOP to BOTTOM: older messages at the top are hidden/compacted,
-	// newer messages at the bottom are always visible (user scrolls UP to see older history)
-	const MAX_VISIBLE_MESSAGES = 30; // Reduced from 50 for better performance
-	const MAX_RENDER_BUFFER = 10; // Extra messages to render above/below viewport
-	const [showAllMessages, setShowAllMessages] = useState(false);
-	// Initialize with null to indicate we need to calculate the initial range based on message count
-	const [visibleRange, setVisibleRange] = useState<{ start: number; end: number } | null>(null);
-
 	// Memoize filtered messages to prevent recalculation
 	const filteredMessages = useMemo(() => {
 		return previousMessages
@@ -2915,106 +2906,11 @@ export const SidebarChat = () => {
 			});
 	}, [previousMessages]);
 
-	// Update visible range based on scroll position
-	const updateVisibleRange = useCallback(() => {
-		if (!scrollContainerRef.current || showAllMessages) return;
-
-		const container = scrollContainerRef.current;
-		const containerRect = container.getBoundingClientRect();
-		const messageElements = container.querySelectorAll('[data-message-idx]');
-
-		let firstVisible = -1;
-		let lastVisible = -1;
-
-		messageElements.forEach((el) => {
-			const messageIdx = parseInt(el.getAttribute('data-message-idx') || '0', 10);
-			const rect = el.getBoundingClientRect();
-			const isVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
-			if (isVisible) {
-				if (firstVisible === -1 || messageIdx < firstVisible) firstVisible = messageIdx;
-				if (messageIdx > lastVisible) lastVisible = messageIdx;
-			}
-		});
-
-		if (firstVisible !== -1) {
-			setVisibleRange(prev => {
-				const newStart = Math.max(0, firstVisible - MAX_RENDER_BUFFER);
-				const newEnd = Math.min(filteredMessages.length, lastVisible + MAX_RENDER_BUFFER + 1);
-				// Handle null initial state - always set the range
-				if (!prev) {
-					return { start: newStart, end: newEnd };
-				}
-				// Only update if range changed significantly
-				if (Math.abs(newStart - prev.start) > 3 || Math.abs(newEnd - prev.end) > 3) {
-					return { start: newStart, end: newEnd };
-				}
-				return prev;
-			});
-		}
-	}, [filteredMessages.length, showAllMessages, scrollContainerRef]);
-
-	// Throttled scroll handler with cleanup
-	useEffect(() => {
-		if (showAllMessages) return;
-		const container = scrollContainerRef.current;
-		if (!container) return;
-
-		let timeout: number | null = null;
-		const handleScroll = () => {
-			if (timeout) return;
-			timeout = window.setTimeout(() => {
-				updateVisibleRange();
-				timeout = null;
-			}, 150); // Throttle to 150ms
-		};
-
-		container.addEventListener('scroll', handleScroll, { passive: true });
-		updateVisibleRange(); // Initial calculation
-
-		return () => {
-			container.removeEventListener('scroll', handleScroll);
-			if (timeout) window.clearTimeout(timeout);
-		};
-	}, [updateVisibleRange, showAllMessages, scrollContainerRef]);
-
 	const previousMessagesHTML = useMemo(() => {
-		// PERFORMANCE: Only render visible messages + buffer
-		// Compaction from TOP to BOTTOM: hide older messages at top, show newer messages at bottom
-		const shouldVirtualize = !showAllMessages && filteredMessages.length > MAX_VISIBLE_MESSAGES;
-
-		// Calculate effective range: if visibleRange is null (initial), show from end (newest messages)
-		const effectiveRange = visibleRange ?? {
-			start: Math.max(0, filteredMessages.length - MAX_VISIBLE_MESSAGES - MAX_RENDER_BUFFER),
-			end: filteredMessages.length
-		};
-
-		const messagesToRender = shouldVirtualize
-			? filteredMessages.slice(effectiveRange.start, effectiveRange.end)
-			: filteredMessages;
-		const hiddenAbove = shouldVirtualize ? effectiveRange.start : 0;
-		const hiddenBelow = shouldVirtualize ? filteredMessages.length - effectiveRange.end : 0;
-
 		const elements: React.ReactNode[] = [];
 
-		// "Load all" button at the top when there are hidden messages above
-		if (hiddenAbove > 0) {
-			elements.push(
-				<div key="load-all-top" className="mb-4 flex flex-col items-center gap-2">
-					<button
-						onClick={() => setShowAllMessages(true)}
-						className="px-4 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-colors"
-					>
-						Load all {filteredMessages.length} messages
-					</button>
-					<div className="text-void-fg-4/60 text-xs">
-						↑ {hiddenAbove} earlier messages hidden
-					</div>
-				</div>
-			);
-		}
-
-		// Render visible messages
-		messagesToRender.forEach(({ message, originalIdx }) => {
+		// Render all filtered messages
+		filteredMessages.forEach(({ message, originalIdx }) => {
 			elements.push(
 				<div key={originalIdx} className="mb-4 flex flex-col" data-message-idx={originalIdx}>
 					<ChatBubble
@@ -3030,23 +2926,12 @@ export const SidebarChat = () => {
 			);
 		});
 
-		// Placeholder for hidden messages below
-		if (hiddenBelow > 0) {
-			elements.push(
-				<div key="hidden-below" className="mb-4 text-center text-void-fg-4/60 text-sm py-4">
-					↓ {hiddenBelow} newer messages (scroll down to view)
-				</div>
-			);
-		}
-
 		return elements;
-	}, [filteredMessages, visibleRange, showAllMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
+	}, [filteredMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
 
-	// Reset showAllMessages and visibleRange when thread changes
-	// This ensures each thread starts fresh, showing newest messages
+	// Reset logic when thread changes
 	useEffect(() => {
-		setShowAllMessages(false);
-		setVisibleRange(null);
+		// (Virtualization was removed)
 	}, [threadId]);
 
 	// Use the actual message index for the streaming bubble so React doesn't remount when streaming ends
