@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trophy, Target, BookOpen, TrendingUp, Clock, Flame, Star, ChevronRight, X, Award, Zap, Calendar, BarChart3, CheckCircle2, Brain } from 'lucide-react';
+import { Trophy, Target, BookOpen, TrendingUp, Clock, Flame, Star, ChevronRight, X, Award, Zap, Calendar, BarChart3, CheckCircle2, Brain, Map, Layout, Layers } from 'lucide-react';
 import { useAccessor, useChatThreadsState } from '../util/services.js';
 import { ILearningProgressService } from '../../../../common/learningProgressService.js';
 
@@ -13,204 +13,46 @@ interface LearningDashboardProps {
 	onClose: () => void;
 }
 
-interface QuizResult {
-	quizId: string;
-	title: string;
-	score: number;
-	totalPoints: number;
-	percentage: number;
-	completedAt: number;
-}
-
-interface ConceptProgress {
-	name: string;
-	masteryLevel: number;
-	exercisesCompleted: number;
-	timeSpent: number;
-	lastPracticed: number;
-}
-
-interface LearningStreak {
-	current: number;
-	longest: number;
-	daysSinceLastPractice: number;
-}
-
-interface Badge {
-	id: string;
-	name: string;
-	description: string;
-	icon: string;
-	earned: boolean;
-	earnedAt?: number;
-	progress?: number;
-}
-
-// Calculate learning streak
-function calculateStreak(progress: any): LearningStreak {
-	const activityDates = Object.entries(progress)
-		.filter(([_, data]: [string, any]) => data?.lastAccessed)
-		.map(([_, data]: [string, any]) => new Date(data.lastAccessed).toDateString())
-		.filter((date, i, arr) => arr.indexOf(date) === i)
-		.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
-	const today = new Date().toDateString();
-	const yesterday = new Date(Date.now() - 86400000).toDateString();
-
-	let currentStreak = 0;
-	let longestStreak = 0;
-	let tempStreak = 0;
-
-	for (let i = 0; i < activityDates.length; i++) {
-		const currentDate = new Date(activityDates[i]);
-		const prevDate = i > 0 ? new Date(activityDates[i - 1]) : null;
-
-		if (prevDate) {
-			const diffDays = Math.floor((prevDate.getTime() - currentDate.getTime()) / 86400000);
-			if (diffDays <= 1) {
-				tempStreak++;
-			} else {
-				tempStreak = 1;
-			}
-		} else {
-			tempStreak = 1;
-		}
-
-		if (tempStreak > longestStreak) longestStreak = tempStreak;
-
-		if (i === 0) {
-			const lastActiveDiff = Math.floor((new Date().getTime() - currentDate.getTime()) / 86400000);
-			if (lastActiveDiff <= 1) currentStreak = tempStreak;
-		}
-	}
-
-	const daysSinceLastPractice = activityDates.length > 0
-		? Math.floor((new Date().getTime() - new Date(activityDates[0]).getTime()) / 86400000)
-		: Infinity;
-
-	return { current: currentStreak, longest: longestStreak, daysSinceLastPractice };
-}
-
-// Available badges
-function getAvailableBadges(progress: any): Badge[] {
-	const quizzes = Object.values(progress).filter((p: any) => p?.quizResults);
-	const quizCount = quizzes.reduce((acc: number, q: any) => acc + (q?.quizResults?.length || 0), 0);
-	const totalTime = Object.values(progress).reduce((acc: number, p: any) => acc + (p?.timeSpent || 0), 0);
-	const exercises = Object.values(progress).filter((p: any) => p?.exercisesCompleted);
-	const exerciseCount = exercises.reduce((acc: number, e: any) => acc + (e?.exercisesCompleted || 0), 0);
-
-	const badges: Badge[] = [
-		{
-			id: 'first-quiz',
-			name: 'Quiz Novice',
-			description: 'Complete your first quiz',
-			icon: '\u{1F3AF}',
-			earned: quizCount >= 1,
-		},
-		{
-			id: 'quiz-master',
-			name: 'Quiz Master',
-			description: 'Complete 10 quizzes',
-			icon: '\u{1F3C6}',
-			earned: quizCount >= 10,
-			progress: quizCount,
-		},
-		{
-			id: 'speed-learner',
-			name: 'Speed Learner',
-			description: 'Spend 60 minutes learning',
-			icon: '\u{26A1}',
-			earned: totalTime >= 60 * 60 * 1000,
-			progress: Math.min(100, Math.floor((totalTime / (60 * 60 * 1000)) * 100)),
-		},
-		{
-			id: 'practice-maker',
-			name: 'Practice Makes Perfect',
-			description: 'Complete 20 exercises',
-			icon: '💪',
-			earned: exerciseCount >= 20,
-			progress: exerciseCount,
-		},
-		{
-			id: 'streak-3',
-			name: '3-Day Streak',
-			description: 'Practice for 3 days in a row',
-			icon: '🔥',
-			earned: false, // Calculated from streak
-		},
-		{
-			id: 'streak-7',
-			name: 'Week Warrior',
-			description: 'Practice for 7 days in a row',
-			icon: '🔥🔥',
-			earned: false, // Calculated from streak
-		},
-	];
-
-	return badges;
-}
-
 // Tab content type
 type DashboardTab = 'overview' | 'concepts' | 'quizzes' | 'badges';
 
+// Skill Tree Node Placeholder
+const SkillNode = ({ name, level, color }: { name: string, level: number, color: string }) => (
+	<div className="flex flex-col items-center gap-2 p-4 bg-void-bg-2 rounded-2xl border border-void-border-2 w-32 relative group hover:border-void-accent transition-all cursor-default">
+		<div className={`w-12 h-12 rounded-full flex items-center justify-center border-4 ${color} shadow-lg shadow-void-bg-1`}>
+			<Brain size={20} className="text-white" />
+		</div>
+		<span className="text-[10px] font-bold uppercase tracking-wider text-void-fg-3">{name}</span>
+		<div className="flex gap-0.5">
+			{[1, 2, 3, 4, 5].map(i => (
+				<div key={i} className={`w-1.5 h-1.5 rounded-full ${i <= level ? 'bg-void-accent' : 'bg-void-bg-3'}`} />
+			))}
+		</div>
+	</div>
+);
+
 export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, onClose }) => {
 	const accessor = useAccessor();
-	const chatThreadsState = useChatThreadsState();
 	const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
-	const [progress, setProgress] = useState<any>(null);
+	const [stats, setStats] = useState<any>(null);
 	const [loading, setLoading] = useState(true);
 
 	const learningProgressService = accessor.get('ILearningProgressService');
 
-	// Load progress data
+	// Load progress data from Service
 	useEffect(() => {
-		const loadProgress = async () => {
-			setLoading(true);
-			try {
-				if (learningProgressService?.getProgress) {
-					const data = await learningProgressService.getProgress(threadId);
-					setProgress(data);
-				}
-			} catch (error) {
-				console.error('[LearningDashboard] Error loading progress:', error);
-			} finally {
-				setLoading(false);
-			}
+		const updateData = () => {
+			const globalStats = learningProgressService.getGlobalStats();
+			const threadProgress = learningProgressService.getThreadProgress(threadId);
+			setStats({ global: globalStats, thread: threadProgress });
+			setLoading(false);
 		};
-		loadProgress();
+
+		updateData();
+		// Subscribe to changes
+		const disposable = learningProgressService.onDidChangeState(() => updateData());
+		return () => disposable.dispose();
 	}, [threadId, learningProgressService]);
-
-	// Calculate streak
-	const streak = useMemo(() => progress ? calculateStreak(progress) : { current: 0, longest: 0, daysSinceLastPractice: Infinity }, [progress]);
-
-	// Get quizzes
-	const quizzes = useMemo(() => {
-		if (!progress) return [];
-		const allQuizzes: QuizResult[] = [];
-		Object.values(progress).forEach((p: any) => {
-			if (p?.quizResults) {
-				allQuizzes.push(...p.quizResults);
-			}
-		});
-		return allQuizzes.sort((a, b) => b.completedAt - a.completedAt);
-	}, [progress]);
-
-	// Get badges
-	const badges = useMemo(() => getAvailableBadges(progress || {}), [progress]);
-	const earnedBadges = badges.filter(b => b.earned);
-	const unearnedBadges = badges.filter(b => !b.earned);
-
-	// Calculate total time
-	const totalTime = useMemo(() => {
-		if (!progress) return 0;
-		return Object.values(progress).reduce((acc: number, p: any) => acc + (p?.timeSpent || 0), 0);
-	}, [progress]);
-
-	// Calculate quiz average
-	const quizAverage = useMemo(() => {
-		if (quizzes.length === 0) return 0;
-		return quizzes.reduce((sum, q) => sum + q.percentage, 0) / quizzes.length;
-	}, [quizzes]);
 
 	const formatTime = (ms: number): string => {
 		const minutes = Math.floor(ms / 60000);
@@ -219,285 +61,164 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 		return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 	};
 
-	if (loading) {
-		return (
-			<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-				<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl p-8 shadow-2xl">
-					<div className="flex items-center gap-3">
-						<div className="w-6 h-6 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
-						<span className="text-void-fg-2">Loading learning progress...</span>
-					</div>
-				</div>
-			</div>
-		);
-	}
+	if (loading) return null;
+
+	const global = stats?.global;
+	const thread = stats?.thread;
 
 	return (
-		<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-			<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-				{/* Header */}
-				<div className="px-6 py-4 border-b border-void-border-2 flex items-center justify-between bg-void-bg-2">
-					<div className="flex items-center gap-3">
-						<div className="p-2 rounded-lg bg-void-accent/20">
-							<Trophy size={20} className="text-void-accent" />
+		<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+			<div className="bg-void-bg-1 border border-void-border-2 rounded-[32px] shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+
+				{/* Sidebar-style Header */}
+				<div className="flex h-full">
+					{/* Left Nav */}
+					<div className="w-64 bg-void-bg-2 border-r border-void-border-2 flex flex-col p-6">
+						<div className="flex items-center gap-3 mb-10 px-2">
+							<div className="p-2.5 rounded-2xl bg-void-accent shadow-lg shadow-void-accent/20 text-white">
+								<Layers size={22} />
+							</div>
+							<div>
+								<h2 className="text-base font-black text-void-fg-1 tracking-tight">Academy</h2>
+								<p className="text-[10px] font-bold text-void-accent uppercase tracking-widest">Student Mode</p>
+							</div>
 						</div>
-						<div>
-							<h2 className="text-lg font-bold text-void-fg-1">My Learning Progress</h2>
-							<p className="text-xs text-void-fg-3">Track your learning journey</p>
+
+						<nav className="flex-1 space-y-1">
+							{(['overview', 'concepts', 'quizzes', 'badges'] as DashboardTab[]).map((tab) => (
+								<button
+									key={tab}
+									onClick={() => setActiveTab(tab)}
+									className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+										activeTab === tab
+											? 'bg-void-accent text-white shadow-lg shadow-void-accent/20'
+											: 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'
+									}`}
+								>
+									{tab === 'overview' && <Layout size={18} />}
+									{tab === 'concepts' && <Map size={18} />}
+									{tab === 'quizzes' && <Zap size={18} />}
+									{tab === 'badges' && <Star size={18} />}
+									<span className="capitalize">{tab}</span>
+								</button>
+							))}
+						</nav>
+
+						<div className="mt-auto p-4 bg-void-bg-3/50 rounded-2xl border border-void-border-2">
+							<div className="flex items-center gap-2 mb-2">
+								<Flame size={16} className="text-orange-500" />
+								<span className="text-[10px] font-black uppercase text-void-fg-3 tracking-tighter">Current Streak</span>
+							</div>
+							<div className="text-xl font-black text-void-fg-1">{global?.currentStreak || 0} Days</div>
 						</div>
 					</div>
-					<button
-						onClick={onClose}
-						className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors"
-					>
-						<X size={20} className="text-void-fg-3" />
-					</button>
-				</div>
 
-				{/* Tabs */}
-				<div className="px-6 pt-4 border-b border-void-border-2 bg-void-bg-2">
-					<div className="flex gap-1">
-						{(['overview', 'concepts', 'quizzes', 'badges'] as DashboardTab[]).map((tab) => (
-							<button
-								key={tab}
-								onClick={() => setActiveTab(tab)}
-								className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-									activeTab === tab
-										? 'bg-void-accent text-white'
-										: 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'
-								}`}
-							>
-								{tab.charAt(0).toUpperCase() + tab.slice(1)}
+					{/* Main Content Area */}
+					<div className="flex-1 flex flex-col bg-void-bg-1">
+						{/* Top Bar */}
+						<div className="h-20 px-8 flex items-center justify-between border-b border-void-border-2 bg-void-bg-1/50 backdrop-blur-md sticky top-0 z-10">
+							<h3 className="text-lg font-black text-void-fg-1 capitalize tracking-tight">{activeTab}</h3>
+							<button onClick={onClose} className="p-2.5 hover:bg-void-bg-2 rounded-xl text-void-fg-4 hover:text-void-fg-1 transition-all active:scale-90">
+								<X size={20} />
 							</button>
-						))}
-					</div>
-				</div>
+						</div>
 
-				{/* Content */}
-				<div className="flex-1 overflow-y-auto p-6">
-					{activeTab === 'overview' && (
-						<div className="space-y-6">
-							{/* Stats Grid */}
-							<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-								<div className="p-4 bg-void-bg-2 rounded-xl border border-void-border-2">
-									<div className="flex items-center gap-2 mb-2">
-										<Flame size={16} className="text-orange-500" />
-										<span className="text-xs text-void-fg-4 uppercase tracking-wider">Streak</span>
+						<div className="flex-1 overflow-y-auto p-10">
+							{activeTab === 'overview' && (
+								<div className="space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+									{/* Hero Stats */}
+									<div className="grid grid-cols-3 gap-6">
+										<div className="p-8 bg-gradient-to-br from-void-accent/10 to-transparent rounded-[24px] border border-void-accent/20 relative overflow-hidden group">
+											<div className="absolute -right-4 -top-4 text-void-accent/5 group-hover:scale-110 transition-transform duration-700">
+												<Trophy size={120} />
+											</div>
+											<p className="text-[11px] font-bold text-void-accent uppercase tracking-widest mb-1">Lessons Done</p>
+											<h4 className="text-4xl font-black text-void-fg-1">{global?.totalLessonsCompleted || 0}</h4>
+										</div>
+										<div className="p-8 bg-void-bg-2 rounded-[24px] border border-void-border-2">
+											<p className="text-[11px] font-bold text-void-fg-4 uppercase tracking-widest mb-1">XP Points</p>
+											<h4 className="text-4xl font-black text-void-fg-1">{(global?.totalExercisesSolved || 0) * 50}</h4>
+										</div>
+										<div className="p-8 bg-void-bg-2 rounded-[24px] border border-void-border-2">
+											<p className="text-[11px] font-bold text-void-fg-4 uppercase tracking-widest mb-1">Learning Time</p>
+											<h4 className="text-4xl font-black text-void-fg-1">{formatTime(global?.totalTimeSpent || 0)}</h4>
+										</div>
 									</div>
-									<div className="text-2xl font-bold text-void-fg-1">{streak.current} days</div>
-									<div className="text-xs text-void-fg-3 mt-1">Longest: {streak.longest} days</div>
-								</div>
-								<div className="p-4 bg-void-bg-2 rounded-xl border border-void-border-2">
-									<div className="flex items-center gap-2 mb-2">
-										<BarChart3 size={16} className="text-blue-500" />
-										<span className="text-xs text-void-fg-4 uppercase tracking-wider">Quizzes</span>
-									</div>
-									<div className="text-2xl font-bold text-void-fg-1">{quizzes.length}</div>
-									<div className="text-xs text-void-fg-3 mt-1">Avg: {Math.round(quizAverage)}%</div>
-								</div>
-								<div className="p-4 bg-void-bg-2 rounded-xl border border-void-border-2">
-									<div className="flex items-center gap-2 mb-2">
-										<Clock size={16} className="text-green-500" />
-										<span className="text-xs text-void-fg-4 uppercase tracking-wider">Time</span>
-									</div>
-									<div className="text-2xl font-bold text-void-fg-1">{formatTime(totalTime)}</div>
-									<div className="text-xs text-void-fg-3 mt-1">Total learning</div>
-								</div>
-								<div className="p-4 bg-void-bg-2 rounded-xl border border-void-border-2">
-									<div className="flex items-center gap-2 mb-2">
-										<Award size={16} className="text-purple-500" />
-										<span className="text-xs text-void-fg-4 uppercase tracking-wider">Badges</span>
-									</div>
-									<div className="text-2xl font-bold text-void-fg-1">{earnedBadges.length}</div>
-									<div className="text-xs text-void-fg-3 mt-1">of {badges.length}</div>
-								</div>
-							</div>
 
-							{/* Recent Quizzes */}
-							{quizzes.length > 0 && (
-								<div>
-									<h3 className="text-sm font-semibold text-void-fg-1 mb-3">Recent Quizzes</h3>
-									<div className="space-y-2">
-										{quizzes.slice(0, 5).map((quiz) => (
-											<div
-												key={quiz.quizId}
-												className="flex items-center justify-between p-3 bg-void-bg-2 rounded-lg border border-void-border-2"
-											>
-												<div className="flex items-center gap-3">
-													<div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-														quiz.percentage >= 80
-															? 'bg-green-500/20 text-green-500'
-															: quiz.percentage >= 60
-															? 'bg-yellow-500/20 text-yellow-500'
-															: 'bg-red-500/20 text-red-500'
-													}`}>
-														<Target size={16} />
-													</div>
-													<div>
-														<div className="text-sm font-medium text-void-fg-1">{quiz.title || 'Untitled Quiz'}</div>
-														<div className="text-xs text-void-fg-4">
-															{new Date(quiz.completedAt).toLocaleDateString()}
+									{/* Recent Activity */}
+									<div>
+										<h4 className="text-xs font-black text-void-fg-3 uppercase tracking-[0.2em] mb-6">Recent Activity</h4>
+										<div className="bg-void-bg-2/50 rounded-[24px] border border-void-border-2 overflow-hidden shadow-inner">
+											{thread?.quizzes.length ? (
+												thread.quizzes.slice(-3).map((quiz: any, i: number) => (
+													<div key={i} className="px-8 py-6 flex items-center justify-between border-b border-void-border-2 last:border-0 hover:bg-void-bg-3/30 transition-colors">
+														<div className="flex items-center gap-4">
+															<div className="w-12 h-12 rounded-2xl bg-void-accent/10 flex items-center justify-center text-void-accent">
+																<CheckCircle2 size={20} />
+															</div>
+															<div>
+																<p className="text-sm font-bold text-void-fg-1">Quiz Completed</p>
+																<p className="text-xs text-void-fg-4">Score: {quiz.score}%</p>
+															</div>
 														</div>
+														<span className="text-[10px] font-bold text-void-fg-4 uppercase">{new Date(quiz.completedAt).toLocaleDateString()}</span>
 													</div>
+												))
+											) : (
+												<div className="p-12 text-center">
+													<Brain size={40} className="mx-auto mb-4 text-void-fg-4 opacity-20" />
+													<p className="text-sm text-void-fg-3 font-medium italic">No activity yet. Start a lesson to track your progress!</p>
 												</div>
-												<div className="text-right">
-													<div className="text-lg font-bold text-void-fg-1">{quiz.percentage}%</div>
-													<div className="text-xs text-void-fg-4">{quiz.score}/{quiz.totalPoints} pts</div>
-												</div>
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* No Data State */}
-							{quizzes.length === 0 && (
-								<div className="text-center py-12">
-									<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void-bg-3 flex items-center justify-center">
-										<Brain size={32} className="text-void-fg-4" />
-									</div>
-									<h3 className="text-lg font-semibold text-void-fg-1 mb-2">Start Learning Today!</h3>
-									<p className="text-sm text-void-fg-3 mb-4">
-										Complete your first quiz or exercise to start tracking your progress.
-									</p>
-								</div>
-							)}
-						</div>
-					)}
-
-					{activeTab === 'concepts' && (
-						<div className="space-y-4">
-							<div className="text-center py-12">
-								<BookOpen size={48} className="mx-auto mb-4 text-void-fg-4" />
-								<h3 className="text-lg font-semibold text-void-fg-1 mb-2">Concept Mastery</h3>
-								<p className="text-sm text-void-fg-3">
-									Track which concepts you've mastered and which need more practice.
-								</p>
-							</div>
-						</div>
-					)}
-
-					{activeTab === 'quizzes' && (
-						<div className="space-y-3">
-							{quizzes.length > 0 ? (
-								quizzes.map((quiz, idx) => (
-									<div
-										key={quiz.quizId}
-										className="flex items-center justify-between p-4 bg-void-bg-2 rounded-xl border border-void-border-2"
-									>
-										<div className="flex items-center gap-3">
-											<div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-												quiz.percentage >= 80
-													? 'bg-green-500/20 text-green-500'
-													: quiz.percentage >= 60
-													? 'bg-yellow-500/20 text-yellow-500'
-													: 'bg-red-500/20 text-red-500'
-											}`}>
-												<Target size={20} />
-											</div>
-											<div>
-												<div className="text-sm font-medium text-void-fg-1">{quiz.title || `Quiz #${quizzes.length - idx}`}</div>
-												<div className="text-xs text-void-fg-4">
-													{new Date(quiz.completedAt).toLocaleString()}
-												</div>
-											</div>
-										</div>
-										<div className="flex items-center gap-4">
-											<div className="text-right">
-												<div className="text-xl font-bold text-void-fg-1">{quiz.percentage}%</div>
-												<div className="text-xs text-void-fg-4">{quiz.score}/{quiz.totalPoints}</div>
-											</div>
-											{quiz.percentage >= 80 && <CheckCircle2 size={20} className="text-green-500" />}
+											)}
 										</div>
 									</div>
-								))
-							) : (
-								<div className="text-center py-12">
-									<Target size={48} className="mx-auto mb-4 text-void-fg-4" />
-									<h3 className="text-lg font-semibold text-void-fg-1 mb-2">No Quizzes Yet</h3>
-									<p className="text-sm text-void-fg-3">
-										Complete quizzes to see your quiz history here.
-									</p>
 								</div>
 							)}
-						</div>
-					)}
 
-					{activeTab === 'badges' && (
-						<div className="space-y-6">
-							{earnedBadges.length > 0 && (
-								<div>
-									<h3 className="text-sm font-semibold text-void-fg-1 mb-3 flex items-center gap-2">
-										<Star size={16} className="text-yellow-500" />
-										Earned Badges ({earnedBadges.length})
-									</h3>
-									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-										{earnedBadges.map((badge) => (
-											<div
-												key={badge.id}
-												className="p-4 bg-gradient-to-br from-void-accent/20 to-void-accent/10 rounded-xl border border-void-accent/30"
-											>
-												<div className="text-3xl mb-2">{badge.icon}</div>
-												<div className="text-sm font-semibold text-void-fg-1">{badge.name}</div>
-												<div className="text-xs text-void-fg-3 mt-1">{badge.description}</div>
-											</div>
-										))}
+							{activeTab === 'concepts' && (
+								<div className="animate-in fade-in duration-500">
+									<div className="mb-8">
+										<h4 className="text-xs font-black text-void-fg-3 uppercase tracking-[0.2em] mb-2">Mastery Skill Tree</h4>
+										<p className="text-sm text-void-fg-4 font-medium italic">Visualize your technical growth across different domains.</p>
+									</div>
+									<div className="relative flex flex-wrap justify-center gap-12 py-10">
+										{/* Simple Skill Tree Visualization */}
+										<SkillNode name="React" level={4} color="border-blue-500" />
+										<SkillNode name="TypeScript" level={3} color="border-cyan-500" />
+										<SkillNode name="Node.js" level={2} color="border-green-500" />
+										<SkillNode name="CSS/Tailwind" level={5} color="border-pink-500" />
+										<SkillNode name="Python" level={1} color="border-yellow-500" />
+
+										{/* Connection Lines (Pseudo) */}
+										<div className="absolute top-1/2 left-0 right-0 h-px bg-void-border-2 -z-10" />
 									</div>
 								</div>
 							)}
 
-							{unearnedBadges.length > 0 && (
-								<div>
-									<h3 className="text-sm font-semibold text-void-fg-1 mb-3">Badges to Earn</h3>
-									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-										{unearnedBadges.map((badge) => (
-											<div
-												key={badge.id}
-												className="p-4 bg-void-bg-2 rounded-xl border border-void-border-2 opacity-60"
-											>
-												<div className="text-3xl mb-2 grayscale">{badge.icon}</div>
-												<div className="text-sm font-medium text-void-fg-2">{badge.name}</div>
-												<div className="text-xs text-void-fg-4 mt-1">{badge.description}</div>
-												{badge.progress !== undefined && (
-													<div className="mt-2 h-1.5 bg-void-bg-3 rounded-full overflow-hidden">
-														<div
-															className="h-full bg-void-accent transition-all"
-															style={{ width: `${Math.min(100, (badge.progress / 10) * 100)}%` }}
-														/>
-													</div>
-												)}
-											</div>
-										))}
-									</div>
+							{activeTab === 'quizzes' && (
+								<div className="text-center py-20 animate-in zoom-in-95 duration-500">
+									<Zap size={48} className="mx-auto mb-6 text-void-fg-4 opacity-20" />
+									<h4 className="text-xl font-black text-void-fg-1 mb-2 tracking-tight">Review Sessions</h4>
+									<p className="text-sm text-void-fg-3 max-w-xs mx-auto">Use spaced repetition to cement what you've learned. New quizzes will appear here automatically.</p>
 								</div>
 							)}
 
-							{badges.length === 0 && (
-								<div className="text-center py-12">
-									<Award size={48} className="mx-auto mb-4 text-void-fg-4" />
-									<h3 className="text-lg font-semibold text-void-fg-1 mb-2">No Badges Yet</h3>
-									<p className="text-sm text-void-fg-3">
-										Complete learning activities to earn badges!
-									</p>
+							{activeTab === 'badges' && (
+								<div className="grid grid-cols-3 gap-6 animate-in slide-in-from-right-4 duration-500">
+									{[
+										{ id: '1', name: 'Code Ninja', desc: 'Solved 10 exercises', earned: true, icon: '🥷' },
+										{ id: '2', name: 'Speed Demon', desc: 'Finish lesson in < 5m', earned: true, icon: '⚡' },
+										{ id: '3', name: 'Polyglot', desc: 'Learn 3 languages', earned: false, icon: '🌐' },
+									].map(badge => (
+										<div key={badge.id} className={`p-8 rounded-[32px] border flex flex-col items-center text-center transition-all ${badge.earned ? 'bg-void-bg-2 border-void-accent/30 shadow-xl shadow-void-accent/5' : 'bg-void-bg-1 border-void-border-2 opacity-40 grayscale'}`}>
+											<div className="text-5xl mb-4">{badge.icon}</div>
+											<h5 className="text-sm font-black text-void-fg-1 mb-1">{badge.name}</h5>
+											<p className="text-[10px] font-bold text-void-fg-4 uppercase tracking-widest">{badge.desc}</p>
+										</div>
+									))}
 								</div>
 							)}
 						</div>
-					)}
-				</div>
-
-				{/* Footer */}
-				<div className="px-6 py-4 border-t border-void-border-2 bg-void-bg-2">
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 text-xs text-void-fg-4">
-							<Calendar size={14} />
-							<span>Last practiced: {streak.daysSinceLastPractice === Infinity ? 'Never' : streak.daysSinceLastPractice === 0 ? 'Today' : `${streak.daysSinceLastPractice} days ago`}</span>
-						</div>
-						<button
-							onClick={onClose}
-							className="px-4 py-2 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-1 rounded-lg text-sm font-medium transition-colors"
-						>
-							Close
-						</button>
 					</div>
 				</div>
 			</div>

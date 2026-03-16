@@ -2719,93 +2719,121 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 										<div className="space-y-4">
 											<SettingBox>
-												<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Port</label>
-												<input
-													type='number'
-													className='w-full void-input text-void-fg-1'
-													value={settingsState.globalSettings.apiPort}
-													onChange={(e) => {
-														const port = parseInt(e.target.value);
-														if (port >= 1024 && port <= 65535) voidSettingsService.setGlobalSetting('apiPort', port);
+												<div className="flex items-center justify-between mb-2">
+													<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Port</label>
+													<button
+														type="button"
+														onClick={() => clipboardService?.writeText(settingsState.globalSettings.apiPort.toString())}
+														className="text-void-fg-3 hover:text-void-fg-1 p-1 rounded transition-colors"
+														title="Copy Port"
+													>
+														<Copy size={12} />
+													</button>
+												</div>
+												<VoidSimpleInputBox
+													placeholder="3000"
+													value={settingsState.globalSettings.apiPort.toString()}
+													onChangeValue={(val) => {
+														// Allow empty or partial input while typing, but validate only on numeric values
+														const port = parseInt(val);
+														if (!isNaN(port)) {
+															// Only save if it's a valid port number, otherwise just let the user type
+															if (port >= 1 && port <= 65535) {
+																voidSettingsService.setGlobalSetting('apiPort', port);
+															}
+														} else if (val === '') {
+															voidSettingsService.setGlobalSetting('apiPort', 3000); // Default if cleared
+														}
 													}}
-													min={1024}
-													max={65535}
 												/>
+												<p className="text-[10px] text-void-fg-4 mt-1.5 italic">Standard: 3000, Range: 1024-65535</p>
 											</SettingBox>
 											<SettingBox>
-												<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Tunnel URL (Optional)</label>
-												<input
-													type='text'
-													className='w-full void-input text-void-fg-1'
+												<div className="flex items-center justify-between mb-2">
+													<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Tunnel URL (Optional)</label>
+													{settingsState.globalSettings.apiTunnelUrl && (
+														<button
+															type="button"
+															onClick={() => clipboardService?.writeText(settingsState.globalSettings.apiTunnelUrl!)}
+															className="text-void-fg-3 hover:text-void-fg-1 p-1 rounded transition-colors"
+															title="Copy Tunnel URL"
+														>
+															<Copy size={12} />
+														</button>
+													)}
+												</div>
+												<VoidSimpleInputBox
+													placeholder="https://acoder-api.example.com"
 													value={settingsState.globalSettings.apiTunnelUrl || ''}
-													onChange={(e) => voidSettingsService.setGlobalSetting('apiTunnelUrl', e.target.value || undefined)}
-													placeholder='https://acoder-api.example.com'
+													onChangeValue={(val) => voidSettingsService.setGlobalSetting('apiTunnelUrl', val || undefined)}
 												/>
+												<p className="text-[10px] text-void-fg-4 mt-1.5 italic">External URL for remote access</p>
 											</SettingBox>
 										</div>
 
 										<div className="flex flex-col h-full">
 											<SettingBox className="flex flex-col h-full">
-												<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Access Tokens</label>
-												<div className="flex-1 bg-void-bg-2 rounded-md border border-void-border-2 p-2 space-y-2 overflow-y-auto max-h-48">
+												<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-3 block">Access Tokens</label>
+												<div className="flex-1 bg-void-bg-1/50 rounded-lg border border-void-border-2 p-3 space-y-2 overflow-y-auto max-h-48 min-h-[100px] shadow-inner">
 													{settingsState.globalSettings.apiTokens.length === 0 ? (
-														<div className="text-center py-4 text-void-fg-4 text-sm">No tokens generated</div>
+														<div className="flex flex-col items-center justify-center h-full py-4 text-void-fg-4">
+															<ShieldCheck size={24} className="mb-2 opacity-20" />
+															<span className="text-xs italic">No tokens generated</span>
+														</div>
 													) : (
 														settingsState.globalSettings.apiTokens.map((token, idx) => (
-															<div key={idx} className="flex items-center gap-2 p-2 bg-void-bg-1 rounded border border-void-border-1">
-																<code className="flex-1 text-xs font-mono text-void-fg-2 select-text cursor-text" style={{ userSelect: 'text' }}>{token}</code>
-																<button
-																	type="button"
-																	onClick={() => {
-																		try {
-																			// Try fallback method first (more reliable from click events)
-																			const textArea = document.createElement('textarea');
-																			textArea.value = token;
-																			textArea.style.position = 'fixed';
-																			textArea.style.left = '-9999px';
-																			document.body.appendChild(textArea);
-																			textArea.select();
-																			const success = document.execCommand('copy');
-																			document.body.removeChild(textArea);
-
-																			if (success) return;
-																		} catch (e) {
-																			// Fall through to clipboard service
-																		}
-
-																		// Fallback to clipboard service
-																		if (clipboardService) {
-																			clipboardService.writeText(token).catch(err => console.error('Failed to copy:', err));
-																		} else if (navigator.clipboard) {
-																			navigator.clipboard.writeText(token).catch(err => console.error('Failed to copy:', err));
-																		}
-																	}}
-																	className="text-blue-400 hover:text-blue-300 transition-colors"
-																	title="Copy token"
-																>
-																	<Copy size={14} />
-																</button>
-																<button
-																	type="button"
-																	onClick={() => voidSettingsService.setGlobalSetting('apiTokens', settingsState.globalSettings.apiTokens.filter((_, i) => i !== idx))}
-																	className="text-red-400 hover:text-red-300 transition-colors"
-																	title="Delete token"
-																>
-																	<X size={14} />
-																</button>
+															<div key={idx} className="flex items-center gap-2 p-2 bg-void-bg-2 rounded-md border border-void-border-1 hover:border-void-border-2 transition-all group shadow-sm">
+																<code className="flex-1 text-[11px] font-mono text-void-fg-2 select-text cursor-text truncate group-hover:text-void-fg-1" style={{ userSelect: 'text' }}>{token}</code>
+																<div className="flex items-center gap-1">
+																	<button
+																		type="button"
+																		onClick={() => {
+																			try {
+																				const textArea = document.createElement('textarea');
+																				textArea.value = token;
+																				textArea.style.position = 'fixed';
+																				textArea.style.left = '-9999px';
+																				document.body.appendChild(textArea);
+																				textArea.select();
+																				const success = document.execCommand('copy');
+																				document.body.removeChild(textArea);
+																				if (success) return;
+																			} catch (e) {}
+																			if (clipboardService) {
+																				clipboardService.writeText(token).catch(err => console.error('Failed to copy:', err));
+																			} else if (navigator.clipboard) {
+																				navigator.clipboard.writeText(token).catch(err => console.error('Failed to copy:', err));
+																			}
+																		}}
+																		className="p-1.5 text-void-fg-3 hover:text-blue-400 hover:bg-blue-400/10 rounded transition-all"
+																		title="Copy token"
+																	>
+																		<Copy size={14} />
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => voidSettingsService.setGlobalSetting('apiTokens', settingsState.globalSettings.apiTokens.filter((_, i) => i !== idx))}
+																		className="p-1.5 text-void-fg-3 hover:text-red-400 hover:bg-red-400/10 rounded transition-all"
+																		title="Delete token"
+																	>
+																		<X size={14} />
+																	</button>
+																</div>
 															</div>
 														))
 													)}
 												</div>
-												<button
-													className="mt-3 w-full py-2 bg-[var(--vscode-button-background)] text-white rounded-md hover:bg-[var(--vscode-button-hoverBackground)] transition-all font-medium text-sm shadow-sm"
-													onClick={async () => {
+												<SettingsButton
+													variant="primary"
+													className="mt-4 w-full py-2.5 rounded-xl shadow-void-accent/20"
+													onClick={() => {
 														const token = `acoder_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
 														voidSettingsService.setGlobalSetting('apiTokens', [...settingsState.globalSettings.apiTokens, token]);
 													}}
 												>
-													Generate New Token
-												</button>
+													<Plus size={16} />
+													<span>Generate New Token</span>
+												</SettingsButton>
 											</SettingBox>
 										</div>
 									</div>

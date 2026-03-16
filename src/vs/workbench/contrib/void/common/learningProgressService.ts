@@ -7,6 +7,8 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IEncryptionService } from '../../../../platform/encryption/common/encryptionService.js';
+import { Emitter, Event } from '../../../../base/common/event.js';
+import { Disposable } from '../../../../base/common/lifecycle.js';
 import { LEARNING_PROGRESS_STORAGE_KEY } from './storageKeys.js';
 import {
 	GlobalLearningProgress,
@@ -25,7 +27,7 @@ export const ILearningProgressService = createDecorator<ILearningProgressService
 export interface ILearningProgressService {
 	readonly _serviceBrand: undefined;
 	readonly state: GlobalLearningProgress;
-	readonly onDidChangeState: void;
+	readonly onDidChangeState: Event<GlobalLearningProgress>;
 
 	getThreadProgress(threadId: string): ThreadLearningProgress | null;
 	updateThreadProgress(threadId: string, progress: ThreadLearningProgress): Promise<void>;
@@ -34,7 +36,7 @@ export interface ILearningProgressService {
 	addQuizResult(threadId: string, result: QuizResult): Promise<void>;
 	addHintUsage(threadId: string, hint: HintUsage): Promise<void>;
 	updateStreak(threadId: string): Promise<void>;
-	unlockBadge(threadId: string, badge: Badge): Promise<void>;
+	unlockBadge(threadId: string, badgeId: string): Promise<void>;
 	updateSettings(settings: Partial<LearningSettings>): Promise<void>;
 	addBookmark(lessonId: string, sectionId: string): Promise<void>;
 	removeBookmark(lessonId: string, sectionId: string): Promise<void>;
@@ -43,20 +45,22 @@ export interface ILearningProgressService {
 	getGlobalStats(): GlobalLearningProgress['globalStats'];
 }
 
-export class LearningProgressService implements ILearningProgressService {
+export class LearningProgressService extends Disposable implements ILearningProgressService {
 	readonly _serviceBrand = undefined;
 	private _state: GlobalLearningProgress = defaultGlobalLearningProgress;
-	private _onDidChangeStateEvent: any = undefined;
+
+	private readonly _onDidChangeState = this._register(new Emitter<GlobalLearningProgress>());
+	readonly onDidChangeState: Event<GlobalLearningProgress> = this._onDidChangeState.event;
 
 	constructor(
 		@IStorageService private readonly _storageService: IStorageService,
 		@IEncryptionService private readonly _encryptionService: IEncryptionService,
 	) {
+		super();
 		this._loadState();
 	}
 
-	readonly state = this._state;
-	get onDidChangeState() { return this._onDidChangeStateEvent; }
+	get state() { return this._state; }
 
 	private async _loadState(): Promise<void> {
 		try {
@@ -78,6 +82,7 @@ export class LearningProgressService implements ILearningProgressService {
 				notes: loadedState.notes || {},
 				globalStats: { ...defaultGlobalLearningProgress.globalStats, ...loadedState.globalStats },
 			};
+			this._onDidChangeState.fire(this._state);
 		} catch (error) {
 			console.error('[LearningProgressService] Failed to load state:', error);
 			this._state = defaultGlobalLearningProgress;
@@ -89,9 +94,26 @@ export class LearningProgressService implements ILearningProgressService {
 			const stateStr = JSON.stringify(this._state);
 			const encryptedState = await this._encryptionService.encrypt(stateStr);
 			this._storageService.store(LEARNING_PROGRESS_STORAGE_KEY, encryptedState, StorageScope.APPLICATION, StorageTarget.USER);
+			this._onDidChangeState.fire(this._state);
+			this._checkBadges(); // Automatically check for new badges on save
 		} catch (error) {
 			console.error('[LearningProgressService] Failed to save state:', error);
 		}
+	}
+
+	private _checkBadges() {
+		const stats = this._state.globalStats;
+		const badgesToUnlock: string[] = [];
+
+		if (stats.totalLessonsCompleted >= 1) badgesToUnlock.push('first-lesson');
+		if (stats.totalQuizzesTaken >= 1) badgesToUnlock.push('first-quiz');
+		if (stats.totalQuizzesTaken >= 10) badgesToUnlock.push('quiz-master');
+		if (stats.totalExercisesSolved >= 20) badgesToUnlock.push('practice-maker');
+		if (stats.currentStreak >= 3) badgesToUnlock.push('streak-3');
+		if (stats.currentStreak >= 7) badgesToUnlock.push('streak-7');
+
+		// In a real implementation, we'd find the current threadId to award these to, 
+		// but for now we'll just track them globally in the state if we add a global badges field.
 	}
 
 	getThreadProgress(threadId: string): ThreadLearningProgress | null {
@@ -105,23 +127,7 @@ export class LearningProgressService implements ILearningProgressService {
 	}
 
 	async updateLessonProgress(threadId: string, lessonId: string, progressUpdate: Partial<LessonProgress>): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 0,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-		}
-
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 
 		if (!threadProgress.lessons[lessonId]) {
@@ -139,10 +145,10 @@ export class LearningProgressService implements ILearningProgressService {
 		}
 
 		const lessonProgress = threadProgress.lessons[lessonId];
+		const wasCompleted = lessonProgress.completed;
 		Object.assign(lessonProgress, progressUpdate);
 
-		// Update global stats if lesson was just completed
-		if (progressUpdate.completed && !lessonProgress.completed) {
+		if (lessonProgress.completed && !wasCompleted) {
 			this._state.globalStats.totalLessonsCompleted++;
 			threadProgress.totalLessonsCompleted++;
 		}
@@ -153,29 +159,12 @@ export class LearningProgressService implements ILearningProgressService {
 	}
 
 	async updateExerciseAttempt(threadId: string, exerciseId: string, attempt: ExerciseAttempt): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 0,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-		}
-
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 		const previousAttempt = threadProgress.exercises[exerciseId];
 
 		threadProgress.exercises[exerciseId] = attempt;
 
-		// Update global stats if exercise was just solved
 		if (attempt.solved && (!previousAttempt || !previousAttempt.solved)) {
 			this._state.globalStats.totalExercisesSolved++;
 			threadProgress.totalExercisesSolved++;
@@ -189,23 +178,7 @@ export class LearningProgressService implements ILearningProgressService {
 	}
 
 	async addQuizResult(threadId: string, result: QuizResult): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 0,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-		}
-
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 		threadProgress.quizzes.push(result);
 		this._state.globalStats.totalQuizzesTaken++;
@@ -215,23 +188,7 @@ export class LearningProgressService implements ILearningProgressService {
 	}
 
 	async addHintUsage(threadId: string, hint: HintUsage): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 0,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-		}
-
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 		threadProgress.hints.push(hint);
 		threadProgress.lastUpdated = Date.now();
@@ -240,28 +197,7 @@ export class LearningProgressService implements ILearningProgressService {
 	}
 
 	async updateStreak(threadId: string): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 1,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-			this._state.globalStats.currentStreak = 1;
-			this._state.globalStats.longestStreak = 1;
-			this._state.globalStats.lastLearningDate = Date.now();
-			await this._saveState();
-			return;
-		}
-
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 		const today = new Date();
 		today.setHours(0, 0, 0, 0);
@@ -275,17 +211,14 @@ export class LearningProgressService implements ILearningProgressService {
 		const dayDiff = (todayTimestamp - lastLearningTimestamp) / (1000 * 60 * 60 * 24);
 
 		if (dayDiff === 0) {
-			// Already learned today
 			threadProgress.streakCount = Math.max(threadProgress.streakCount, 1);
 		} else if (dayDiff === 1) {
-			// Consecutive day
 			threadProgress.streakCount++;
 			this._state.globalStats.currentStreak = threadProgress.streakCount;
 			if (threadProgress.streakCount > this._state.globalStats.longestStreak) {
 				this._state.globalStats.longestStreak = threadProgress.streakCount;
 			}
 		} else {
-			// Streak broken
 			threadProgress.streakCount = 1;
 			this._state.globalStats.currentStreak = 1;
 		}
@@ -296,28 +229,28 @@ export class LearningProgressService implements ILearningProgressService {
 		await this._saveState();
 	}
 
-	async unlockBadge(threadId: string, badge: Badge): Promise<void> {
-		if (!this._state.threads[threadId]) {
-			this._state.threads[threadId] = {
-				threadId,
-				lessons: {},
-				exercises: {},
-				quizzes: [],
-				hints: [],
-				streakCount: 0,
-				badges: [],
-				totalLessonsCompleted: 0,
-				totalExercisesSolved: 0,
-				totalTimeSpent: 0,
-				startDate: Date.now(),
-				lastUpdated: Date.now(),
-			};
-		}
-
+	async unlockBadge(threadId: string, badgeId: string): Promise<void> {
+		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
-		const alreadyHasBadge = threadProgress.badges.some(b => b.id === badge.id);
+		const alreadyHasBadge = threadProgress.badges.some(b => b.id === badgeId);
 
 		if (!alreadyHasBadge) {
+			// Find the badge definition (placeholder for now)
+			// Determine category based on ID
+			let category: Badge['category'] = 'milestones';
+			if (badgeId.includes('lesson')) category = 'lessons';
+			else if (badgeId.includes('exercise') || badgeId.includes('practice')) category = 'exercises';
+			else if (badgeId.includes('quiz')) category = 'quizzes';
+			else if (badgeId.includes('streak')) category = 'streaks';
+
+			const badge: Badge = {
+				id: badgeId,
+				name: badgeId.replace(/-/g, ' '),
+				description: 'Unlocked badge',
+				icon: '🏅',
+				unlockedAt: Date.now(),
+				category
+			};
 			threadProgress.badges.push(badge);
 			threadProgress.lastUpdated = Date.now();
 			this._state.globalStats.lastUpdated = Date.now();
@@ -371,6 +304,25 @@ export class LearningProgressService implements ILearningProgressService {
 
 	getGlobalStats(): GlobalLearningProgress['globalStats'] {
 		return this._state.globalStats;
+	}
+
+	private _ensureThreadExists(threadId: string) {
+		if (!this._state.threads[threadId]) {
+			this._state.threads[threadId] = {
+				threadId,
+				lessons: {},
+				exercises: {},
+				quizzes: [],
+				hints: [],
+				streakCount: 0,
+				badges: [],
+				totalLessonsCompleted: 0,
+				totalExercisesSolved: 0,
+				totalTimeSpent: 0,
+				startDate: Date.now(),
+				lastUpdated: Date.now(),
+			};
+		}
 	}
 }
 

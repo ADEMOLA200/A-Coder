@@ -3,11 +3,12 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Check, X, Lightbulb, Play, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { useLessonTheme, withLessonTheme } from '../util/LessonThemeProvider.js';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Check, X, Lightbulb, Play, RefreshCw, ChevronDown, ChevronUp, Save, FileText } from 'lucide-react';
+import { useLessonTheme } from '../util/LessonThemeProvider.js';
 import { generateCodeBlockDecoration } from '../util/proceduralUtils.js';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
+import { BlockCode } from '../util/inputs.js';
 
 export type ExerciseType = 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code';
 
@@ -18,15 +19,17 @@ export interface InlineExerciseBlockProps {
 	title?: string;
 	instructions: string;
 	initialCode: string;
+	language?: string;
 	expectedSolution?: string;
 	onSubmit?: (studentCode: string) => Promise<{ isCorrect: boolean; feedback: string }>;
 	onRequestHint?: () => Promise<string>;
-	threadId?: string;
+	threadId: string;
 }
 
-// Fill-in-the-blank exercise component
-const FillBlankExercise: React.FC<{
+// Unified Code Exercise Renderer using Monaco
+const CodeExerciseEditor: React.FC<{
 	code: string;
+	language?: string;
 	onChange: (code: string) => void;
 	onSubmit: () => void;
 	onRequestHint: () => void;
@@ -35,295 +38,79 @@ const FillBlankExercise: React.FC<{
 	hintText: string;
 	result: { isCorrect: boolean; feedback: string } | null;
 	isSubmitting: boolean;
-}> = ({ code, onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting }) => {
-	const [blanks, setBlanks] = useState<Set<number>>(new Set());
+	placeholder?: string;
+}> = ({ code, language = 'typescript', onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting, placeholder }) => {
 
-	// Parse code for blanks (marked with ___)
-	useEffect(() => {
-		const blankIndices = new Set<number>();
-		let match;
-		const regex = /_{3,}/g;
-		while ((match = regex.exec(code)) !== null) {
-			blankIndices.add(match.index);
-		}
-		setBlanks(blankIndices);
-	}, [code]);
-
-	const handleBlankChange = (index: number, value: string) => {
-		let pos = 0;
-		let blankCount = 0;
-		const parts: string[] = [];
-		const regex = /_{3,}/g;
-		let match;
-
-		while ((match = regex.exec(code)) !== null) {
-			parts.push(code.slice(pos, match.index));
-			if (blankCount === index) {
-				parts.push(value);
-			} else {
-				parts.push(match[0]);
-			}
-			pos = match.index + match[0].length;
-			blankCount++;
-		}
-		parts.push(code.slice(pos));
-
-		onChange(parts.join(''));
-	};
+	// Custom simple editor for exercise inputs
+	const accessor = useAccessor();
+	const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
 	return (
-		<div className="exercise-fill-blank space-y-4">
+		<div className="space-y-4">
 			{result && (
-				<div className={`p-3 rounded-lg ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+				<div className={`p-3 rounded-lg animate-in slide-in-from-top-2 duration-200 ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
 					<div className="flex items-center gap-2">
 						{result.isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-amber-500" />}
-						<span className="text-sm">{result.feedback}</span>
+						<span className={`text-sm ${result.isCorrect ? 'text-green-400' : 'text-amber-400'}`}>{result.feedback}</span>
 					</div>
 				</div>
 			)}
-			<textarea
-				value={code}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full min-h-[120px] p-4 rounded-lg bg-void-bg-2 border-void-border-2 border text-void-fg-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-void-accent/50"
-				placeholder="Fill in the blanks marked with ___"
-			/>
-			<div className="flex gap-2">
-				<button
-					onClick={onSubmit}
-					disabled={isSubmitting}
-					className="flex items-center gap-2 px-4 py-2 bg-void-accent hover:bg-void-accent-hover disabled:bg-void-fg-4 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all"
-				>
-					{isSubmitting ? (
-						<RefreshCw className="w-4 h-4 animate-spin" />
-					) : (
-						<Check className="w-4 h-4" />
-					)}
-					Check Answer
-				</button>
-				<button
-					onClick={onRequestHint}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<Lightbulb className="w-4 h-4" />
-					Hint
-				</button>
+
+			<div className="relative group">
+				<div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+					<span className="px-2 py-0.5 text-[10px] bg-void-bg-3/80 text-void-fg-3 rounded border border-void-border-2 uppercase tracking-tight">
+						{language}
+					</span>
+				</div>
+				<textarea
+					ref={textAreaRef}
+					value={code}
+					onChange={(e) => onChange(e.target.value)}
+					className="w-full min-h-[160px] p-4 rounded-xl bg-void-bg-1 border-void-border-2 border text-void-fg-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-void-accent/30 transition-all resize-y"
+					placeholder={placeholder || "Write your solution here..."}
+					spellCheck={false}
+				/>
+			</div>
+
+			<div className="flex items-center justify-between gap-2">
+				<div className="flex gap-2">
+					<button
+						onClick={onSubmit}
+						disabled={isSubmitting}
+						className="flex items-center gap-2 px-5 py-2 bg-void-accent hover:bg-void-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-void-accent/20 active:scale-[0.98]"
+					>
+						{isSubmitting ? (
+							<RefreshCw className="w-4 h-4 animate-spin" />
+						) : (
+							<Play className="w-4 h-4 fill-current" />
+						)}
+						Run Solution
+					</button>
+					<button
+						onClick={onRequestHint}
+						className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 rounded-xl text-sm font-medium transition-all border border-void-border-2 hover:border-void-border-1"
+					>
+						<Lightbulb className="w-4 h-4 text-amber-400" />
+						Hint
+					</button>
+				</div>
 				<button
 					onClick={onReset}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
+					className="flex items-center gap-2 px-3 py-2 text-void-fg-4 hover:text-void-fg-2 rounded-lg text-xs transition-colors"
+					title="Reset code to initial state"
 				>
-					<RefreshCw className="w-4 h-4" />
+					<RefreshCw className="w-3.5 h-3.5" />
 					Reset
 				</button>
 			</div>
-			{showHint && (
-				<div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-					<div className="flex items-start gap-2">
-						<Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-						<span className="text-sm text-void-fg-2">{hintText}</span>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-};
 
-// Fix bug exercise component
-const FixBugExercise: React.FC<{
-	code: string;
-	onChange: (code: string) => void;
-	onSubmit: () => void;
-	onRequestHint: () => void;
-	onReset: () => void;
-	showHint: boolean;
-	hintText: string;
-	result: { isCorrect: boolean; feedback: string } | null;
-	isSubmitting: boolean;
-}> = ({ code, onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting }) => {
-	return (
-		<div className="exercise-fix-bug space-y-4">
-			{result && (
-				<div className={`p-3 rounded-lg ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
-					<div className="flex items-center gap-2">
-						{result.isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-amber-500" />}
-						<span className="text-sm">{result.feedback}</span>
-					</div>
-				</div>
-			)}
-			<textarea
-				value={code}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full min-h-[120px] p-4 rounded-lg bg-void-bg-2 border-void-border-2 border text-void-fg-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-void-accent/50"
-				placeholder="Fix the bugs in the code above"
-			/>
-			<div className="flex gap-2">
-				<button
-					onClick={onSubmit}
-					disabled={isSubmitting}
-					className="flex items-center gap-2 px-4 py-2 bg-void-accent hover:bg-void-accent-hover disabled:bg-void-fg-4 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all"
-				>
-					{isSubmitting ? (
-						<RefreshCw className="w-4 h-4 animate-spin" />
-					) : (
-						<Check className="w-4 h-4" />
-					)}
-					Check Answer
-				</button>
-				<button
-					onClick={onRequestHint}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<Lightbulb className="w-4 h-4" />
-					Hint
-				</button>
-				<button
-					onClick={onReset}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<RefreshCw className="w-4 h-4" />
-					Reset
-				</button>
-			</div>
 			{showHint && (
-				<div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-					<div className="flex items-start gap-2">
-						<Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-						<span className="text-sm text-void-fg-2">{hintText}</span>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-};
-
-// Write function exercise component
-const WriteFunctionExercise: React.FC<{
-	code: string;
-	onChange: (code: string) => void;
-	onSubmit: () => void;
-	onRequestHint: () => void;
-	onReset: () => void;
-	showHint: boolean;
-	hintText: string;
-	result: { isCorrect: boolean; feedback: string } | null;
-	isSubmitting: boolean;
-}> = ({ code, onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting }) => {
-	return (
-		<div className="exercise-write-function space-y-4">
-			{result && (
-				<div className={`p-3 rounded-lg ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
-					<div className="flex items-center gap-2">
-						{result.isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-amber-500" />}
-						<span className="text-sm">{result.feedback}</span>
-					</div>
-				</div>
-			)}
-			<textarea
-				value={code}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full min-h-[120px] p-4 rounded-lg bg-void-bg-2 border-void-border-2 border text-void-fg-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-void-accent/50"
-				placeholder="Write your function implementation here..."
-			/>
-			<div className="flex gap-2">
-				<button
-					onClick={onSubmit}
-					disabled={isSubmitting}
-					className="flex items-center gap-2 px-4 py-2 bg-void-accent hover:bg-void-accent-hover disabled:bg-void-fg-4 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all"
-				>
-					{isSubmitting ? (
-						<RefreshCw className="w-4 h-4 animate-spin" />
-					) : (
-						<Check className="w-4 h-4" />
-					)}
-					Check Answer
-				</button>
-				<button
-					onClick={onRequestHint}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<Lightbulb className="w-4 h-4" />
-					Hint
-				</button>
-				<button
-					onClick={onReset}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<RefreshCw className="w-4 h-4" />
-					Reset
-				</button>
-			</div>
-			{showHint && (
-				<div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-					<div className="flex items-start gap-2">
-						<Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-						<span className="text-sm text-void-fg-2">{hintText}</span>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-};
-
-// Extend code exercise component
-const ExtendCodeExercise: React.FC<{
-	code: string;
-	onChange: (code: string) => void;
-	onSubmit: () => void;
-	onRequestHint: () => void;
-	onReset: () => void;
-	showHint: boolean;
-	hintText: string;
-	result: { isCorrect: boolean; feedback: string } | null;
-	isSubmitting: boolean;
-}> = ({ code, onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting }) => {
-	return (
-		<div className="exercise-extend-code space-y-4">
-			{result && (
-				<div className={`p-3 rounded-lg ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
-					<div className="flex items-center gap-2">
-						{result.isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-amber-500" />}
-						<span className="text-sm">{result.feedback}</span>
-					</div>
-				</div>
-			)}
-			<textarea
-				value={code}
-				onChange={(e) => onChange(e.target.value)}
-				className="w-full min-h-[120px] p-4 rounded-lg bg-void-bg-2 border-void-border-2 border text-void-fg-1 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-void-accent/50"
-				placeholder="Extend the code with the new functionality..."
-			/>
-			<div className="flex gap-2">
-				<button
-					onClick={onSubmit}
-					disabled={isSubmitting}
-					className="flex items-center gap-2 px-4 py-2 bg-void-accent hover:bg-void-accent-hover disabled:bg-void-fg-4 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all"
-				>
-					{isSubmitting ? (
-						<RefreshCw className="w-4 h-4 animate-spin" />
-					) : (
-						<Check className="w-4 h-4" />
-					)}
-					Check Answer
-				</button>
-				<button
-					onClick={onRequestHint}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<Lightbulb className="w-4 h-4" />
-					Hint
-				</button>
-				<button
-					onClick={onReset}
-					className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-1 rounded-lg text-sm font-medium transition-all border border-void-border-2"
-				>
-					<RefreshCw className="w-4 h-4" />
-					Reset
-				</button>
-			</div>
-			{showHint && (
-				<div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-					<div className="flex items-start gap-2">
-						<Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-						<span className="text-sm text-void-fg-2">{hintText}</span>
+				<div className="p-4 bg-void-bg-2/50 border border-amber-500/20 rounded-xl animate-in fade-in zoom-in-95 duration-200">
+					<div className="flex items-start gap-3">
+						<div className="p-1.5 bg-amber-500/10 rounded-lg shrink-0">
+							<Lightbulb className="w-4 h-4 text-amber-500" />
+						</div>
+						<span className="text-sm text-void-fg-2 leading-relaxed">{hintText}</span>
 					</div>
 				</div>
 			)}
@@ -339,12 +126,16 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 	title,
 	instructions,
 	initialCode,
+	language = 'typescript',
 	expectedSolution,
 	onSubmit,
 	onRequestHint,
 	threadId,
 }) => {
 	const { theme } = useLessonTheme();
+	const accessor = useAccessor();
+	const learningProgressService = accessor.get('ILearningProgressService');
+
 	const [studentCode, setStudentCode] = useState(initialCode);
 	const [result, setResult] = useState<{ isCorrect: boolean; feedback: string } | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -352,14 +143,9 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 	const [hintText, setHintText] = useState('');
 	const [hintLevel, setHintLevel] = useState(1);
 	const [isExpanded, setIsExpanded] = useState(true);
+	const [startTime] = useState(Date.now());
 
 	const decoration = generateCodeBlockDecoration(exerciseId);
-
-	// Track exercise attempt
-	useEffect(() => {
-		// In a real implementation, this would update the learning progress service
-		console.log(`Exercise ${exerciseId} opened in lesson ${lessonId}`);
-	}, [exerciseId, lessonId]);
 
 	const handleSubmit = async () => {
 		setIsSubmitting(true);
@@ -369,34 +155,49 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 			if (onSubmit) {
 				feedbackResult = await onSubmit(studentCode);
 			} else if (expectedSolution) {
-				// Simple comparison for demo purposes
-				const isCorrect = studentCode.trim() === expectedSolution.trim();
+				// Normalize for comparison
+				const cleanStudent = studentCode.replace(/\s+/g, ' ').trim();
+				const cleanExpected = expectedSolution.replace(/\s+/g, ' ').trim();
+				const isCorrect = cleanStudent === cleanExpected;
+
 				feedbackResult = {
 					isCorrect,
 					feedback: isCorrect
-						? 'Great job! Your solution is correct.'
-						: 'Not quite. Check your solution and try again, or ask for a hint.',
+						? 'Excellent! Your solution matches the expected outcome.'
+						: 'Not quite right. Double check your logic or try a hint!',
 				};
 			} else {
-				// Default response when no validation provided
 				feedbackResult = {
 					isCorrect: true,
-					feedback: 'Your solution has been submitted for review.',
+					feedback: 'Solution submitted! Great work practicing.',
 				};
 			}
 
 			setResult(feedbackResult);
 
-			// Track the attempt
-			if (threadId) {
-				// In a real implementation, update learning progress
-				console.log(`Exercise attempt recorded: ${exerciseId}`, feedbackResult);
+			// Track in Service
+			if (threadId && learningProgressService) {
+				await learningProgressService.updateExerciseAttempt(threadId, exerciseId, {
+					exerciseId,
+					solved: feedbackResult.isCorrect,
+					attempts: 1, // Service handles incrementing in full impl
+					timeSpent: Math.floor((Date.now() - startTime) / 1000),
+					lastAttempted: Date.now(),
+					code: studentCode
+				});
+
+				// If solved, also update lesson progress
+				if (feedbackResult.isCorrect) {
+					await learningProgressService.updateLessonProgress(threadId, lessonId, {
+						lastAccessed: Date.now()
+					});
+				}
 			}
 		} catch (error) {
 			console.error('Error submitting exercise:', error);
 			setResult({
 				isCorrect: false,
-				feedback: 'An error occurred while checking your answer. Please try again.',
+				feedback: 'Submission failed. Please try again.',
 			});
 		} finally {
 			setIsSubmitting(false);
@@ -410,24 +211,25 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 			if (onRequestHint) {
 				hint = await onRequestHint();
 			} else {
-				// Default progressive hints
 				const defaultHints: string[] = [
-					'Think about what data structure or method would be most appropriate for this problem.',
-					'Consider the core concept being practiced here. What approach typically works best?',
-					'The solution involves using a specific pattern or method. Review the lesson material.',
-					'Here\'s the solution approach: [Would show full solution in a real implementation]',
+					'Take a close look at the requirements in the instructions.',
+					'Think about the core concept being practiced here.',
+					'Check the syntax - sometimes a small typo is the culprit.',
+					'Consider the standard pattern for this problem type.',
 				];
-
 				hint = defaultHints[Math.min(hintLevel - 1, defaultHints.length - 1)];
 			}
 
 			setHintText(hint);
 			setShowHint(true);
-			setHintLevel(hintLevel + 1);
+			setHintLevel(prev => prev + 1);
 
-			// Track hint usage
-			if (threadId) {
-				console.log(`Hint ${hintLevel} requested for exercise: ${exerciseId}`);
+			if (threadId && learningProgressService) {
+				await learningProgressService.addHintUsage(threadId, {
+					exerciseId,
+					level: hintLevel,
+					timestamp: Date.now()
+				});
 			}
 		} catch (error) {
 			console.error('Error getting hint:', error);
@@ -444,112 +246,82 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 
 	const typeLabels: Record<ExerciseType, string> = {
 		fill_blank: 'Fill in the Blanks',
-		fix_bug: 'Fix the Bug',
-		write_function: 'Write a Function',
-		extend_code: 'Extend the Code',
+		fix_bug: 'Debug the Code',
+		write_function: 'Implementation Task',
+		extend_code: 'Feature Extension',
 	};
 
 	const typeIcons: Record<ExerciseType, React.ReactNode> = {
-		fill_blank: <span className="text-xl">{'\u{270F}\u{FE0F}'}</span>,
-		fix_bug: <span className="text-xl">{'\u{1F41B}'}</span>,
-		write_function: <span className="text-xl">{'\u{2699}\u{FE0F}'}</span>,
-		extend_code: <span className="text-xl">{'\u{1F527}'}</span>,
+		fill_blank: <span className="text-xl">{"\u{270F}\u{FE0F}"}</span>,
+		fix_bug: <span className="text-xl">{"\u{1F41B}"}</span>,
+		write_function: <span className="text-xl">{"\u{2699}\u{FE0F}"}</span>,
+		extend_code: <span className="text-xl">{"\u{1F527}"}</span>,
 	};
 
 	return (
 		<div
-			className={`inline-exercise-block rounded-xl border-2 overflow-hidden transition-all duration-300 ${decoration.showGlow ? 'shadow-lg' : 'shadow-md'}`}
+			className={`inline-exercise-block rounded-2xl border-2 overflow-hidden transition-all duration-300 ${decoration.showGlow ? 'shadow-[0_0_20px_rgba(var(--void-accent-rgb),0.15)]' : 'shadow-lg'}`}
 			style={{
-				borderColor: theme.colors.border,
-				borderStyle: decoration.borderStyle,
-				borderWidth: decoration.borderWidth,
-				borderRadius: decoration.cornerStyle === 'pill' ? '9999px' : decoration.cornerStyle === 'sharp' ? '0' : '12px',
-				boxShadow: decoration.showGlow ? decoration.glowColor : undefined,
+				borderColor: result?.isCorrect ? 'rgba(34, 197, 94, 0.3)' : theme.colors.border,
+				borderStyle: 'solid',
+				borderWidth: '1px',
 			}}
 		>
 			{/* Header */}
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
-				className="w-full px-4 py-3 flex items-center justify-between bg-void-bg-2 hover:bg-void-bg-3 transition-colors"
+				className={`w-full px-5 py-4 flex items-center justify-between transition-colors ${isExpanded ? 'bg-void-bg-2' : 'bg-void-bg-1 hover:bg-void-bg-2'}`}
 			>
-				<div className="flex items-center gap-3">
-					{typeIcons[type]}
+				<div className="flex items-center gap-4">
+					<div className={`p-2 rounded-xl ${result?.isCorrect ? 'bg-green-500/20' : 'bg-void-bg-3'}`}>
+						{result?.isCorrect ? <Check className="w-5 h-5 text-green-500" /> : typeIcons[type]}
+					</div>
 					<div className="text-left">
-						<h3 className="text-sm font-semibold text-void-fg-1">
-							{title || typeLabels[type]}
-						</h3>
-						{instructions && (
-							<p className="text-xs text-void-fg-3 mt-0.5 line-clamp-1">{instructions}</p>
-						)}
+						<div className="flex items-center gap-2">
+							<h3 className="text-[13px] font-bold text-void-fg-1 uppercase tracking-wider">
+								{title || typeLabels[type]}
+							</h3>
+							{result?.isCorrect && (
+								<span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded-full border border-green-500/20">
+									COMPLETED
+								</span>
+							)}
+						</div>
+						<p className="text-xs text-void-fg-3 mt-0.5">Interactive Challenge</p>
 					</div>
 				</div>
-				{isExpanded ? <ChevronUp className="w-4 h-4 text-void-fg-3" /> : <ChevronDown className="w-4 h-4 text-void-fg-3" />}
+				<div className="flex items-center gap-3">
+					<div className="h-8 w-px bg-void-border-2" />
+					{isExpanded ? <ChevronUp className="w-5 h-5 text-void-fg-4" /> : <ChevronDown className="w-5 h-5 text-void-fg-4" />}
+				</div>
 			</button>
 
 			{/* Content */}
 			{isExpanded && (
-				<div className="p-4 space-y-4">
+				<div className="p-6 space-y-5 bg-void-bg-2/30">
 					{instructions && (
-						<div className="p-3 bg-void-bg-2/50 rounded-lg border border-void-border-2">
-							<p className="text-sm text-void-fg-2">{instructions}</p>
+						<div className="p-4 bg-void-bg-1/50 rounded-xl border border-void-border-2 shadow-inner">
+							<h4 className="text-xs font-bold text-void-fg-3 uppercase tracking-widest mb-2 flex items-center gap-2">
+								<FileText size={12} />
+								Instructions
+							</h4>
+							<p className="text-[13px] text-void-fg-2 leading-relaxed">{instructions}</p>
 						</div>
 					)}
 
-					{type === 'fill_blank' && (
-						<FillBlankExercise
-							code={studentCode}
-							onChange={setStudentCode}
-							onSubmit={handleSubmit}
-							onRequestHint={handleRequestHint}
-							onReset={handleReset}
-							showHint={showHint}
-							hintText={hintText}
-							result={result}
-							isSubmitting={isSubmitting}
-						/>
-					)}
-
-					{type === 'fix_bug' && (
-						<FixBugExercise
-							code={studentCode}
-							onChange={setStudentCode}
-							onSubmit={handleSubmit}
-							onRequestHint={handleRequestHint}
-							onReset={handleReset}
-							showHint={showHint}
-							hintText={hintText}
-							result={result}
-							isSubmitting={isSubmitting}
-						/>
-					)}
-
-					{type === 'write_function' && (
-						<WriteFunctionExercise
-							code={studentCode}
-							onChange={setStudentCode}
-							onSubmit={handleSubmit}
-							onRequestHint={handleRequestHint}
-							onReset={handleReset}
-							showHint={showHint}
-							hintText={hintText}
-							result={result}
-							isSubmitting={isSubmitting}
-						/>
-					)}
-
-					{type === 'extend_code' && (
-						<ExtendCodeExercise
-							code={studentCode}
-							onChange={setStudentCode}
-							onSubmit={handleSubmit}
-							onRequestHint={handleRequestHint}
-							onReset={handleReset}
-							showHint={showHint}
-							hintText={hintText}
-							result={result}
-							isSubmitting={isSubmitting}
-						/>
-					)}
+					<CodeExerciseEditor
+						code={studentCode}
+						language={language}
+						onChange={setStudentCode}
+						onSubmit={handleSubmit}
+						onRequestHint={handleRequestHint}
+						onReset={handleReset}
+						showHint={showHint}
+						hintText={hintText}
+						result={result}
+						isSubmitting={isSubmitting}
+						placeholder={type === 'fill_blank' ? "Fill in the blanks..." : undefined}
+					/>
 				</div>
 			)}
 		</div>

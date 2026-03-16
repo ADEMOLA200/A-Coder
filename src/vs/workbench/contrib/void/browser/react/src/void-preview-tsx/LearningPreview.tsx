@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { BookOpen, Trophy, Target, Flame, Settings, Menu, X, Check, AlertCircle } from 'lucide-react';
+import { BookOpen, Trophy, Target, Flame, Settings, Menu, X, Check, AlertCircle, Download, RefreshCw, Clock, Sparkles } from 'lucide-react';
 import '../styles.css';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { useAccessor, useIsDark } from '../util/services.js';
@@ -13,6 +13,8 @@ import { ProgressTracker } from '../learning-tsx/ProgressTracker.js';
 import { CollapsibleLessonSection, ProgressSection, TableOfContents } from '../learning-tsx/CollapsibleLessonSection.js';
 import { InlineExerciseBlock } from '../learning-tsx/InlineExerciseBlock.js';
 import { useCelebration } from '../learning-tsx/CelebrationEffect.js';
+import { URI } from '../../../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../../../base/common/buffer.js';
 
 export interface LearningPreviewProps {
 	title: string;
@@ -30,6 +32,7 @@ export interface LearningPreviewProps {
 		title?: string;
 		instructions: string;
 		initialCode: string;
+		language?: string;
 		expectedSolution?: string;
 	}>;
 	sections?: Array<{
@@ -41,8 +44,8 @@ export interface LearningPreviewProps {
 }
 
 interface LessonState {
-	sections: Record<string, { completed: boolean; expanded: boolean; read: boolean; bookmarked: boolean }>;
-	exercises: Record<string, { attempts: number; solved: boolean; hintsUsed: number }>;
+	sections: Record<string, { completed: boolean; expanded: boolean; read: boolean; bookmarked: boolean; note?: string }>;
+	exercises: Record<string, { attempts: number; solved: boolean; hintsUsed: number; code?: string }>;
 	timeSpent: number;
 	startTime: number;
 	showProgress: boolean;
@@ -274,11 +277,15 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	onSectionToggle,
 	onSectionComplete,
 	onBookmarkToggle,
+	onNoteAdd,
 	exercises = [],
 	sections: providedSections,
 }) => {
 	const isDark = useIsDark();
 	const { theme, getColor } = useLessonTheme();
+	const accessor = useAccessor();
+	const fileService = accessor.get('IFileService');
+	const workspaceContextService = accessor.get('IWorkspaceContextService');
 
 	const [lessonState, setLessonState] = useState<LessonState>({
 		sections: {},
@@ -291,6 +298,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	});
 
 	const [showDashboard, setShowDashboard] = useState(false);
+	const [exporting, setExporting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -337,6 +345,63 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			return hasChanges ? { ...prev, sections: newSections } : prev;
 		});
 	}, [parsedSections]);
+
+	const handleExportMarkdown = async () => {
+		setExporting(true);
+		try {
+			const workspaceFolders = workspaceContextService.getWorkspace().folders;
+			if (workspaceFolders.length === 0) throw new Error('No workspace folder found');
+
+			const lessonDir = URI.joinPath(workspaceFolders[0].uri, '.a-coder', 'lessons');
+			const fileName = `${title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.md`;
+			const fileUri = URI.joinPath(lessonDir, fileName);
+
+			// Build markdown content
+			let md = `# ${title}\n\n`;
+			md += `> **Topic:** ${lessonTopic || 'General'}\n`;
+			md += `> **Generated on:** ${new Date().toLocaleDateString()}\n`;
+			md += `> **Time Spent:** ${formatTime(lessonState.timeSpent)}\n\n`;
+
+			parsedSections.forEach(section => {
+				const state = lessonState.sections[section.id];
+				md += `## ${section.title} ${state?.completed ? '✅' : ''}\n\n`;
+				md += `${section.content}\n\n`;
+				
+				if (state?.note) {
+					md += `### My Notes\n> ${state.note}\n\n`;
+				}
+
+				section.exerciseIds?.forEach(exId => {
+					const ex = exercises.find(e => e.id === exId);
+					const exState = lessonState.exercises[exId];
+					if (ex) {
+						md += `### Exercise: ${ex.title || ex.type}\n`;
+						md += `**Instructions:** ${ex.instructions}\n\n`;
+						if (exState?.code) {
+							md += `\`\`\`${ex.language || 'typescript'}\n${exState.code}\n\`\`\`\n\n`;
+							md += `**Status:** ${exState.solved ? 'Solved' : 'In Progress'}\n\n`;
+						}
+					}
+				});
+			});
+
+			// Create directory if it doesn't exist
+			try { await fileService.createFolder(lessonDir); } catch (e) {}
+			
+			// Write file
+			await fileService.writeFile(fileUri, VSBuffer.fromString(md));
+			
+			// Show success notification or celebration
+			triggerCelebration('burst', 1000);
+		} catch (err) {
+			console.error('Failed to export lesson:', err);
+			setError('Failed to save lesson to workspace.');
+		} finally {
+			setExporting(false);
+		}
+	};
+
+	const { trigger: triggerCelebration } = useCelebration();
 
 	// Handlers
 	const handleSectionToggle = useCallback((sectionId: string, isExpanded: boolean) => {
@@ -399,7 +464,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	}, [lessonState.sections]);
 
 	// Base button styles
-	const btn = 'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors';
+	const btn = 'min-h-[36px] px-3 flex items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all active:scale-[0.95]';
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
@@ -427,7 +492,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 				</div>
 			)}
 
-			<div className="h-full flex flex-col overflow-hidden font-sans" style={{ backgroundColor: theme.colors.background, color: theme.colors.text }}>
+			<div className="h-full flex flex-col overflow-hidden font-sans bg-void-bg-1" style={{ color: theme.colors.text }}>
 
 				{/* Skip to content - focuses main element for keyboard users */}
 				<a
@@ -442,52 +507,53 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 					Skip to content
 				</a>
 
-				{/* Header - compact spacing for related elements */}
-				<header className="flex-shrink-0 flex items-center justify-between border-b px-4 py-3" style={{ backgroundColor: theme.colors.backgroundLight, borderColor: theme.colors.border }}>
-					<div className="flex items-center gap-3 min-w-0">
+				{/* Header - Enhanced style */}
+				<header className="flex-shrink-0 flex items-center justify-between border-b px-6 py-4 bg-void-bg-1/80 backdrop-blur-md sticky top-0 z-20" style={{ borderColor: theme.colors.border }}>
+					<div className="flex items-center gap-4 min-w-0">
 						<div
-							className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+							className="flex-shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-void-accent/10"
 							style={{ backgroundColor: `${getColor('accent')}15` }}
 						>
-							<BookOpen size={18} style={{ color: getColor('accent') }} aria-hidden="true" />
+							<Sparkles size={20} style={{ color: getColor('accent') }} aria-hidden="true" />
 						</div>
 						<div className="flex flex-col gap-0.5 min-w-0">
-							<h1 className="text-sm font-semibold truncate" style={{ color: getColor('text') }}>{title}</h1>
-							<div className="flex items-center gap-2 text-xs">
-								<span style={{ color: getColor('text-muted') }}>
-									{lessonState.showProgress ? `${Math.round(progress)}% complete` : 'Lesson'}
+							<h1 className="text-base font-bold truncate text-void-fg-1 tracking-tight">{title}</h1>
+							<div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-void-fg-3/60">
+								<span className="flex items-center gap-1">
+									<Clock size={10} />
+									{formatTime(lessonState.timeSpent)}
 								</span>
-								<span style={{ color: getColor('text-muted'), opacity: 0.4 }}>·</span>
-								<span style={{ color: getColor('text-muted') }}>{formatTime(lessonState.timeSpent)}</span>
+								<span>·</span>
+								<span>{Math.round(progress)}% Complete</span>
 							</div>
 						</div>
 					</div>
 
-					<div className="flex items-center gap-1">
+					<div className="flex items-center gap-2">
+						<button
+							onClick={handleExportMarkdown}
+							disabled={exporting}
+							aria-label="Save as Guide"
+							className={`${btn} bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 border border-void-border-2 gap-2 text-xs font-bold`}
+						>
+							{exporting ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+							<span>Save Guide</span>
+						</button>
+						<div className="w-px h-6 bg-void-border-2 mx-1" />
 						<button
 							onClick={() => setShowDashboard(true)}
 							aria-label="View progress"
-							className={`${btn} p-2`}
-							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
+							className={`${btn} p-2 text-void-fg-3 hover:text-void-accent hover:bg-void-accent/10`}
 						>
-							<Trophy size={16} aria-hidden="true" />
+							<Trophy size={18} aria-hidden="true" />
 						</button>
 						<button
 							onClick={() => setLessonState(prev => ({ ...prev, showSidebar: !prev.showSidebar }))}
 							aria-label={lessonState.showSidebar ? 'Close sidebar' : 'Open sidebar'}
 							aria-expanded={lessonState.showSidebar}
-							className={`${btn} p-2`}
-							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
+							className={`${btn} p-2 text-void-fg-3 hover:bg-void-bg-2`}
 						>
-							{lessonState.showSidebar ? <X size={16} aria-hidden="true" /> : <Menu size={16} aria-hidden="true" />}
-						</button>
-						<button
-							onClick={() => {/* Settings */}}
-							aria-label="Settings"
-							className={`${btn} p-2`}
-							style={{ color: getColor('text-muted'), '--tw-ring-color': getColor('accent'), '--tw-ring-offset-color': theme.colors.background } as React.CSSProperties}
-						>
-							<Settings size={16} aria-hidden="true" />
+							{lessonState.showSidebar ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
 						</button>
 					</div>
 				</header>
