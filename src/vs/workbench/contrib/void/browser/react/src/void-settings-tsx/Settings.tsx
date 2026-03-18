@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -22,13 +22,13 @@ import Severity from '../../../../../../../base/common/severity.js'
 import { getModelCapabilities, modelOverrideKeys, ModelOverrides } from '../../../../common/modelCapabilities.js';
 import { TransferEditorType, TransferFilesInfo } from '../../../extensionTransferTypes.js';
 import { MCPServer } from '../../../../common/mcpServiceTypes.js';
-import { useMCPServiceState } from '../util/services.js';
+import { useMCPServiceState, useComposioServiceState } from '../util/services.js';
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 import '../styles.css'
 
 type Tab =
-	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'skills' | 'mobileApi' | 'about' | 'all';
+	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'composio' | 'skills' | 'mobileApi' | 'about' | 'all';
 
 // --- Shared Components ---
 
@@ -698,6 +698,448 @@ const ProviderSetting = ({ providerName, settingName, subTextMd }: { providerNam
 // 		</div>
 // 	</div >
 // }
+
+
+// ========================================================
+// Composio App Marketplace Settings Section
+// ========================================================
+
+const ComposioSettingsSection = ({
+	settingsState,
+	voidSettingsService,
+	isDark,
+}: {
+	settingsState: ReturnType<typeof useSettingsState>,
+	voidSettingsService: IVoidSettingsService,
+	isDark: boolean,
+}) => {
+	const composioState = useComposioServiceState()
+	const accessor = useAccessor()
+	const composioService = accessor.get('IComposioService')
+
+	const [isLoadingToolkits, setIsLoadingToolkits] = useState(false)
+	const [apiKey, setApiKey] = useState(settingsState.globalSettings.composioApiKey || '')
+	const [isConnecting, setIsConnecting] = useState<string | null>(null) // toolkit slug being connected
+	const [connectionError, setConnectionError] = useState<string | null>(null)
+	const [searchQuery, setSearchQuery] = useState('')
+	const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+
+	// Get all unique categories from toolkits
+	const allCategories = React.useMemo(() => {
+		const categories = new Set<string>()
+		for (const toolkit of composioState.toolkits) {
+			if (toolkit.categories) {
+				for (const cat of toolkit.categories) {
+					categories.add(cat)
+				}
+			}
+		}
+		return Array.from(categories).sort()
+	}, [composioState.toolkits])
+
+	// Filter toolkits by search and category
+	const filteredToolkits = React.useMemo(() => {
+		let filtered = composioState.toolkits.filter(t => t.status === 'active')
+
+		// Filter by search query
+		if (searchQuery) {
+			const query = searchQuery.toLowerCase()
+			filtered = filtered.filter(t =>
+				t.name.toLowerCase().includes(query) ||
+				t.slug.toLowerCase().includes(query) ||
+				t.description?.toLowerCase().includes(query)
+			)
+		}
+
+		// Filter by category
+		if (selectedCategory) {
+			filtered = filtered.filter(t =>
+				t.categories?.includes(selectedCategory)
+			)
+		}
+
+		return filtered
+	}, [composioState.toolkits, searchQuery, selectedCategory])
+
+	// Load toolkits when API key is set
+	useEffect(() => {
+		if (settingsState.globalSettings.composioApiKey && composioState.toolkits.length === 0) {
+			composioService.fetchToolkits()
+		}
+	}, [settingsState.globalSettings.composioApiKey])
+
+	const handleSaveApiKey = async () => {
+		await voidSettingsService.setGlobalSetting('composioApiKey', apiKey)
+		// Fetch toolkits after saving API key
+		setIsLoadingToolkits(true)
+		try {
+			await composioService.fetchToolkits()
+		} finally {
+			setIsLoadingToolkits(false)
+		}
+	}
+
+	const handleConnect = async (toolkitSlug: string) => {
+		setIsConnecting(toolkitSlug)
+		setConnectionError(null)
+		try {
+			console.log('[Settings] Initiating connection for:', toolkitSlug)
+			const result = await composioService.initiateConnection(toolkitSlug)
+			console.log('[Settings] Connection result:', result)
+
+			if (result.error) {
+				setConnectionError(result.error)
+				setIsConnecting(null)
+				return
+			}
+
+			if (result.redirectUrl) {
+				// Open the OAuth URL in a browser
+				console.log('[Settings] Opening OAuth URL:', result.redirectUrl)
+				const uri = URI.parse(result.redirectUrl)
+				const commandService = accessor.get('ICommandService')
+				await commandService.executeCommand('vscode.open', uri)
+
+				// Poll for connection completion using the connection ID
+				// The API returns an ID that can be polled for status
+				const connectionId = result.id || result.connectedAccountId
+
+				if (connectionId) {
+					console.log('[Settings] Polling for connection completion, ID:', connectionId)
+					// Poll for connection completion (up to 60 seconds)
+					const connection = await composioService.waitForConnection(connectionId, 60000)
+					console.log('[Settings] Poll result:', connection)
+
+					if (connection && connection.status === 'active') {
+						// Save the connection
+						const connections = { ...settingsState.globalSettings.composioConnections }
+						connections[toolkitSlug] = connection.connectedAccountId || connection.id
+						await voidSettingsService.setGlobalSetting('composioConnections', connections)
+						console.log('[Settings] Connection saved:', toolkitSlug, '->', connection.connectedAccountId || connection.id)
+					} else {
+						console.log('[Settings] Connection poll timed out or failed')
+						setConnectionError('Connection timed out. Please complete the authorization in your browser, then click "Refresh Connections" below.')
+					}
+				} else {
+					// No connection ID - user needs to complete auth in browser and manually refresh
+					console.log('[Settings] No connection ID returned, showing manual refresh message')
+					setConnectionError('Please complete the authorization in your browser, then click "Refresh Connections" below.')
+				}
+			} else {
+				setConnectionError('No redirect URL received. Please try again.')
+			}
+		} catch (error) {
+			console.error('[Settings] Failed to initiate connection:', error)
+			setConnectionError(error instanceof Error ? error.message : 'Failed to connect. Please try again.')
+		} finally {
+			setIsConnecting(null)
+		}
+	}
+
+	const handleRefreshConnections = async () => {
+		setIsLoadingToolkits(true)
+		try {
+			// Fetch all connections from Composio
+			const connections = await composioService.listConnections()
+
+			// Build a map of toolkit slug -> connected account ID
+			const connectionMap: { [toolkitSlug: string]: string } = {}
+			for (const conn of connections) {
+				if (conn.status === 'active' && conn.connectedAccountId && conn.toolkitSlug) {
+					connectionMap[conn.toolkitSlug] = conn.connectedAccountId
+				}
+			}
+
+			// Save to settings
+			await voidSettingsService.setGlobalSetting('composioConnections', connectionMap)
+		} catch (error) {
+			console.error('Failed to refresh connections:', error)
+		} finally {
+			setIsLoadingToolkits(false)
+		}
+	}
+
+	const handleDisconnect = async (toolkitSlug: string) => {
+		const connections = { ...settingsState.globalSettings.composioConnections }
+		delete connections[toolkitSlug]
+		await voidSettingsService.setGlobalSetting('composioConnections', connections)
+
+		// Also remove from enabled toolkits
+		const enabled = settingsState.globalSettings.composioEnabledToolkits.filter(s => s !== toolkitSlug)
+		await voidSettingsService.setGlobalSetting('composioEnabledToolkits', enabled)
+	}
+
+	const handleToggleToolkit = async (toolkitSlug: string, enabled: boolean) => {
+		if (enabled) {
+			await composioService.enableToolkit(toolkitSlug)
+		} else {
+			await composioService.disableToolkit(toolkitSlug)
+		}
+	}
+
+	const isConnected = (toolkitSlug: string) => {
+		return !!settingsState.globalSettings.composioConnections[toolkitSlug]
+	}
+
+	const isEnabled = (toolkitSlug: string) => {
+		return settingsState.globalSettings.composioEnabledToolkits.includes(toolkitSlug)
+	}
+
+	return (
+		<section className="space-y-6">
+			<div className="mb-6">
+				<h2 className="text-xl font-medium text-void-fg-1">App Marketplace</h2>
+				<p className="text-sm text-void-fg-3 mt-1">Connect to 300+ apps through Composio for enhanced agent capabilities.</p>
+			</div>
+
+			{/* API Key Configuration */}
+			<SettingCard
+				isDark={isDark}
+				title="Composio API Key"
+				description="Your Composio API key enables access to the app marketplace. Get your key at composio.dev"
+			>
+				<SettingBox>
+					<div className="flex items-center gap-3">
+						<VoidSimpleInputBox
+							type="password"
+							placeholder="composio_..."
+							value={apiKey}
+							onChangeValue={setApiKey}
+							className="flex-1"
+							compact={true}
+						/>
+						<SettingsButton
+							variant="primary"
+							onClick={handleSaveApiKey}
+							disabled={apiKey === settingsState.globalSettings.composioApiKey}
+						>
+							Save
+						</SettingsButton>
+					</div>
+					{!settingsState.globalSettings.composioApiKey && (
+						<p className="text-xs text-void-fg-3 mt-2">
+							<a href="https://composio.dev" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">
+								Get your API key at composio.dev <ExternalLink size={12} className="inline" />
+							</a>
+						</p>
+					)}
+				</SettingBox>
+			</SettingCard>
+
+			{/* Available Apps */}
+			{settingsState.globalSettings.composioApiKey && (
+				<SettingCard
+					isDark={isDark}
+					title="Available Apps"
+					description="Browse and connect apps from the Composio marketplace."
+				>
+					<SettingBox>
+						{/* Refresh button row */}
+						<div className="flex items-center justify-between mb-4">
+							<p className="text-xs text-void-fg-3">
+								{Object.keys(settingsState.globalSettings.composioConnections).length} apps connected • {composioState.toolkits.length} available
+							</p>
+							<SettingsButton
+								variant="secondary"
+								className="text-xs"
+								onClick={handleRefreshConnections}
+								disabled={isLoadingToolkits}
+							>
+								<RefreshCw size={12} className="mr-1" />
+								Refresh
+							</SettingsButton>
+						</div>
+
+						{/* Search and filter */}
+						{composioState.toolkits.length > 0 && (
+							<div className="space-y-3 mb-4">
+								{/* Search input */}
+								<div className="relative">
+									<Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-void-fg-3" />
+									<VoidSimpleInputBox
+										type="text"
+										placeholder="Search apps..."
+										value={searchQuery}
+										onChangeValue={setSearchQuery}
+										className="pl-8 w-full"
+										compact={true}
+									/>
+								</div>
+
+								{/* Category filters */}
+								{allCategories.length > 0 && (
+									<div className="flex flex-wrap gap-1.5">
+										<SettingsButton
+											variant={selectedCategory === null ? 'primary' : 'secondary'}
+											className="text-xs px-2 py-0.5"
+											onClick={() => setSelectedCategory(null)}
+										>
+											All
+										</SettingsButton>
+										{allCategories.slice(0, 10).map(category => (
+											<SettingsButton
+												key={category}
+												variant={selectedCategory === category ? 'primary' : 'secondary'}
+												className="text-xs px-2 py-0.5"
+												onClick={() => setSelectedCategory(category)}
+											>
+												{category}
+											</SettingsButton>
+										))}
+										{allCategories.length > 10 && (
+											<span className="text-xs text-void-fg-3 self-center">
+												+{allCategories.length - 10} more
+											</span>
+										)}
+									</div>
+								)}
+							</div>
+						)}
+
+						{isLoadingToolkits || composioState.isLoading ? (
+							<div className="flex items-center justify-center py-8">
+								<Loader2 className="animate-spin text-void-fg-3" size={24} />
+							</div>
+						) : composioState.error ? (
+							<div className="text-center py-8">
+								<p className="text-red-400">{composioState.error}</p>
+								<SettingsButton
+									variant="secondary"
+									className="mt-3"
+									onClick={() => composioService.fetchToolkits()}
+								>
+									Retry
+								</SettingsButton>
+							</div>
+						) : composioState.toolkits.length === 0 ? (
+							<div className="text-center py-8">
+								<p className="text-void-fg-3">No apps available. Check your API key and try again.</p>
+							</div>
+						) : filteredToolkits.length === 0 ? (
+							<div className="text-center py-8">
+								<p className="text-void-fg-3">No apps match your search.</p>
+							</div>
+						) : (
+							<div className="space-y-3 max-h-[400px] overflow-y-auto">
+								{filteredToolkits.map(toolkit => (
+										<div
+											key={toolkit.slug}
+											className="flex items-center justify-between gap-4 p-3 bg-void-bg-1 rounded-lg border border-void-border-2 hover:border-void-border-1 transition-colors"
+										>
+											<div className="flex items-center gap-3 flex-1 min-w-0">
+												{toolkit.logo ? (
+													<img
+														src={toolkit.logo}
+														alt={toolkit.name}
+														className="w-8 h-8 rounded"
+													/>
+												) : (
+													<div className="w-8 h-8 rounded bg-void-bg-3 flex items-center justify-center">
+														<Plug size={16} className="text-void-fg-3" />
+													</div>
+												)}
+												<div className="flex-1 min-w-0">
+													<h4 className="text-sm font-medium text-void-fg-1 truncate">{toolkit.name}</h4>
+													<p className="text-xs text-void-fg-3 truncate">
+														{toolkit.toolsCount} tools {isConnected(toolkit.slug) && (
+															<span className="text-green-400 ml-2">Connected</span>
+														)}
+													</p>
+												</div>
+											</div>
+
+											<div className="flex items-center gap-2">
+												{isConnected(toolkit.slug) ? (
+													<>
+														<VoidSwitch
+															size='sm'
+															value={isEnabled(toolkit.slug)}
+															onChange={(val) => handleToggleToolkit(toolkit.slug, val)}
+															data-tooltip-id='void-tooltip'
+															data-tooltip-content={isEnabled(toolkit.slug) ? 'Disable for agent' : 'Enable for agent'}
+														/>
+														<SettingsButton
+															variant="danger"
+															onClick={() => handleDisconnect(toolkit.slug)}
+															className="px-2 py-1 text-xs"
+														>
+															Disconnect
+														</SettingsButton>
+													</>
+												) : (
+													<SettingsButton
+														variant="secondary"
+														onClick={() => handleConnect(toolkit.slug)}
+														disabled={isConnecting === toolkit.slug}
+														className="px-3 py-1 text-xs"
+													>
+														{isConnecting === toolkit.slug ? (
+															<Loader2 className="animate-spin" size={14} />
+														) : (
+															'Connect'
+														)}
+													</SettingsButton>
+												)}
+											</div>
+										</div>
+									))}
+							</div>
+						)}
+
+						{connectionError && (
+							<div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+								<p className="text-sm text-red-400">{connectionError}</p>
+							</div>
+						)}
+					</SettingBox>
+				</SettingCard>
+			)}
+
+			{/* Connected Apps */}
+			{Object.keys(settingsState.globalSettings.composioConnections).length > 0 && (
+				<SettingCard
+					isDark={isDark}
+					title="Connected Apps"
+					description="Apps currently connected and available to your AI assistant."
+				>
+					<SettingBox>
+						<div className="space-y-2">
+							{Object.entries(settingsState.globalSettings.composioConnections).map(([slug, accountId]) => {
+								const toolkit = composioState.toolkits.find(t => t.slug === slug)
+								return (
+									<div
+										key={slug}
+										className="flex items-center justify-between gap-3 p-2 bg-void-bg-1 rounded border border-void-border-2"
+									>
+										<div className="flex items-center gap-2">
+											{toolkit?.logo ? (
+												<img src={toolkit.logo} alt={toolkit.name} className="w-5 h-5 rounded" />
+											) : (
+												<div className="w-5 h-5 rounded bg-void-bg-3" />
+											)}
+											<span className="text-sm text-void-fg-1">{toolkit?.name || slug}</span>
+										</div>
+										<div className="flex items-center gap-2">
+											<span className={`text-xs px-2 py-0.5 rounded ${isEnabled(slug) ? 'bg-green-500/20 text-green-400' : 'bg-void-bg-3 text-void-fg-3'}`}>
+												{isEnabled(slug) ? 'Enabled' : 'Disabled'}
+											</span>
+											<button
+												onClick={() => handleDisconnect(slug)}
+												className="text-void-fg-3 hover:text-red-400 p-1"
+											>
+												<X size={14} />
+											</button>
+										</div>
+									</div>
+								)
+							})}
+						</div>
+					</SettingBox>
+				</SettingCard>
+			)}
+		</section>
+	)
+}
 
 
 export const SettingsForProvider = ({ providerName, showProviderTitle, showProviderSuggestions }: { providerName: ProviderName, showProviderTitle: boolean, showProviderSuggestions: boolean }) => {
@@ -1869,6 +2311,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 		{ tab: 'mediaGeneration', label: 'Media Generation', icon: Search },
 		{ tab: 'general', label: 'General', icon: Settings2 },
 		{ tab: 'mcp', label: 'MCP', icon: Database },
+		{ tab: 'composio', label: 'App Marketplace', icon: Store },
 		{ tab: 'skills', label: 'Skills', icon: Zap },
 		{ tab: 'mobileApi', label: 'Mobile API', icon: Smartphone },
 		{ tab: 'about', label: 'About', icon: Info },
@@ -2665,6 +3108,17 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									</SettingBox>
 								</SettingCard>
 							</section>
+						</ErrorBoundary>
+					</div>
+
+					{/* Composio App Marketplace section */}
+					<div className={shouldShowTab('composio') ? 'space-y-8' : 'hidden'}>
+						<ErrorBoundary>
+							<ComposioSettingsSection
+								settingsState={settingsState}
+								voidSettingsService={voidSettingsService}
+								isDark={isDark}
+							/>
 						</ErrorBoundary>
 					</div>
 

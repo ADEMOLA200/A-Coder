@@ -59,6 +59,7 @@ import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
 import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
+import { IComposioService } from '../../../../common/composioService.js'
 // import { IACoderOAuthService, ACoderAuthState, ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
 
 
@@ -88,6 +89,11 @@ const commandBarURIStateListeners: Set<(uri: URI) => void> = new Set();
 const activeURIListeners: Set<(uri: URI | null) => void> = new Set();
 
 const mcpListeners: Set<() => void> = new Set()
+
+// Composio service state
+import { ComposioServiceState } from '../../../../common/composioService.js'
+let composioState: ComposioServiceState = { toolkits: [], isLoading: false, error: undefined, lastFetch: undefined }
+const composioStateListeners: Set<(s: ComposioServiceState) => void> = new Set()
 
 // A-Coder OAuth state (disabled for now)
 // let aCoderAuthState: ACoderAuthState = { isAuthenticated: false }
@@ -253,6 +259,16 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		})
 	)
 
+	// Composio service state
+	const composioService = accessor.get(IComposioService)
+	composioState = composioService.state
+	disposables.push(
+		composioService.onDidChangeState(() => {
+			composioState = composioService.state
+			composioStateListeners.forEach(l => l(composioState))
+		})
+	)
+
 	// A-Coder OAuth state listeners (disabled for now)
 	// aCoderAuthState = aCoderOAuthService.authState
 	// disposables.push(
@@ -324,6 +340,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IMCPService: accessor.get(IMCPService),
 		IMCPModalService: accessor.get(IMCPModalService),
 		IAgentManagerService: accessor.get(IAgentManagerService),
+		IComposioService: accessor.get(IComposioService),
 
 		ILearningProgressService: accessor.get(ILearningProgressService),
 		IStorageService: accessor.get(IStorageService),
@@ -515,6 +532,16 @@ export const useMCPServiceState = () => {
 		mcpListeners.add(listener);
 		return () => { mcpListeners.delete(listener) };
 	}, []);
+	return s
+}
+
+export const useComposioServiceState = () => {
+	const [s, ss] = useState(composioState)
+	useEffect(() => {
+		ss(composioState)
+		composioStateListeners.add(ss)
+		return () => { composioStateListeners.delete(ss) }
+	}, [])
 	return s
 }
 

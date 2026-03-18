@@ -41,8 +41,10 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
+import { IComposioService } from '../common/composioService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
+import { ToonService } from '../common/toonService.js';
 
 
 // related to retrying when LLM message has error
@@ -568,6 +570,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IDirectoryStrService private readonly _directoryStringService: IDirectoryStrService,
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
+		@IComposioService private readonly _composioService: IComposioService,
 		@IVisionService private readonly _visionService: IVisionService,
 		@IModelService private readonly _modelService: IModelService,
 		@IToolOrchestrationService private readonly _orchestrationService: IToolOrchestrationService,
@@ -1006,6 +1009,10 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 	private _computeMCPServerOfToolName = (toolName: string) => {
+		// Composio tools use 'composio_tool_router' as the server name
+		if (toolName.startsWith('COMPOSIO_')) {
+			return 'composio_tool_router'
+		}
 		return this._mcpService.getMCPTools()?.find(t => t.name === toolName)?.mcpServerName
 	}
 
@@ -1047,6 +1054,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 
+
+	// TOON service for compressing large tool results
+	private readonly _toonService = new ToonService();
 
 	private readonly toolErrMsgs = {
 		rejected: 'Tool call was rejected by the user.',
@@ -1250,18 +1260,42 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				toolResult = await result
 			}
 			else {
-				const mcpTools = this._mcpService.getMCPTools()
-				const mcpTool = mcpTools?.find(t => t.name === toolName)
-				if (!mcpTool) { throw new Error(`MCP tool ${toolName} not found`) }
-				if (!mcpTool.mcpServerName) { throw new Error(`MCP tool ${toolName} has no server name`) }
+				// Check if this is a Composio tool
+				if (mcpServerName === 'composio_tool_router') {
+					// Composio Tool Router tools are handled via the Composio service
+					resolveInterruptor(() => { })
 
-				resolveInterruptor(() => { })
+					const sessionId = this._composioService.getSessionId()
+					if (!sessionId) {
+						throw new Error('Composio session not initialized. Please ensure your Composio API key is configured.')
+					}
 
-				toolResult = (await this._mcpService.callMCPTool({
-					serverName: mcpTool.mcpServerName,
-					toolName: toolName,
-					params: toolParams
-				})).result
+					const response = await this._composioService.executeToolViaSession(
+						sessionId,
+						toolName,
+						toolParams as Record<string, unknown>
+					)
+
+					if (!response.successful) {
+						throw new Error(response.error || 'Composio tool execution failed')
+					}
+
+					toolResult = response.data
+				} else {
+					// MCP tools
+					const mcpTools = this._mcpService.getMCPTools()
+					const mcpTool = mcpTools?.find(t => t.name === toolName)
+					if (!mcpTool) { throw new Error(`MCP tool ${toolName} not found`) }
+					if (!mcpTool.mcpServerName) { throw new Error(`MCP tool ${toolName} has no server name`) }
+
+					resolveInterruptor(() => { })
+
+					toolResult = (await this._mcpService.callMCPTool({
+						serverName: mcpTool.mcpServerName,
+						toolName: toolName,
+						params: toolParams
+					})).result
+				}
 			}
 
 			if (interrupted) { return { interrupted: true } } // the tool result is added where we interrupt, not here
@@ -1279,6 +1313,34 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		try {
 			if (isBuiltInTool) {
 				toolResultStr = this._toolsService.stringOfResult[toolName](toolParams as any, toolResult as any)
+			}
+			// For Composio tools, handle result with TOON encoding support
+			else if (mcpServerName === 'composio_tool_router') {
+				// Handle null/undefined results
+				if (toolResult === null || toolResult === undefined) {
+					toolResultStr = 'Tool executed successfully with no output.'
+				} else if (typeof toolResult === 'string') {
+					toolResultStr = toolResult
+				} else {
+					// Try TOON encoding for structured results if enabled
+					const enableToon = this._settingsService.state.globalSettings.enableToolResultTOON
+					if (enableToon && this._toonService.shouldUseToon(toolResult)) {
+						try {
+							const toonEncoded = this._toonService.encode(toolResult)
+							const jsonFallback = JSON.stringify(toolResult, null, 2)
+							// Only use TOON if it saves space
+							if (toonEncoded.length < jsonFallback.length * 0.9) {
+								toolResultStr = `[TOON]\n${toonEncoded}`
+							} else {
+								toolResultStr = jsonFallback
+							}
+						} catch {
+							toolResultStr = JSON.stringify(toolResult, null, 2)
+						}
+					} else {
+						toolResultStr = JSON.stringify(toolResult, null, 2)
+					}
+				}
 			}
 			// For MCP tools, handle the result based on its type
 			else {
@@ -1845,8 +1907,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						const paramsStr = JSON.stringify(toolCall.rawParams);
 						console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
 						const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
-						
-						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpTool?.mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
+
+						// Determine mcpServerName - check for Composio tools first
+						let mcpServerName: string | undefined = mcpTool?.mcpServerName
+						if (toolCall.name.startsWith('COMPOSIO_')) {
+							mcpServerName = 'composio_tool_router'
+						}
+
+						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
 						if (interrupted) {
 							this._setStreamState(threadId, undefined)
 							return

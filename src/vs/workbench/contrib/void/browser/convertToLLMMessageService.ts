@@ -6,7 +6,7 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { ChatMessage } from '../common/chatThreadServiceTypes.js';
 import { getIsReasoningEnabledState, getReservedOutputTokenSpace, getModelCapabilities } from '../common/modelCapabilities.js';
-import { chat_systemMessage } from '../common/prompt/prompts.js';
+import { chat_systemMessage, InternalToolInfo } from '../common/prompt/prompts.js';
 import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, OpenAILLMChatMessage, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { ChatMode, FeatureName, ModelSelection, ProviderName } from '../common/voidSettingsTypes.js';
@@ -17,6 +17,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { EndOfLinePreference } from '../../../../editor/common/model.js';
 import { ToolName } from '../common/toolsServiceTypes.js';
 import { IMCPService } from '../common/mcpService.js';
+import { IComposioService } from '../common/composioService.js';
 import { TokenCountingService } from '../common/tokenCountingService.js';
 import { ContextCompressionService } from '../common/contextCompressionService.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
@@ -625,6 +626,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IVoidModelService private readonly voidModelService: IVoidModelService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IComposioService private readonly composioService: IComposioService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 	) {
 		super();
@@ -679,6 +681,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 		const mcpTools = this.mcpService.getMCPTools()
 
+		// Get Composio meta tools if configured
+		const composioTools = await this._getComposioTools()
+
 		const persistentTerminalIDs = this.terminalToolService.listPersistentTerminalIds()
 
 		// Get student level for student mode
@@ -702,8 +707,63 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		// Get media generation setting
 		const enableMediaGeneration = this.voidSettingsService.state.globalSettings.enableMediaGeneration
 
-		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration })
+		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, composioTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration })
 		return systemMessage
+	}
+
+	/**
+	 * Get Composio tools for the agent.
+	 * Uses Tool Router meta tools for self-managed connections and tool discovery.
+	 */
+	private async _getComposioTools(): Promise<InternalToolInfo[] | undefined> {
+		const apiKey = this.voidSettingsService.state.globalSettings.composioApiKey
+		if (!apiKey) {
+			return undefined
+		}
+
+		try {
+			if (!this.composioService.isConfigured()) {
+				return undefined
+			}
+
+			// Create or get a Tool Router session
+			const sessionId = this.composioService.getSessionId()
+			let session
+
+			if (sessionId) {
+				// Use existing session
+				session = { session_id: sessionId }
+			} else {
+				// Create new session
+				const enabledToolkits = this.voidSettingsService.state.globalSettings.composioEnabledToolkits
+				session = await this.composioService.createSession(
+					enabledToolkits.length > 0 ? enabledToolkits : undefined
+				)
+			}
+
+			// Get meta tools from the session
+			const metaTools = await this.composioService.getMetaTools(session.session_id)
+
+			// Convert meta tools to InternalToolInfo format
+			return metaTools.map(tool => {
+				const params: { [paramName: string]: { description: string } } = {}
+				for (const [paramName, param] of Object.entries(tool.parameters.properties)) {
+					params[paramName] = {
+						description: param.description || `Parameter ${paramName}`,
+					}
+				}
+
+				return {
+					name: tool.name,
+					description: tool.description,
+					params,
+					mcpServerName: 'composio_tool_router',
+				}
+			})
+		} catch (err) {
+			console.error('[ConvertToLLMMessageService] Error getting Composio tools:', err)
+			return undefined
+		}
 	}
 
 

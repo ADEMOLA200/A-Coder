@@ -14,6 +14,8 @@ import { Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { IMCPService } from './mcpService.js';
+import { IComposioService } from './composioService.js';
+import { InternalToolInfo } from './prompt/prompts.js';
 
 // calls channel to implement features
 export const ILLMMessageService = createDecorator<ILLMMessageService>('llmMessageService');
@@ -63,6 +65,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		// @INotificationService private readonly notificationService: INotificationService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IComposioService private readonly composioService: IComposioService,
 	) {
 		super()
 
@@ -120,6 +123,10 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 
 		const mcpTools = this.mcpService.getMCPTools()
 
+		// Get Composio meta tools if API key is configured
+		// Using Tool Router approach: agent self-manages connections via meta tools
+		const composioToolsPromise = this._getComposioTools(globalSettings.composioApiKey, globalSettings.composioEnabledToolkits);
+
 		// add state for request id
 		const requestId = generateUuid();
 		this.llmMessageHooks.onText[requestId] = onText
@@ -127,17 +134,104 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onError[requestId] = onError
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
 
-		// params will be stripped of all its functions over the IPC channel
-		this.channel.call('sendLLMMessage', {
-			...proxyParams,
-			requestId,
-			settingsOfProvider,
-			globalSettings,
-			modelSelection,
-			mcpTools,
-		} satisfies MainSendLLMMessageParams);
+		// Handle Composio tools asynchronously
+		composioToolsPromise.then(composioTools => {
+			// params will be stripped of all its functions over the IPC channel
+			this.channel.call('sendLLMMessage', {
+				...proxyParams,
+				requestId,
+				settingsOfProvider,
+				globalSettings,
+				modelSelection,
+				mcpTools,
+				composioTools,
+			} satisfies MainSendLLMMessageParams);
+		}).catch(err => {
+			// If Composio tools fail, proceed without them
+			console.error('Failed to get Composio tools:', err);
+			this.channel.call('sendLLMMessage', {
+				...proxyParams,
+				requestId,
+				settingsOfProvider,
+				globalSettings,
+				modelSelection,
+				mcpTools,
+				composioTools: undefined,
+			} satisfies MainSendLLMMessageParams);
+		});
 
 		return requestId
+	}
+
+	/**
+	 * Get Composio tools for the agent.
+	 * Uses Tool Router meta tools for self-managed connections and tool discovery.
+	 */
+	private async _getComposioTools(
+		apiKey: string | undefined,
+		enabledToolkits: string[]
+	): Promise<InternalToolInfo[] | undefined> {
+		if (!apiKey) {
+			console.log('[Composio] No API key configured, skipping Composio tools');
+			return undefined;
+		}
+
+		try {
+			if (!this.composioService.isConfigured()) {
+				console.log('[Composio] Service not configured, skipping Composio tools');
+				return undefined;
+			}
+
+			// Create or get a Tool Router session
+			// The session provides meta tools like COMPOSIO_MANAGE_CONNECTIONS, COMPOSIO_SEARCH_TOOLS
+			// that allow the agent to self-manage connections and discover tools
+			const sessionId = this.composioService.getSessionId();
+			let session;
+
+			if (sessionId) {
+				// Use existing session
+				console.log('[Composio] Using existing session:', sessionId);
+				session = { session_id: sessionId };
+			} else {
+				// Create new session with enabled toolkits (or all if empty)
+				console.log('[Composio] Creating new session with toolkits:', enabledToolkits.length > 0 ? enabledToolkits : 'all');
+				session = await this.composioService.createSession(
+					enabledToolkits.length > 0 ? enabledToolkits : undefined
+				);
+				console.log('[Composio] Session created:', session.session_id);
+			}
+
+			// Get meta tools from the session
+			const metaTools = await this.composioService.getMetaTools(session.session_id);
+			console.log('[Composio] Got', metaTools.length, 'meta tools');
+
+			// Convert meta tools to InternalToolInfo format
+			// These meta tools allow the agent to:
+			// - COMPOSIO_MANAGE_CONNECTIONS: Connect/disconnect apps
+			// - COMPOSIO_SEARCH_TOOLS: Search for appropriate tools
+			// - COMPOSIO_GET_TOOL_SCHEMAS: Get input schemas for tools
+			// - COMPOSIO_EXECUTE_TOOLS: Execute tools
+			return metaTools.map(tool => {
+				// Transform params to match InternalToolInfo format
+				// InternalToolInfo.params requires { description: string } for each param
+				const params: { [paramName: string]: { description: string } } = {};
+				for (const [paramName, param] of Object.entries(tool.parameters.properties)) {
+					params[paramName] = {
+						description: param.description || `Parameter ${paramName}`,
+					};
+				}
+
+				return {
+					name: tool.name,
+					description: tool.description,
+					params,
+					mcpServerName: 'composio_tool_router',
+				};
+			});
+		} catch (e) {
+			console.error('[Composio] Error getting Composio tools:', e);
+			return undefined;
+		}
 	}
 
 	abort(requestId: string) {

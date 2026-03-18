@@ -133,6 +133,7 @@ import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/se
 import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidSCMMainService.js';
 import { IVoidSCMService } from '../../workbench/contrib/void/common/voidSCMTypes.js';
 import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChannel.js';
+import { ComposioChannel } from '../../workbench/contrib/void/electron-main/composioChannel.js';
 import { CodeExecutionChannel } from '../../workbench/contrib/void/electron-main/codeExecutionChannel.js';
 import { MorphChannel } from '../../workbench/contrib/void/electron-main/morphChannel.js';
 import { TokenCountingChannel } from '../../workbench/contrib/void/electron-main/tokenCountingChannel.js';
@@ -1273,6 +1274,9 @@ export class CodeApplication extends Disposable {
 
 		// Void added this
 		mainProcessElectronServer.registerChannel('void-channel-mcp', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new MCPChannel())));
+
+		// Void - Composio API (bypasses CORS by making requests from main process)
+		mainProcessElectronServer.registerChannel('void-channel-composio', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ComposioChannel())));
 
 		// Void - Code Execution with quickjs-emscripten
 		mainProcessElectronServer.registerChannel('void-channel-code-execution', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new CodeExecutionChannel())));

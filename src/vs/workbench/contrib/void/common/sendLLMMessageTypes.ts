@@ -140,6 +140,7 @@ export type SendLLMMessageParams = {
 	settingsOfProvider: SettingsOfProvider;
 	globalSettings: GlobalSettings;
 	mcpTools: InternalToolInfo[] | undefined;
+	composioTools: InternalToolInfo[] | undefined;
 } & SendLLMType
 
 

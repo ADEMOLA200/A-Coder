@@ -493,6 +493,10 @@ export type GlobalSettings = {
 	apiPort: number; // Port for the API server (default: 3737)
 	apiTokens: string[]; // List of valid API tokens for authentication
 	apiTunnelUrl?: string; // Optional Cloudflare Tunnel URL for secure remote access
+	// Composio App Marketplace settings
+	composioApiKey: string; // User's Composio API key for apps marketplace
+	composioConnections: { [toolkitSlug: string]: string }; // Map of toolkit slug -> connected account ID
+	composioEnabledToolkits: string[]; // List of enabled toolkit slugs
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -531,6 +535,10 @@ export const defaultGlobalSettings: GlobalSettings = {
 	apiPort: 3737, // Default port
 	apiTokens: [], // No tokens by default
 	apiTunnelUrl: undefined, // No tunnel URL by default
+	// Composio App Marketplace defaults
+	composioApiKey: '', // No API key by default
+	composioConnections: {}, // No connections by default
+	composioEnabledToolkits: [], // No enabled toolkits by default
 }
 
 export type GlobalSettingName = keyof GlobalSettings
@@ -708,3 +716,178 @@ export const defaultGlobalLearningProgress: GlobalLearningProgress = {
 		lastUpdated: 0,
 	},
 };
+
+// ======================================================== Composio App Marketplace Types ========================================================
+
+/**
+ * Authentication scheme types supported by Composio
+ */
+export type ComposioAuthScheme = 'oauth2' | 'api_key' | 'no_auth';
+
+/**
+ * Represents an available app/toolkit from Composio
+ */
+export interface ComposioToolkit {
+	slug: string;                          // Unique identifier (e.g., 'github', 'jira')
+	name: string;                          // Display name (e.g., 'GitHub')
+	description?: string;                  // Description of the app
+	logo?: string;                         // URL to the app's logo
+	categories?: string[];                 // Categories this app belongs to
+	authSchemes: ComposioAuthScheme[];     // Available authentication methods
+	composioManagedAuthSchemes?: ComposioAuthScheme[]; // Auth methods managed by Composio (OAuth)
+	toolsCount: number;                    // Number of tools available
+	triggersCount?: number;                // Number of triggers available
+	status: 'active' | 'inactive' | 'deprecated';
+	appUrl?: string;                      // URL to the original app
+}
+
+/**
+ * Represents a tool/action within a toolkit
+ */
+export interface ComposioTool {
+	slug: string;                          // Unique tool identifier (e.g., 'GITHUB_CREATE_ISSUE')
+	name: string;                          // Display name
+	description: string;                   // What the tool does
+	toolkitSlug: string;                   // Parent toolkit slug
+	toolkitName: string;                   // Parent toolkit display name
+	inputParameters: Record<string, {      // Required/optional parameters
+		type: string;
+		description?: string;
+		required?: boolean;
+		default?: unknown;
+		example?: unknown;
+	}>;
+	outputParameters?: Record<string, {   // Output schema
+		type: string;
+		description?: string;
+		example?: unknown;
+	}>;
+	scopes?: string[];                    // OAuth scopes required
+	tags?: string[];                      // Tags for categorization
+	noAuth?: boolean;                     // If true, no auth required
+	status: 'active' | 'inactive' | 'deprecated';
+}
+
+/**
+ * Connection status for a connected app
+ */
+export type ComposioConnectionStatus = 'pending' | 'active' | 'failed' | 'expired';
+
+/**
+ * Represents a user's connection to an app
+ */
+export interface ComposioConnection {
+	id: string;                            // Connection ID from Composio
+	toolkitSlug: string;                   // App slug (e.g., 'github')
+	toolkitName: string;                   // Display name
+	status: ComposioConnectionStatus;      // Current connection status
+	connectedAccountId?: string;           // Connected account ID for execution
+	authScheme: ComposioAuthScheme;       // How it was authenticated
+	createdAt: number;                    // Timestamp when connected
+	lastUsed?: number;                     // Last execution timestamp
+	redirectUrl?: string;                  // For pending OAuth connections
+	expiresAt?: number;                    // When the connection expires
+	metadata?: Record<string, unknown>;    // Additional connection metadata
+}
+
+/**
+ * Composio settings stored in user preferences
+ */
+export interface ComposioSettings {
+	apiKey: string;                        // User's Composio API key
+	connections: ComposioConnection[];      // List of connected apps
+	enabledToolkits: string[];              // Slugs of enabled apps for tool orchestration
+	lastToolkitSync?: number;              // Last time toolkits were fetched
+}
+
+/**
+ * Default Composio settings
+ */
+export const defaultComposioSettings: ComposioSettings = {
+	apiKey: '',
+	connections: [],
+	enabledToolkits: [],
+	lastToolkitSync: undefined,
+};
+
+/**
+ * Response from Composio API for listing toolkits
+ */
+export interface ComposioToolkitsResponse {
+	items: ComposioToolkit[];
+	totalPages: number;
+	currentPage: number;
+	totalItems: number;
+	nextCursor?: string;
+}
+
+/**
+ * Response from Composio API for listing tools
+ */
+export interface ComposioToolsResponse {
+	items: ComposioTool[];
+	totalPages: number;
+	currentPage: number;
+	totalItems: number;
+	nextCursor?: string;
+}
+
+/**
+ * Response from initiating a connection
+ */
+export interface ComposioConnectionInitResponse {
+	id: string;                            // Connection request ID
+	status: 'pending' | 'active' | 'failed';
+	redirectUrl?: string;                  // OAuth URL if applicable
+	connectedAccountId?: string;           // Account ID if already connected
+	expiresAt?: number;                    // When the connection link expires
+	error?: string;                        // Error message if failed
+}
+
+/**
+ * Response from executing a tool
+ */
+export interface ComposioToolExecutionResponse {
+	successful: boolean;
+	data?: Record<string, unknown>;
+	error?: string;
+	logId?: string;
+	sessionInfo?: unknown;
+}
+
+/**
+ * Tool definition for the agent to invoke during chats
+ */
+export interface ComposioToolDefinition {
+	name: string;                          // Tool name for the agent
+	description: string;                   // When to use this tool
+	parameters: {                          // JSON Schema for parameters
+		type: 'object';
+		properties: Record<string, {
+			type: string;
+			description?: string;
+			enum?: string[];
+		}>;
+		required: string[];
+	};
+	toolkitSlug: string;                   // Parent app
+	toolSlug: string;                      // Composio tool slug
+}
+
+/**
+ * Error types from Composio API
+ */
+export type ComposioErrorCode =
+	| 'INVALID_API_KEY'
+	| 'CONNECTION_NOT_FOUND'
+	| 'TOOL_NOT_FOUND'
+	| 'AUTHENTICATION_FAILED'
+	| 'RATE_LIMIT_EXCEEDED'
+	| 'INVALID_PARAMETERS'
+	| 'EXECUTION_FAILED';
+
+export interface ComposioError {
+	code: ComposioErrorCode;
+	message: string;
+	details?: unknown;
+}

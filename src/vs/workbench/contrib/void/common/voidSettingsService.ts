@@ -332,6 +332,17 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			if (readS.globalSettings.imageGenerationModel === 'sd') {
 				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
 			}
+
+			// Composio App Marketplace settings (1.6.0+)
+			if (readS.globalSettings.composioApiKey === undefined) {
+				readS.globalSettings.composioApiKey = '';
+			}
+			if (readS.globalSettings.composioConnections === undefined) {
+				readS.globalSettings.composioConnections = {};
+			}
+			if (readS.globalSettings.composioEnabledToolkits === undefined) {
+				readS.globalSettings.composioEnabledToolkits = [];
+			}
 		}
 		catch (e) {
 			readS = defaultState()
