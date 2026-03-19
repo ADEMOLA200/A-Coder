@@ -17,6 +17,8 @@ import { CodespanLocationLink } from '../../../../common/chatThreadServiceTypes.
 import { getBasename, getRelative, voidOpenFileFn } from '../sidebar-tsx/ToolResultHelpers.js'
 import { ChartRender, parseChartDefinition } from './ChartRender.js'
 import { LatexRender, LatexTextRender } from './LatexRender.js'
+import { MermaidRender } from './MermaidRender.js'
+import { FillInTheBlank } from '../learning-tsx/FillInTheBlank.js'
 
 
 export type ChatMessageLocation = {
@@ -36,7 +38,15 @@ function isValidUri(s: string): boolean {
 
 const Codespan = ({ text, className, onClick, tooltip }: { text: string, className?: string, onClick?: () => void, tooltip?: string }) => {
 
-	// TODO compute this once for efficiency. we should use `labels.ts/shorten` to display duplicates properly
+	// Check if this is a blank: [___] or ___ (at least 2 underscores)
+	const isBlank = /^(?:\[__{1,}\]|__{2,})$/.test(text.trim());
+
+	if (isBlank) {
+		return <FillInTheBlank
+			placeholder={text.trim()}
+			className={className}
+		/>;
+	}
 
 	return <code
 		className={`font-mono font-medium rounded-sm bg-void-bg-1 px-1 ${className}`}
@@ -255,6 +265,12 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 					<LatexRender latex={contents} displayMode={true} />
 				</div>
 			)
+		}
+
+		// Check if this is a Mermaid diagram
+		const isMermaid = t.lang === 'mermaid' || t.lang === 'mmd'
+		if (isMermaid) {
+			return <MermaidRender diagram={contents} />
 		}
 
 		// figure out langauge and URI
@@ -897,11 +913,24 @@ function renderInlineFormatting(text: string, chatMessageLocation: ChatMessageLo
 
 		// Add inline code with stable key based on content
 		const codeContent = match[1];
-		parts.push(
-			<code key={`ic-${hashContent(codeContent)}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1 text-void-fg-1">
-				{codeContent}
-			</code>
-		);
+
+		// Check if this is a blank: [___] or ___ (at least 2 underscores)
+		const isBlank = /^(?:\[__{1,}\]|__{2,})$/.test(codeContent.trim());
+
+		if (isBlank) {
+			parts.push(
+				<FillInTheBlank
+					key={`blank-${hashContent(codeContent)}`}
+					placeholder={codeContent.trim()}
+				/>
+			);
+		} else {
+			parts.push(
+				<code key={`ic-${hashContent(codeContent)}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1 text-void-fg-1">
+					{codeContent}
+				</code>
+			);
+		}
 
 		lastIndex = match.index + match[0].length;
 	}

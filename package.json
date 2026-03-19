@@ -120,6 +120,7 @@
     "kerberos": "2.1.1",
     "lucide-react": "^0.503.0",
     "marked": "^14.1.4",
+    "mermaid": "^11.13.0",
     "minimist": "^1.2.6",
     "native-is-elevated": "0.7.0",
     "native-keymap": "^3.3.5",
@@ -265,9 +266,6 @@
     "node-gyp-build": "4.8.1",
     "kerberos@2.1.1": {
       "node-addon-api": "7.1.0"
-    },
-    "mermaid": {
-      "marked": "14.1.4"
     }
   },
   "repository": {

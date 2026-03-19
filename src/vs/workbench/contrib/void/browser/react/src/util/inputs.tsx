@@ -1599,7 +1599,14 @@ export const _VoidSelectBox = <T,>({ onChangeSelection, onCreateInstance, select
 
 // makes it so that code in the sidebar isnt too tabbed out
 const normalizeIndentation = (code: string): string => {
-	const lines = code.split('\n')
+	// trim leading and trailing empty lines
+	let lines = code.split('\n')
+	while (lines.length > 0 && lines[0].trim() === '') {
+		lines.shift()
+	}
+	while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+		lines.pop()
+	}
 
 	let minLeadingSpaces = Infinity
 

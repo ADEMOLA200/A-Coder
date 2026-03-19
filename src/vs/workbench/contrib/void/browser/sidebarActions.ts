@@ -178,6 +178,8 @@ registerAction2(class extends Action2 {
 
 		// open and focus new thread
 		chatThreadsService.openNewThread()
+		// Yield to allow React to process the state update before awaiting mount
+		await new Promise(resolve => setTimeout(resolve, 0))
 		await chatThreadsService.focusCurrentChat()
 
 

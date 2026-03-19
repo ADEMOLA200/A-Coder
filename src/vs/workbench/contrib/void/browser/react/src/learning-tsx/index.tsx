@@ -10,6 +10,11 @@ export type {
 	ExerciseType,
 } from './InlineExerciseBlock.js';
 
+export { FillInTheBlank } from './FillInTheBlank.js';
+export type {
+	FillInTheBlankProps,
+} from './FillInTheBlank.js';
+
 export { CollapsibleLessonSection, ProgressSection, TableOfContents } from './CollapsibleLessonSection.js';
 export type {
 	CollapsibleLessonSectionProps,
