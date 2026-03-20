@@ -351,8 +351,16 @@ export class ContextView extends Disposable {
 		this.view.classList.toggle('fixed', this.useFixedPosition);
 
 		const containerPosition = DOM.getDomNodePagePosition(this.container!);
-		this.view.style.top = `${top - (this.useFixedPosition ? DOM.getDomNodePagePosition(this.view).top : containerPosition.top)}px`;
-		this.view.style.left = `${left - (this.useFixedPosition ? DOM.getDomNodePagePosition(this.view).left : containerPosition.left)}px`;
+		if (this.useFixedPosition) {
+			// For fixed positioning, use viewport coordinates directly
+			// The view is positioned relative to the viewport, not the container
+			this.view.style.top = `${top}px`;
+			this.view.style.left = `${left}px`;
+		} else {
+			// For absolute positioning, subtract container offset
+			this.view.style.top = `${top - containerPosition.top}px`;
+			this.view.style.left = `${left - containerPosition.left}px`;
+		}
 		this.view.style.width = 'initial';
 	}
 
