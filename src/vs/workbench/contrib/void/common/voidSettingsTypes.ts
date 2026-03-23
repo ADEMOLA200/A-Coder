@@ -497,6 +497,11 @@ export type GlobalSettings = {
 	composioApiKey: string; // User's Composio API key for apps marketplace
 	composioConnections: { [toolkitSlug: string]: string }; // Map of toolkit slug -> connected account ID
 	composioEnabledToolkits: string[]; // List of enabled toolkit slugs
+	// Composio Trigger settings
+	composioTriggersEnabled: boolean; // Enable/disable trigger webhooks
+	composioTriggerPort?: number; // Port for trigger webhook listener (defaults to apiPort)
+	composioTriggerTunnelUrl?: string; // Optional Cloudflare Tunnel URL for triggers
+	composioTriggerSecret?: string; // Secret for webhook signature verification
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -539,6 +544,11 @@ export const defaultGlobalSettings: GlobalSettings = {
 	composioApiKey: '', // No API key by default
 	composioConnections: {}, // No connections by default
 	composioEnabledToolkits: [], // No enabled toolkits by default
+	// Composio Trigger defaults
+	composioTriggersEnabled: false, // Disabled by default
+	composioTriggerPort: undefined, // Defaults to apiPort
+	composioTriggerTunnelUrl: undefined, // No tunnel URL by default
+	composioTriggerSecret: undefined, // No secret by default (auto-generated on first webhook)
 }
 
 export type GlobalSettingName = keyof GlobalSettings
@@ -890,4 +900,91 @@ export interface ComposioError {
 	code: ComposioErrorCode;
 	message: string;
 	details?: unknown;
+}
+
+// ======================================================== Composio Trigger Types ========================================================
+
+/**
+ * Trigger mechanism type
+ */
+export type ComposioTriggerType = 'webhook' | 'poll';
+
+/**
+ * Represents an available trigger type from Composio
+ */
+export interface ComposioTriggerTypeDefinition {
+	slug: string;                          // Unique identifier (e.g., 'GITHUB_COMMIT_EVENT')
+	name: string;                          // Display name
+	description: string;                    // What event triggers this
+	instructions?: string;                  // Setup instructions
+	type: ComposioTriggerType;             // webhook or poll
+	toolkit: {
+		slug: string;                       // Parent toolkit slug
+		name: string;                       // Parent toolkit display name
+		logo?: string;                      // Logo URL
+	};
+	config?: Record<string, {             // Configuration schema
+		type: string;
+		description?: string;
+		required?: boolean;
+		default?: unknown;
+		enum?: string[];
+	}>;
+	payload?: Record<string, {            // Event payload schema
+		type: string;
+		description?: string;
+	}>;
+	version?: string;
+}
+
+/**
+ * Represents an active trigger instance
+ */
+export interface ComposioTriggerInstance {
+	id: string;                            // Trigger instance ID
+	slug: string;                          // Trigger type slug
+	toolkitSlug: string;                   // Parent toolkit slug
+	connectedAccountId: string;            // Associated connection
+	config: Record<string, unknown>;       // Configuration values
+	enabled: boolean;                      // Whether trigger is active
+	createdAt: number;                     // Creation timestamp
+	updatedAt?: number;                    // Last update timestamp
+	webhookId?: string;                    // Associated webhook ID
+}
+
+/**
+ * Webhook subscription for receiving trigger events
+ */
+export interface ComposioWebhookSubscription {
+	id: string;                             // Subscription ID
+	webhookUrl: string;                    // Where events are sent
+	enabledEvents: string[];                // Event types subscribed to
+	secret: string;                         // Secret for signature verification
+	createdAt: number;
+	status: 'active' | 'disabled' | 'failed';
+}
+
+/**
+ * Trigger event received from Composio
+ */
+export interface ComposioTriggerEvent {
+	triggerSlug: string;                    // Trigger type that fired
+	userId: string;                         // User ID associated
+	connectedAccountId: string;            // Connection that triggered
+	payload: Record<string, unknown>;       // Event data
+	metadata: {
+		webhookId: string;                  // Unique event ID (for idempotency)
+		triggerId: string;                  // Trigger instance ID
+		timestamp: string;                  // ISO timestamp
+	};
+}
+
+/**
+ * Configuration for trigger webhook endpoint
+ */
+export interface ComposioTriggerConfig {
+	enabled: boolean;                      // Whether trigger integration is enabled
+	webhookPort?: number;                  // Port for webhook listener (default: same as API server)
+	webhookPath?: string;                  // Path for webhook endpoint (default: /composio/triggers)
+	tunnelUrl?: string;                    // Optional Cloudflare Tunnel URL
 }

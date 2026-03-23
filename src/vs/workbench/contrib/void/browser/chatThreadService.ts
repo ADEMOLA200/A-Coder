@@ -523,6 +523,14 @@ export interface IChatThreadService {
 	getActiveWorkflow(threadId: string): ThreadType['state']['activeWorkflow'];
 	setActiveWorkflowStatus(threadId: string, status: ActiveWorkflow['status']): void;
 	clearWorkflow(threadId: string): void;
+
+	// Composio trigger handling
+	handleComposioTrigger(event: {
+		triggerSlug: string;
+		userId: string;
+		payload: Record<string, unknown>;
+		metadata: { webhookId: string; triggerId: string; timestamp: string };
+	}): void;
 }
 
 export const IChatThreadService = createDecorator<IChatThreadService>('chatThreadService');
@@ -3754,6 +3762,46 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	clearWorkflow = (threadId: string): void => {
 		this._overrideWorkflow(threadId);
+	}
+
+	// ============================================
+	// Composio Trigger Handling
+	// ============================================
+
+	/**
+	 * Handle incoming Composio trigger events.
+	 * These are received via webhook from Composio when external events occur
+	 * (e.g., GitHub push, Jira ticket update, Slack message).
+	 */
+	handleComposioTrigger = (event: {
+		triggerSlug: string;
+		userId: string;
+		payload: Record<string, unknown>;
+		metadata: { webhookId: string; triggerId: string; timestamp: string };
+	}): void => {
+		console.log('[ChatThreadService] Composio trigger received:', event.triggerSlug, 'webhookId:', event.metadata.webhookId);
+
+		// Get current thread or create a new one for processing
+		const threadId = this.state.currentThreadId;
+
+		// If there's an active thread, emit an event so the UI can respond
+		// The agent can then process the trigger event based on its type
+		if (threadId) {
+			console.log('[ChatThreadService] Processing trigger event for thread:', threadId);
+
+			// Add as a system message that the agent can process
+			const thread = this.state.allThreads[threadId];
+			if (thread) {
+				// Emit an event that can be handled by the UI
+				this._onDidChangeCurrentThread.fire();
+			}
+		} else {
+			console.log('[ChatThreadService] No active thread for trigger event');
+		}
+
+		// TODO: Could implement a trigger queue or notification system here
+		// for cases where the user wants to be notified of trigger events
+		// without automatically starting a chat response.
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

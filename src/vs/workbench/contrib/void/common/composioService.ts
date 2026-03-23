@@ -16,6 +16,9 @@ import {
 	ComposioConnectionInitResponse,
 	ComposioToolExecutionResponse,
 	ComposioAuthScheme,
+	ComposioTriggerTypeDefinition,
+	ComposioTriggerInstance,
+	ComposioWebhookSubscription,
 } from './voidSettingsTypes.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { IMetricsService } from './metricsService.js';
@@ -63,6 +66,31 @@ interface ComposioToolApiResponse {
 	tags?: string[];
 	no_auth?: boolean;
 	status: string;
+}
+
+interface ComposioTriggerTypeDefinitionApiResponse {
+	slug: string;
+	name: string;
+	description?: string;
+	instructions?: string;
+	type: string;
+	toolkit?: {
+		slug: string;
+		name: string;
+		logo?: string;
+	};
+	config?: Record<string, {
+		type: string;
+		description?: string;
+		required?: boolean;
+		default?: unknown;
+		enum?: string[];
+	}>;
+	payload?: Record<string, {
+		type: string;
+		description?: string;
+	}>;
+	version?: string;
 }
 
 /**
@@ -286,6 +314,92 @@ export interface IComposioService {
 
 	/** Clear all cached data */
 	clearCache(): void;
+
+	// ============================================
+	// Trigger Management
+	// ============================================
+
+	/**
+	 * List all available trigger types.
+	 * Returns trigger definitions with their configuration schemas.
+	 * @param toolkitSlug Optional filter by toolkit
+	 */
+	listTriggerTypes(toolkitSlug?: string): Promise<ComposioTriggerTypeDefinition[]>;
+
+	/**
+	 * Get a specific trigger type's configuration schema.
+	 * @param triggerSlug The trigger type slug (e.g., 'GITHUB_COMMIT_EVENT')
+	 */
+	getTriggerType(triggerSlug: string): Promise<ComposioTriggerTypeDefinition | undefined>;
+
+	/**
+	 * Create a trigger instance for a specific event.
+	 * The trigger will fire webhooks when the event occurs.
+	 * @param triggerSlug The trigger type slug
+	 * @param connectedAccountId The connected account to use
+	 * @param config Trigger-specific configuration (e.g., repo owner/name for GitHub)
+	 */
+	createTriggerInstance(
+		triggerSlug: string,
+		connectedAccountId: string,
+		config: Record<string, unknown>
+	): Promise<ComposioTriggerInstance>;
+
+	/**
+	 * List all trigger instances for the user.
+	 */
+	listTriggerInstances(): Promise<ComposioTriggerInstance[]>;
+
+	/**
+	 * Enable a trigger instance.
+	 * @param triggerId The trigger instance ID
+	 */
+	enableTrigger(triggerId: string): Promise<void>;
+
+	/**
+	 * Disable a trigger instance.
+	 * @param triggerId The trigger instance ID
+	 */
+	disableTrigger(triggerId: string): Promise<void>;
+
+	/**
+	 * Delete a trigger instance.
+	 * @param triggerId The trigger instance ID
+	 */
+	deleteTriggerInstance(triggerId: string): Promise<void>;
+
+	// ============================================
+	// Webhook Subscription Management
+	// ============================================
+
+	/**
+	 * Create a webhook subscription to receive trigger events.
+	 * @param webhookUrl The URL to receive events (localhost + tunnel)
+	 * @param enabledEvents Event types to subscribe to
+	 */
+	createWebhookSubscription(
+		webhookUrl: string,
+		enabledEvents: string[]
+	): Promise<ComposioWebhookSubscription>;
+
+	/**
+	 * List all webhook subscriptions.
+	 */
+	listWebhookSubscriptions(): Promise<ComposioWebhookSubscription[]>;
+
+	/**
+	 * Delete a webhook subscription.
+	 * @param subscriptionId The subscription ID
+	 */
+	deleteWebhookSubscription(subscriptionId: string): Promise<void>;
+
+	/**
+	 * Verify a webhook signature.
+	 * @param payload The raw request body
+	 * @param signature The signature header
+	 * @param secret The webhook secret
+	 */
+	verifyWebhookSignature(payload: string, signature: string, secret: string): boolean;
 }
 
 export const IComposioService = createDecorator<IComposioService>('composioService');
@@ -534,7 +648,7 @@ class ComposioService extends Disposable implements IComposioService {
 				parameters: {
 					type: 'object',
 					properties: {
-						toolkit_names: {
+						toolkits: {
 							type: 'array',
 							items: { type: 'string' },
 							description: 'List of toolkit names to manage connections for (e.g., ["github", "gmail"]). Use exact names returned by COMPOSIO_SEARCH_TOOLS.',
@@ -544,7 +658,7 @@ class ComposioService extends Disposable implements IComposioService {
 							description: 'Set to true to force reconnection for all toolkits, even if already connected.',
 						},
 					},
-					required: ['toolkit_names'],
+					required: ['toolkits'],
 				},
 			},
 			{
@@ -553,17 +667,18 @@ class ComposioService extends Disposable implements IComposioService {
 				parameters: {
 					type: 'object',
 					properties: {
-						search_query: {
-							type: 'string',
-							description: 'Natural language description of the task you want to accomplish (e.g., "send an email", "create a GitHub issue").',
+						queries: {
+							type: 'array',
+							items: { type: 'string' },
+							description: 'List of natural language queries describing the task you want to accomplish (e.g., ["send an email", "create a GitHub issue"]).',
 						},
-						toolkit_names: {
+						toolkits: {
 							type: 'array',
 							items: { type: 'string' },
 							description: 'Optional list of toolkit names to filter search results (e.g., ["github", "gmail"]).',
 						},
 					},
-					required: ['search_query'],
+					required: ['queries'],
 				},
 			},
 			{
@@ -597,6 +712,72 @@ class ComposioService extends Disposable implements IComposioService {
 						},
 					},
 					required: ['tool_slug'],
+				},
+			},
+			// Trigger management meta tools
+			{
+				name: 'COMPOSIO_LIST_TRIGGERS',
+				description: 'List available trigger types that can fire events when things happen in connected apps. Use this to discover what events you can react to (e.g., GitHub push, Jira ticket update, Slack message). Returns trigger slugs, descriptions, and configuration requirements.',
+				parameters: {
+					type: 'object',
+					properties: {
+						toolkits: {
+							type: 'array',
+							items: { type: 'string' },
+							description: 'Optional list of toolkit names to filter triggers (e.g., ["github", "jira"]).',
+						},
+					},
+					required: [],
+				},
+			},
+			{
+				name: 'COMPOSIO_CREATE_TRIGGER',
+				description: 'Create a trigger instance to receive events from a connected app. After creating, you must set up a webhook subscription to receive the events. Returns the trigger instance ID needed for webhook setup.',
+				parameters: {
+					type: 'object',
+					properties: {
+						trigger_slug: {
+							type: 'string',
+							description: 'The trigger type slug (e.g., "GITHUB_COMMIT_EVENT", "JIRA_ISSUE_UPDATED"). Use COMPOSIO_LIST_TRIGGERS to discover available triggers.',
+						},
+						connected_account_id: {
+							type: 'string',
+							description: 'The connected account ID to use for this trigger. Use COMPOSIO_MANAGE_CONNECTIONS to get connected accounts.',
+						},
+						config: {
+							type: 'object',
+							description: 'Trigger-specific configuration. For GitHub triggers, this includes "owner" and "repo". Check COMPOSIO_LIST_TRIGGERS for configuration schema.',
+						},
+					},
+					required: ['trigger_slug', 'connected_account_id'],
+				},
+			},
+			{
+				name: 'COMPOSIO_ENABLE_TRIGGER',
+				description: 'Enable a previously created trigger instance. The trigger will start firing events to your webhook.',
+				parameters: {
+					type: 'object',
+					properties: {
+						trigger_id: {
+							type: 'string',
+							description: 'The trigger instance ID returned from COMPOSIO_CREATE_TRIGGER.',
+						},
+					},
+					required: ['trigger_id'],
+				},
+			},
+			{
+				name: 'COMPOSIO_DISABLE_TRIGGER',
+				description: 'Disable a trigger instance. The trigger will stop firing events but the configuration is preserved.',
+				parameters: {
+					type: 'object',
+					properties: {
+						trigger_id: {
+							type: 'string',
+							description: 'The trigger instance ID to disable.',
+						},
+					},
+					required: ['trigger_id'],
 				},
 			},
 		];
@@ -1260,6 +1441,301 @@ class ComposioService extends Disposable implements IComposioService {
 			case 'FAILED':
 			default:
 				return 'failed';
+		}
+	}
+
+	// ============================================
+	// Trigger Management
+	// ============================================
+
+	/**
+	 * List all available trigger types.
+	 * Returns trigger definitions with their configuration schemas.
+	 */
+	async listTriggerTypes(toolkitSlug?: string): Promise<ComposioTriggerTypeDefinition[]> {
+		const params = new URLSearchParams();
+		if (toolkitSlug) {
+			params.append('toolkit_slugs', toolkitSlug);
+		}
+		params.append('limit', '1000');
+
+		const { data, error } = await this._fetch<{ items: ComposioTriggerTypeDefinitionApiResponse[] }>(
+			`/triggers_types?${params.toString()}`
+		);
+
+		if (error || !data) {
+			console.error('[Composio] Failed to fetch trigger types:', error);
+			return [];
+		}
+
+		return (data.items || []).map((item): ComposioTriggerTypeDefinition => ({
+			slug: item.slug,
+			name: item.name,
+			description: item.description || '',
+			instructions: item.instructions,
+			type: item.type as 'webhook' | 'poll',
+			toolkit: {
+				slug: item.toolkit?.slug || '',
+				name: item.toolkit?.name || '',
+				logo: item.toolkit?.logo,
+			},
+			config: item.config,
+			payload: item.payload,
+			version: item.version,
+		}));
+	}
+
+	/**
+	 * Get a specific trigger type's configuration schema.
+	 */
+	async getTriggerType(triggerSlug: string): Promise<ComposioTriggerTypeDefinition | undefined> {
+		const types = await this.listTriggerTypes();
+		return types.find(t => t.slug === triggerSlug);
+	}
+
+	/**
+	 * Create a trigger instance for a specific event.
+	 */
+	async createTriggerInstance(
+		triggerSlug: string,
+		connectedAccountId: string,
+		config: Record<string, unknown>
+	): Promise<ComposioTriggerInstance> {
+		const { data, error } = await this._fetch<{ trigger_id: string }>(
+			`/trigger_instances/${triggerSlug}/upsert`,
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					connected_account_id: connectedAccountId,
+					trigger_config: config,
+				}),
+			}
+		);
+
+		if (error) {
+			console.error('[Composio] Failed to create trigger instance:', error);
+			throw new Error(error.message || 'Failed to create trigger instance');
+		}
+
+		if (!data) {
+			throw new Error('Failed to create trigger instance - no response');
+		}
+
+		this.metricsService.capture('Composio Trigger Created', { triggerSlug });
+
+		return {
+			id: data.trigger_id,
+			slug: triggerSlug,
+			toolkitSlug: triggerSlug.split('_')[0]?.toLowerCase() || '',
+			connectedAccountId,
+			config,
+			enabled: true,
+			createdAt: Date.now(),
+		};
+	}
+
+	/**
+	 * List all trigger instances for the user.
+	 */
+	async listTriggerInstances(): Promise<ComposioTriggerInstance[]> {
+		const { data, error } = await this._fetch<{
+			items: Array<{
+				id: string;
+				trigger_slug: string;
+				toolkit_slug: string;
+				connected_account_id: string;
+				trigger_config: Record<string, unknown>;
+				enabled: boolean;
+				created_at: string;
+				updated_at?: string;
+				webhook_id?: string;
+			}>;
+		}>('/trigger_instances');
+
+		if (error || !data) {
+			console.error('[Composio] Failed to list trigger instances:', error);
+			return [];
+		}
+
+		return (data.items || []).map((item): ComposioTriggerInstance => ({
+			id: item.id,
+			slug: item.trigger_slug,
+			toolkitSlug: item.toolkit_slug,
+			connectedAccountId: item.connected_account_id,
+			config: item.trigger_config,
+			enabled: item.enabled,
+			createdAt: new Date(item.created_at).getTime(),
+			updatedAt: item.updated_at ? new Date(item.updated_at).getTime() : undefined,
+			webhookId: item.webhook_id,
+		}));
+	}
+
+	/**
+	 * Enable a trigger instance.
+	 */
+	async enableTrigger(triggerId: string): Promise<void> {
+		const { error } = await this._fetch(
+			`/trigger_instances/${triggerId}/enable`,
+			{ method: 'PUT' }
+		);
+
+		if (error) {
+			throw new Error(error.message || 'Failed to enable trigger');
+		}
+
+		this.metricsService.capture('Composio Trigger Enabled', { triggerId });
+	}
+
+	/**
+	 * Disable a trigger instance.
+	 */
+	async disableTrigger(triggerId: string): Promise<void> {
+		const { error } = await this._fetch(
+			`/trigger_instances/${triggerId}/disable`,
+			{ method: 'PUT' }
+		);
+
+		if (error) {
+			throw new Error(error.message || 'Failed to disable trigger');
+		}
+
+		this.metricsService.capture('Composio Trigger Disabled', { triggerId });
+	}
+
+	/**
+	 * Delete a trigger instance.
+	 */
+	async deleteTriggerInstance(triggerId: string): Promise<void> {
+		const { error } = await this._fetch(
+			`/trigger_instances/${triggerId}`,
+			{ method: 'DELETE' }
+		);
+
+		if (error) {
+			throw new Error(error.message || 'Failed to delete trigger');
+		}
+
+		this.metricsService.capture('Composio Trigger Deleted', { triggerId });
+	}
+
+	// ============================================
+	// Webhook Subscription Management
+	// ============================================
+
+	/**
+	 * Create a webhook subscription to receive trigger events.
+	 */
+	async createWebhookSubscription(
+		webhookUrl: string,
+		enabledEvents: string[]
+	): Promise<ComposioWebhookSubscription> {
+		const { data, error } = await this._fetch<{
+			id: string;
+			webhook_url: string;
+			enabled_events: string[];
+			secret: string;
+		}>(
+			'/webhook_subscriptions',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					webhook_url: webhookUrl,
+					enabled_events: enabledEvents,
+				}),
+			}
+		);
+
+		if (error) {
+			console.error('[Composio] Failed to create webhook subscription:', error);
+			throw new Error(error.message || 'Failed to create webhook subscription');
+		}
+
+		if (!data) {
+			throw new Error('Failed to create webhook subscription - no response');
+		}
+
+		this.metricsService.capture('Composio Webhook Created', { events: enabledEvents.length });
+
+		return {
+			id: data.id,
+			webhookUrl: data.webhook_url,
+			enabledEvents: data.enabled_events,
+			secret: data.secret,
+			createdAt: Date.now(),
+			status: 'active',
+		};
+	}
+
+	/**
+	 * List all webhook subscriptions.
+	 */
+	async listWebhookSubscriptions(): Promise<ComposioWebhookSubscription[]> {
+		const { data, error } = await this._fetch<{
+			items: Array<{
+				id: string;
+				webhook_url: string;
+				enabled_events: string[];
+				status: string;
+				created_at: string;
+			}>;
+		}>('/webhook_subscriptions');
+
+		if (error || !data) {
+			console.error('[Composio] Failed to list webhook subscriptions:', error);
+			return [];
+		}
+
+		return (data.items || []).map((item): ComposioWebhookSubscription => ({
+			id: item.id,
+			webhookUrl: item.webhook_url,
+			enabledEvents: item.enabled_events,
+			secret: '', // Secret is only returned on creation
+			createdAt: new Date(item.created_at).getTime(),
+			status: item.status as 'active' | 'disabled' | 'failed',
+		}));
+	}
+
+	/**
+	 * Delete a webhook subscription.
+	 */
+	async deleteWebhookSubscription(subscriptionId: string): Promise<void> {
+		const { error } = await this._fetch(
+			`/webhook_subscriptions/${subscriptionId}`,
+			{ method: 'DELETE' }
+		);
+
+		if (error) {
+			throw new Error(error.message || 'Failed to delete webhook subscription');
+		}
+
+		this.metricsService.capture('Composio Webhook Deleted', { subscriptionId });
+	}
+
+	/**
+	 * Verify a webhook signature using HMAC-SHA256.
+	 */
+	verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
+		try {
+			// Composio uses HMAC-SHA256 for webhook signatures
+			// The signature format is typically: sha256=<hex>
+			const crypto = require('crypto');
+			const expectedSignature = crypto
+				.createHmac('sha256', secret)
+				.update(payload)
+				.digest('hex');
+
+			// Compare signatures (timing-safe comparison)
+			const sigWithoutPrefix = signature.startsWith('sha256=')
+				? signature.slice(7)
+				: signature;
+
+			return crypto.timingSafeEqual(
+				Buffer.from(expectedSignature, 'hex'),
+				Buffer.from(sigWithoutPrefix, 'hex')
+			);
+		} catch (err) {
+			console.error('[Composio] Failed to verify webhook signature:', err);
+			return false;
 		}
 	}
 }

@@ -901,7 +901,7 @@ const ComposioSettingsSection = ({
 				<SettingBox>
 					<div className="flex items-center gap-3">
 						<VoidSimpleInputBox
-							type="password"
+							passwordBlur={true}
 							placeholder="composio_..."
 							value={apiKey}
 							onChangeValue={setApiKey}
@@ -1135,6 +1135,110 @@ const ComposioSettingsSection = ({
 							})}
 						</div>
 					</SettingBox>
+				</SettingCard>
+			)}
+
+			{/* Trigger Webhooks Configuration */}
+			{settingsState.globalSettings.composioApiKey && (
+				<SettingCard
+					isDark={isDark}
+					title="Trigger Webhooks"
+					description="Configure webhooks to receive real-time events from connected apps (GitHub, Jira, Slack, etc.)."
+				>
+					<SettingBox className={settingsState.globalSettings.composioTriggersEnabled ? 'bg-green-500/5 border-green-500/20' : ''}>
+						<SettingRow label="Enable Trigger Webhooks">
+							<VoidSwitch
+								size='sm'
+								value={!!settingsState.globalSettings.composioTriggersEnabled}
+								onChange={(newValue) => voidSettingsService.setGlobalSetting('composioTriggersEnabled', newValue)}
+							/>
+						</SettingRow>
+						<p className="text-xs text-void-fg-3 mt-2">
+							When enabled, A-Coder can receive real-time events from connected apps (e.g., GitHub push, Jira ticket update).
+						</p>
+					</SettingBox>
+
+					{settingsState.globalSettings.composioTriggersEnabled && (
+						<div className="mt-4 space-y-4">
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<SettingBox>
+									<div className="flex items-center justify-between mb-2">
+										<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Webhook Port</label>
+										<span className="text-[10px] text-void-fg-4">Defaults to API port</span>
+									</div>
+									<VoidSimpleInputBox
+										placeholder="3000"
+										value={settingsState.globalSettings.composioTriggerPort?.toString() || ''}
+										onChangeValue={(val) => {
+											const port = parseInt(val);
+											if (!isNaN(port) && port >= 1 && port <= 65535) {
+												voidSettingsService.setGlobalSetting('composioTriggerPort', port);
+											} else if (val === '') {
+												voidSettingsService.setGlobalSetting('composioTriggerPort', undefined);
+											}
+										}}
+									/>
+									<p className="text-[10px] text-void-fg-4 mt-1.5 italic">Uses API server port if not specified</p>
+								</SettingBox>
+
+								<SettingBox>
+									<div className="flex items-center justify-between mb-2">
+										<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Webhook Secret</label>
+									</div>
+									<VoidSimpleInputBox
+										type="password"
+										placeholder="Auto-generated if empty"
+										value={settingsState.globalSettings.composioTriggerSecret || ''}
+										onChangeValue={(val) => voidSettingsService.setGlobalSetting('composioTriggerSecret', val || undefined)}
+									/>
+									<p className="text-[10px] text-void-fg-4 mt-1.5 italic">Secret for verifying webhook signatures</p>
+								</SettingBox>
+							</div>
+
+							<SettingBox>
+								<div className="flex items-center justify-between mb-2">
+									<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Tunnel URL (Optional)</label>
+									{settingsState.globalSettings.composioTriggerTunnelUrl && (
+										<button
+											type="button"
+											onClick={() => clipboardService?.writeText(settingsState.globalSettings.composioTriggerTunnelUrl!)}
+											className="text-void-fg-3 hover:text-void-fg-1 p-1 rounded transition-colors"
+											title="Copy Tunnel URL"
+										>
+											<Copy size={12} />
+										</button>
+									)}
+								</div>
+								<VoidSimpleInputBox
+									placeholder="https://your-tunnel.trycloudflare.com"
+									value={settingsState.globalSettings.composioTriggerTunnelUrl || ''}
+									onChangeValue={(val) => voidSettingsService.setGlobalSetting('composioTriggerTunnelUrl', val || undefined)}
+								/>
+								<p className="text-[10px] text-void-fg-4 mt-1.5">
+									External URL for receiving webhooks. Use a tunnel like{' '}
+									<a
+										href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-void-accent hover:underline"
+									>
+										Cloudflare Tunnel <ExternalLink size={10} className="inline" />
+									</a>
+									{' '}for local development.
+								</p>
+							</SettingBox>
+
+							<div className="bg-void-bg-2/50 rounded-lg p-3 border border-void-border-2">
+								<h4 className="text-sm font-medium text-void-fg-2 mb-2">Webhook Endpoint</h4>
+								<p className="text-xs text-void-fg-3 mb-2">
+									Configure this URL in Composio to receive trigger events:
+								</p>
+								<code className="text-xs bg-void-bg-1 px-2 py-1 rounded block overflow-x-auto">
+									{settingsState.globalSettings.composioTriggerTunnelUrl || `http://localhost:${settingsState.globalSettings.composioTriggerPort || settingsState.globalSettings.apiPort || 3000}`}/api/v1/composio/triggers
+								</code>
+							</div>
+						</div>
+					)}
 				</SettingCard>
 			)}
 		</section>

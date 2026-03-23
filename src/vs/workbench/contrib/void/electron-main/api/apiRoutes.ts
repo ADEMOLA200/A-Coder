@@ -404,5 +404,45 @@ export class ApiRoutes {
 				timestamp: new Date().toISOString()
 			});
 		});
+
+		// ===== Composio Webhook Endpoints =====
+
+		// POST /api/v1/composio/triggers - Receive trigger events from Composio
+		this.router.register('POST', '/api/v1/composio/triggers', async (req, res, params) => {
+			try {
+				const event = params.body || {};
+				const { triggerSlug, userId, payload, metadata } = event;
+
+				// Validate required fields
+				if (!triggerSlug || !metadata?.webhookId) {
+					this.router.sendError(res, 400, 'Invalid webhook payload: missing triggerSlug or webhookId');
+					return;
+				}
+
+				console.log('[Composio Webhook] Received trigger:', triggerSlug, 'webhookId:', metadata.webhookId);
+
+				// Forward event to renderer for processing
+				await this.callRenderer('handleComposioTrigger', {
+					triggerSlug,
+					userId,
+					payload,
+					metadata
+				});
+
+				this.router.sendJson(res, 200, { success: true });
+			} catch (err) {
+				console.error('[Composio Webhook] Error processing trigger:', err);
+				this.router.sendError(res, 500, 'Failed to process trigger', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// GET /api/v1/composio/health - Composio webhook health check
+		this.router.register('GET', '/api/v1/composio/health', async (req, res, params) => {
+			this.router.sendJson(res, 200, {
+				status: 'ok',
+				service: 'composio-webhook',
+				timestamp: new Date().toISOString()
+			});
+		});
 	}
 }

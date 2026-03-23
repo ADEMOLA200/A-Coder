@@ -149,6 +149,10 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 			case 'toggleMCPServer':
 				return this.toggleMCPServer(params.serverName, params.isOn);
 
+			// ===== Composio Trigger Methods =====
+			case 'handleComposioTrigger':
+				return this.handleComposioTrigger(params.triggerSlug, params.userId, params.payload, params.metadata);
+
 			default:
 				throw new Error(`Unknown API method: ${method}`);
 		}
@@ -905,6 +909,32 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	private async toggleMCPServer(serverName: string, isOn: boolean) {
 		await this.mcpService.toggleServerIsOn(serverName, isOn);
 		return { success: true, serverName, isOn };
+	}
+
+	// ===== Composio Trigger Implementations =====
+
+	private async handleComposioTrigger(
+		triggerSlug: string,
+		userId: string,
+		payload: Record<string, unknown>,
+		metadata: { webhookId: string; triggerId: string; timestamp: string }
+	) {
+		console.log('[ApiServiceBridge] Received Composio trigger:', triggerSlug, 'webhookId:', metadata.webhookId);
+
+		// Forward the trigger event to the chat thread service for processing
+		// This allows the agent to respond to external events
+		this.chatThreadService.handleComposioTrigger({
+			triggerSlug,
+			userId,
+			payload,
+			metadata,
+		});
+
+		return {
+			success: true,
+			triggerSlug,
+			webhookId: metadata.webhookId,
+		};
 	}
 }
 
