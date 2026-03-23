@@ -644,18 +644,18 @@ class ComposioService extends Disposable implements IComposioService {
 		const metaTools: ComposioMetaTool[] = [
 			{
 				name: 'COMPOSIO_MANAGE_CONNECTIONS',
-				description: 'Create or manage connections to user applications. Returns authentication links for OAuth/API key setup. Use this when you need to connect a new app or verify existing connections. Always show the redirect_url to the user as a formatted link.',
+				description: 'REQUIRED FIRST: Use this tool BEFORE executing any Composio tool that needs authentication. Call this when: (1) User asks to use an app for the first time, (2) COMPOSIO_SEARCH_TOOLS shows isConnected=false for a toolkit, (3) Tool execution fails with authentication/connection error. Returns authentication links (redirect_url) that the user must click to authorize access. ALWAYS show the redirect_url to the user as a clickable link and wait for them to complete authentication before proceeding.',
 				parameters: {
 					type: 'object',
 					properties: {
 						toolkits: {
 							type: 'array',
 							items: { type: 'string' },
-							description: 'List of toolkit names to manage connections for (e.g., ["github", "gmail"]). Use exact names returned by COMPOSIO_SEARCH_TOOLS.',
+							description: 'List of toolkit names to connect (e.g., ["github", "gmail"]). Use exact toolkit names returned by COMPOSIO_SEARCH_TOOLS. Can connect multiple apps at once.',
 						},
 						reinitiate_all: {
 							type: 'boolean',
-							description: 'Set to true to force reconnection for all toolkits, even if already connected.',
+							description: 'Set to true to force reconnection for all toolkits, even if already connected. Use when authentication has expired or user wants to switch accounts.',
 						},
 					},
 					required: ['toolkits'],
@@ -663,7 +663,7 @@ class ComposioService extends Disposable implements IComposioService {
 			},
 			{
 				name: 'COMPOSIO_SEARCH_TOOLS',
-				description: 'Search for available tools based on a task description. Returns matching tools with their slugs, descriptions, and connection status. Use this first to discover which tools can accomplish a task.',
+				description: 'START HERE: Search for tools to accomplish a task. Returns matching tools with their slugs, descriptions, and crucially their connection status (isConnected field). If isConnected is false for a tool you need, you MUST call COMPOSIO_MANAGE_CONNECTIONS first to authenticate with that app.',
 				parameters: {
 					type: 'object',
 					properties: {
@@ -698,7 +698,7 @@ class ComposioService extends Disposable implements IComposioService {
 			},
 			{
 				name: 'COMPOSIO_EXECUTE_TOOLS',
-				description: 'Execute a tool action. Use after COMPOSIO_SEARCH_TOOLS to find the right tool and COMPOSIO_GET_TOOL_SCHEMAS to get the parameters. Returns the tool execution result.',
+				description: 'Execute a tool action. PREREQUISITES: (1) Call COMPOSIO_SEARCH_TOOLS to find the right tool, (2) Check isConnected=true for that toolkit - if false, call COMPOSIO_MANAGE_CONNECTIONS first, (3) Call COMPOSIO_GET_TOOL_SCHEMAS to get parameter schema. Returns the tool execution result.',
 				parameters: {
 					type: 'object',
 					properties: {
