@@ -90,8 +90,9 @@ Transform A-Coder into an interactive learning environment:
 
 AI-generated code often fails to apply correctly. A-Coder solves this with:
 
-- **Anchor-Based Matching**: Robust handling of AI placeholders like `// ... existing code ...`
-- **Fuzzy Fallback**: Levenshtein distance matching—works even when models make small text errors
+- **Exact Match Requirement**: Clean, predictable behavior—text must match exactly (like Claude Code)
+- **Clear Error Messages**: Helpful suggestions showing similar blocks when text isn't found
+- **Uniqueness Enforcement**: Fails if text appears multiple times, preventing accidental wrong edits
 - **Morph Fast Apply**: High-speed, high-accuracy code application via Morph AI engine
 - **Smart Diff Preview**: See exactly what will change before applying
 

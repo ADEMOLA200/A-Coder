@@ -193,30 +193,26 @@ Execute TypeScript/JavaScript code in a sandboxed environment with access to all
 ```
 
 ### edit_file
-Applies targeted changes using ORIGINAL/UPDATED blocks. This tool has robust validation and error handling.
+Applies targeted changes by replacing exact text matches. This tool has robust validation and error handling.
 
-**Format for `original_updated_blocks`:**
-```
-<<<<<<< ORIGINAL
-[exact code from file]
-=======
-[updated code]
->>>>>>> UPDATED
-```
+**Parameters:**
+- `uri`: The full file path to edit
+- `old_string`: The exact text to find and replace (must match exactly)
+- `new_string`: The new text to replace it with
 
 **JSON Schema:**
 ```json
 {
   "name": "edit_file",
-  "description": "Edit specific sections of a file using ORIGINAL/UPDATED blocks.",
+  "description": "Edit specific sections of a file by replacing exact text matches.",
   "parameters": {
     "type": "object",
     "properties": {
       "uri": { "type": "string", "description": "The FULL file path to edit." },
-      "original_updated_blocks": { "type": "string", "description": "String of ORIGINAL/UPDATED block(s)." },
-      "try_fuzzy_matching": { "type": "boolean", "description": "Optional. Use fuzzy matching if exact match fails." }
+      "old_string": { "type": "string", "description": "The exact text to find and replace. Must match exactly including whitespace." },
+      "new_string": { "type": "string", "description": "The new text to replace it with." }
     },
-    "required": ["uri", "original_updated_blocks"]
+    "required": ["uri", "old_string", "new_string"]
   }
 }
 ```
@@ -240,7 +236,7 @@ The `edit_file` tool performs extensive validation before applying changes. Fine
 
 1. **Always read first**: Use `read_file` before `edit_file` to get exact text
 2. **Include context**: Add 2-3 lines before and after the target code
-3. **Make it unique**: Ensure the ORIGINAL block appears only once in the file
+3. **Make it unique**: Ensure the old_string appears only once in the file
 4. **Match exactly**: Copy text exactly including whitespace, indentation, comments
 5. **Prefer rewrite_file**: For large changes or when uniqueness is uncertain
 

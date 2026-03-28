@@ -17,7 +17,6 @@ import { CodespanLocationLink } from '../../../../common/chatThreadServiceTypes.
 import { getBasename, getRelative, voidOpenFileFn } from '../sidebar-tsx/ToolResultHelpers.js'
 import { ChartRender, parseChartDefinition } from './ChartRender.js'
 import { LatexRender, LatexTextRender } from './LatexRender.js'
-import { MermaidRender } from './MermaidRender.js'
 import { FillInTheBlank } from '../learning-tsx/FillInTheBlank.js'
 
 
@@ -265,12 +264,6 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 					<LatexRender latex={contents} displayMode={true} />
 				</div>
 			)
-		}
-
-		// Check if this is a Mermaid diagram
-		const isMermaid = t.lang === 'mermaid' || t.lang === 'mmd'
-		if (isMermaid) {
-			return <MermaidRender diagram={contents} />
 		}
 
 		// figure out langauge and URI

@@ -134,10 +134,10 @@ private _instantlyApplySRBlocks(uri: URI, blocksStr: string) {
     const { model } = this._voidModelService.getModel(uri)
     const modelStr = model.getValue(EndOfLinePreference.LF)
     
-    // 3. Find each block in file (with fuzzy matching)
+    // 3. Find each block in file (exact match only)
     const replacements: { origStart, origEnd, block }[] = []
     for (const b of blocks) {
-        const res = findTextInCode(b.orig, modelStr, true, { returnType: 'lines' })
+        const res = findTextInCode(b.orig, modelStr, false, { returnType: 'lines' })
         // ... calculate character positions
         replacements.push({ origStart, origEnd, block: b })
     }
@@ -158,27 +158,27 @@ private _instantlyApplySRBlocks(uri: URI, blocksStr: string) {
 }
 ```
 
-### 7. Fuzzy Matching (`editCodeService.ts`)
+### 7. Text Matching (`editCodeService.ts`)
 
-The `findTextInCode()` function uses 3 strategies:
+The `findTextInCode()` function uses **exact matching only** (like Claude Code's Edit tool):
 
 ```typescript
-// Strategy 1: Exact match
-let idx = fileContents.indexOf(text, startIdx)
-if (idx !== -1) return [startLine, endLine]
+// Exact match - text must appear exactly once in the file
+const idx = fileContents.indexOf(text, startIdx)
+if (idx === -1) return 'Not found'
 
-// Strategy 2: Normalized whitespace (NEW!)
-const textNormalized = normalizeWhitespace(text)  // Trim lines, normalize spaces
-const fileNormalized = normalizeWhitespace(fileContents)
-idx = fileNormalized.indexOf(textNormalized)
-// ... map back to original positions
+// Verify uniqueness - text must appear exactly once
+const lastIdx = fileContents.lastIndexOf(text)
+if (lastIdx !== idx) return 'Not unique'
 
-// Strategy 3: Whitespace-agnostic (last resort)
-const textNoWhitespace = removeWhitespaceExceptNewlines(text)
-const fileNoWhitespace = removeWhitespaceExceptNewlines(fileContents)
-idx = fileNoWhitespace.indexOf(textNoWhitespace)
-// ... map back to original positions
+return { startLine, endLine, startChar: idx, endChar: idx + text.length, matchedText: text }
 ```
+
+**Why exact match only?**
+- Predictable behavior - no surprises from fuzzy matching
+- Clear error messages - users know exactly what went wrong
+- Matches Claude Code's approach - consistent with industry standards
+- LLMs should provide exact text - encourages reading files before editing
 
 ### 8. Result Stringification (`toolsService.ts`)
 
@@ -275,8 +275,9 @@ throw new Error(`Multiple ORIGINAL blocks overlap with each other...`)
 ### `edit_file` Tool
 - **Simplified interface**: Now uses `old_string` and `new_string` parameters instead of search/replace blocks
 - **Single replacement**: Replaces the first occurrence of `old_string` with `new_string`
-- **Better error messages**: Include tips for LLM on how to fix issues
-- **Position mapping**: Correctly maps fuzzy matches back to original file positions
+- **Exact match only**: No fuzzy matching - text must match exactly (like Claude Code)
+- **Uniqueness enforcement**: Fails if `old_string` appears multiple times in the file
+- **Better error messages**: Include similar blocks from the file to help LLMs fix issues
 
 ### `read_file` Tool
 - **Increased page size**: 2MB → 5MB (2.5x larger)

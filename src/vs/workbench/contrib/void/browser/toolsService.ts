@@ -31,6 +31,108 @@ import { IWebviewToolService } from './webviewToolService.js'
 import { IVisionService } from './visionService.js'
 import { ICommandService } from '../../../../platform/commands/common/commands.js'
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
+import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
+import { IOpenerService } from '../../../../platform/opener/common/opener.js'
+
+
+/**
+ * Parse markdown lesson content into structured sections
+ */
+function parseLessonContent(content: string): LessonSection[] {
+	const sections: LessonSection[] = [];
+
+	// Section patterns matching emoji headers from teaching tools
+	const sectionPatterns = [
+		{ regex: /###?\s*🎯\s*(Learning Objectives|Objectives)/i, type: 'objectives' as const },
+		{ regex: /###?\s*📚\s*(Prerequisites|What You'll Need)/i, type: 'prerequisites' as const },
+		{ regex: /###?\s*📋\s*(Modules|Content|Steps)/i, type: 'module' as const },
+		{ regex: /###?\s*🏆\s*(Final Project|Project|Challenge)/i, type: 'project' as const },
+		{ regex: /###?\s*📈\s*(Summary|Key Takeaways|Success Criteria)/i, type: 'summary' as const },
+		{ regex: /###?\s*💡\s*(Key Concepts|Concepts)/i, type: 'content' as const },
+		{ regex: /###?\s*📖\s*(Explanation|Details|Deep Dive)/i, type: 'content' as const },
+		{ regex: /###?\s*⚠️\s*(Common Mistakes|Pitfalls|Watch Out)/i, type: 'content' as const },
+		{ regex: /###?\s*💻\s*(Code Example|Example|Implementation)/i, type: 'content' as const },
+		{ regex: /###?\s*✏️\s*(Exercise|Practice|Try It)/i, type: 'content' as const },
+		// Generic markdown headers
+		{ regex: /^##\s+(.+)$/gm, type: 'content' as const },
+	];
+
+	const lines = content.split('\n');
+	let currentSection: LessonSection | null = null;
+	let currentContent: string[] = [];
+	let sectionIndex = 0;
+
+	for (const line of lines) {
+		let matchedPattern = false;
+
+		for (const pattern of sectionPatterns) {
+			const match = line.match(pattern.regex);
+			if (match) {
+				// Save previous section
+				if (currentSection) {
+					currentSection.content = currentContent.join('\n').trim();
+					sections.push(currentSection);
+				}
+
+				// Start new section
+				const title = match[1] || match[0].replace(/^#+\s*/, '').trim();
+				currentSection = {
+					id: `section-${sectionIndex++}`,
+					title: title.replace(/[🎯📚📋🏆📈💡📖⚠️💻✏️]/g, '').trim(),
+					content: '',
+					type: pattern.type,
+					order: sections.length,
+				};
+				currentContent = [];
+				matchedPattern = true;
+				break;
+			}
+		}
+
+		if (!matchedPattern && currentSection) {
+			currentContent.push(line);
+		} else if (!matchedPattern && !currentSection) {
+			// Content before first header goes into intro section
+			if (line.trim()) {
+				if (sections.length === 0 || sections[0].type !== 'content') {
+					sections.unshift({
+						id: 'section-intro',
+						title: 'Introduction',
+						content: line,
+						type: 'content',
+						order: 0,
+					});
+					currentSection = sections[0];
+					currentContent = [line];
+				} else {
+					sections[0].content += '\n' + line;
+				}
+			}
+		}
+	}
+
+	// Add final section
+	if (currentSection) {
+		currentSection.content = currentContent.join('\n').trim();
+		sections.push(currentSection);
+	}
+
+	// If no sections found, create a default one
+	if (sections.length === 0) {
+		sections.push({
+			id: 'section-0',
+			title: 'Lesson Content',
+			content: content,
+			type: 'content',
+			order: 0,
+		});
+	}
+
+	// Update order
+	sections.forEach((s, i) => s.order = i);
+
+	return sections;
+}
 
 
 // tool use for AI
@@ -208,6 +310,7 @@ export class ToolsService implements IToolsService {
 		@IWebviewToolService private readonly _webviewToolService: IWebviewToolService,
 		@IVisionService private readonly _visionService: IVisionService,
 		@ICommandService private readonly _commandService: ICommandService,
+		@IOpenerService private readonly _openerService: IOpenerService,
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
@@ -1981,8 +2084,41 @@ For each module include:
 			},
 
 			display_lesson: async ({ title, content }) => {
-				await this._agentManagerService.openContentPreview(title, content);
-				return { result: { success: true } };
+				// Parse markdown content into structured lesson data
+				const lessonId = `lesson-${Date.now()}`;
+				const sections = parseLessonContent(content);
+
+				const lessonData: LessonData = {
+					id: lessonId,
+					title: title || 'Untitled Lesson',
+					sections,
+					estimatedTime: sections.length > 5 ? '30 min' : sections.length > 3 ? '15 min' : '10 min',
+				};
+
+				// Generate standalone HTML
+				const html = generateLessonHtml(lessonData);
+
+				// Write to temp file in user's home directory
+				const userHome = await this._pathService.userHome();
+				const lessonsDir = URI.joinPath(userHome, '.a-coder', 'lessons');
+				const sanitizedTitle = title?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'lesson';
+				const fileName = `${sanitizedTitle}-${Date.now()}.html`;
+				const fileUri = URI.joinPath(lessonsDir, fileName);
+
+				// Ensure directory exists
+				try {
+					await this._fileService.createFolder(lessonsDir);
+				} catch (e) {
+					// Directory might already exist
+				}
+
+				// Write HTML file
+				await this._fileService.writeFile(fileUri, VSBuffer.fromString(html));
+
+				// Open in external browser
+				await this._openerService.open(fileUri, { openExternal: true });
+
+				return { result: { success: true, filePath: fileUri.fsPath } };
 			},
 
 			load_skill: async ({ skill_name }, opts) => {

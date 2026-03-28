@@ -99,82 +99,6 @@ const getLeadingWhitespacePx = (editor: ICodeEditor, startLine: number): number 
 };
 
 
-// Normalize whitespace: trim each line and normalize internal whitespace to single spaces
-const normalizeWhitespace = (str: string): string => {
-	return str.split('\n')
-		.map(line => line.trim().replace(/\s+/g, ' '))
-		.join('\n');
-};
-
-// Less aggressive normalization for HTML/XML - only trims lines, preserves internal whitespace
-const normalizeWhitespaceSoft = (str: string): string => {
-	return str.split('\n')
-		.map(line => line.trim())
-		.join('\n');
-};
-
-// Preserve indentation structure while normalizing
-const normalizePreservingIndentation = (str: string): { normalized: string, indentMap: number[] } => {
-	const lines = str.split('\n');
-	const indentMap: number[] = [];
-	const normalized = lines.map(line => {
-		const match = line.match(/^(\s*)/);
-		const indent = match ? match[1].length : 0;
-		indentMap.push(indent);
-		return line.trim();
-	}).join('\n');
-	return { normalized, indentMap };
-};
-
-// Strip trailing whitespace from each line (common LLM output issue)
-const stripTrailingWhitespace = (str: string): string => {
-	return str.split('\n').map(line => line.trimEnd()).join('\n');
-};
-
-// Normalize tabs to spaces (handles mixed tab/space indentation)
-const normalizeTabsToSpaces = (str: string, tabSize: number = 4): string => {
-	return str.replace(/\t/g, ' '.repeat(tabSize));
-};
-
-// Normalize tabs to spaces (handles mixed tab/space indentation)
-const levenshteinDistance = (str1: string, str2: string): number => {
-	const len1 = str1.length;
-	const len2 = str2.length;
-
-	// Early exit for empty strings
-	if (len1 === 0) return len2;
-	if (len2 === 0) return len1;
-
-	// Use two rows for space efficiency
-	let prevRow: number[] = Array.from({ length: len2 + 1 }, (_, i) => i);
-	let currRow: number[] = new Array(len2 + 1);
-
-	for (let i = 1; i <= len1; i++) {
-		currRow[0] = i;
-		for (let j = 1; j <= len2; j++) {
-			const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-			currRow[j] = Math.min(
-				prevRow[j] + 1,      // deletion
-				currRow[j - 1] + 1,  // insertion
-				prevRow[j - 1] + cost // substitution
-			);
-		}
-		// Swap rows
-		[prevRow, currRow] = [currRow, prevRow];
-	}
-
-	return prevRow[len2];
-};
-
-// Compute similarity ratio using Levenshtein distance (0 to 1, where 1 is identical)
-const levenshteinSimilarity = (str1: string, str2: string): number => {
-	if (str1 === str2) return 1.0;
-	const maxLen = Math.max(str1.length, str2.length);
-	if (maxLen === 0) return 1.0;
-	const distance = levenshteinDistance(str1, str2);
-	return 1 - (distance / maxLen);
-};
-
 /**
  * Normalizes line endings to LF for consistent string comparison.
  * Handles both CRLF (Windows) and CR (old Mac) line endings.
@@ -183,74 +107,30 @@ const normalizeLineEndings = (str: string): string => {
 	return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 };
 
-// Find best fuzzy match using optimized middle-out search with Levenshtein distance
-const findBestFuzzyMatch = (searchText: string, fileContents: string, startLine?: number): { idx: number, score: number } | null => {
-	const searchNorm = normalizeWhitespace(searchText);
-	const fileLines = fileContents.split('\n');
-	// Pre-normalize lines for comparison
-	const normalizedFileLines = fileLines.map(line => line.trim().replace(/\s+/g, ' '));
-	const searchLines = searchText.split('\n');
-	const searchLen = searchLines.length;
-
-	if (searchLen === 0 || fileLines.length < searchLen) return null;
-
-	const startIdx = startLine ? Math.max(0, startLine - 1) : Math.floor(fileLines.length / 2);
-	let bestMatch: { idx: number, score: number } | null = null;
-	const threshold = 0.85; // 85% similarity required for Levenshtein (lower than n-gram because it's more accurate)
-
-	// Limit search radius to prevent performance issues on large files
-	// macOS is sensitive to main thread blocking, so we reduce the radius significantly
-	const maxSearchRadius = Math.min(isMacintosh ? 200 : 1000, Math.floor(fileLines.length / 2));
-	const startTime = Date.now();
-
-	// Middle-out search with limited radius
-	for (let offset = 0; offset < maxSearchRadius; offset++) {
-		// Yield if taking too long (15ms budget for 60fps)
-		if (Date.now() - startTime > 15) break;
-
-		const indices = offset === 0 ? [startIdx] : [startIdx + offset, startIdx - offset].filter(i => i >= 0 && i + searchLen <= fileLines.length);
-
-		for (const i of indices) {
-			// Optimization: Use pre-normalized lines
-			const candidateNorm = normalizedFileLines.slice(i, i + searchLen).join('\n');
-
-			// Use Levenshtein similarity for more accurate fuzzy matching
-			const similarity = levenshteinSimilarity(searchNorm, candidateNorm);
-
-			if (similarity >= threshold && (!bestMatch || similarity > bestMatch.score)) {
-				const charIdx = fileLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
-				bestMatch = { idx: charIdx, score: similarity };
-				if (similarity > 0.95) return bestMatch; // Early exit for very good matches
-			}
-		}
-
-		// Early exit if we found a good match
-		if (bestMatch && bestMatch.score > 0.9) break;
-	}
-
-	return bestMatch;
-}
-
-// Find potential matches for error reporting
+/**
+ * Find similar blocks for error reporting (helpful suggestions when not found).
+ * Uses simple line-by-line comparison to help users identify the correct text.
+ */
 const findSimilarBlocks = (searchText: string, fileContents: string, maxResults: number = 3): string[] => {
 	const searchLines = searchText.split('\n');
 	const fileLines = fileContents.split('\n');
 	const searchLen = searchLines.length;
 	const results: { text: string, score: number }[] = [];
 
-	// Limit search to prevent performance issues
 	const maxCandidates = Math.min(500, fileLines.length - searchLen);
 	const step = Math.max(1, Math.floor((fileLines.length - searchLen) / maxCandidates));
 
 	for (let i = 0; i <= fileLines.length - searchLen; i += step) {
 		const candidate = fileLines.slice(i, i + searchLen).join('\n');
-		// Use Levenshtein similarity for more accurate similarity scoring
-		const similarity = levenshteinSimilarity(
-			normalizeWhitespace(searchText),
-			normalizeWhitespace(candidate)
-		);
 
-		if (similarity > 0.5) { // Show blocks with >50% similarity
+		// Simple similarity: count matching lines
+		let matchCount = 0;
+		for (let j = 0; j < Math.min(searchLines.length, fileLines.slice(i, i + searchLen).length); j++) {
+			if (searchLines[j] === fileLines[i + j]) matchCount++;
+		}
+		const similarity = matchCount / Math.max(searchLines.length, 1);
+
+		if (similarity > 0.5) {
 			results.push({ text: candidate, score: similarity });
 		}
 	}
@@ -287,36 +167,35 @@ const isLineRange = (result: FindTextResult | readonly [number, number] | 'Not f
 	return Array.isArray(result) && result.length === 2 && typeof result[0] === 'number' && typeof result[1] === 'number';
 };
 
-// finds block.orig in fileContents and return its range in file
-// startingAtLine is 1-indexed and inclusive
-// returns FindTextResult with line numbers and character positions, or [number, number] for legacy compatibility
-// Enhanced with multi-strategy matching: exact, whitespace-normalized, indentation-preserving, and fuzzy
-// FIXED: Properly handles merged lines and position mapping during normalization
-const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveWhitespace: boolean, opts: { startingAtLine?: number, returnType: 'lines' | 'full' } = { returnType: 'lines' }): FindTextResult | readonly [number, number] | 'Not found' | 'Not unique' => {
+/**
+ * Finds text in code using exact matching only (like Claude Code's Edit tool).
+ * - Returns on first unique match
+ * - Returns 'Not found' if text doesn't exist
+ * - Returns 'Not unique' if text appears multiple times
+ *
+ * @param text - The exact text to find
+ * @param fileContents - The file contents to search in
+ * @param _canFallbackToNormalization - Ignored (kept for API compatibility)
+ * @param opts - Options including startingAtLine and returnType
+ * @returns FindTextResult with position info, or 'Not found'/'Not unique'
+ */
+const findTextInCode = (
+	text: string,
+	fileContents: string,
+	_canFallbackToNormalization: boolean,
+	opts: { startingAtLine?: number, returnType: 'lines' | 'full' } = { returnType: 'lines' }
+): FindTextResult | readonly [number, number] | 'Not found' | 'Not unique' => {
 
-	/**
-	 * Creates a FindTextResult from character position and matched text.
-	 * This is the authoritative way to return match results.
-	 */
+	// ========== Helper functions ==========
+
 	const returnAns = (fileContents: string, startCharIdx: number, matchedText: string): FindTextResult => {
 		const startLine = fileContents.substring(0, startCharIdx).split('\n').length;
 		const numLines = matchedText.split('\n').length;
 		const endLine = startLine + numLines - 1;
 		const endCharIdx = startCharIdx + matchedText.length;
-
-		return {
-			startLine,
-			endLine,
-			startChar: startCharIdx,
-			endChar: endCharIdx,
-			matchedText
-		};
+		return { startLine, endLine, startChar: startCharIdx, endChar: endCharIdx, matchedText };
 	};
 
-	/**
-	 * Creates a line range [startLine, endLine] from character position and matched text.
-	 * Used when returnType is 'lines' for backwards compatibility.
-	 */
 	const returnAnsLines = (fileContents: string, startCharIdx: number, matchedText: string): readonly [number, number] => {
 		const startLine = fileContents.substring(0, startCharIdx).split('\n').length;
 		const numLines = matchedText.split('\n').length;
@@ -324,355 +203,33 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 		return [startLine, endLine];
 	};
 
-	/**
-	 * Return based on opts.returnType - either full FindTextResult or just line range
-	 */
 	const returnBasedOnType = (fileContents: string, startCharIdx: number, matchedText: string): FindTextResult | readonly [number, number] => {
-		if (opts.returnType === 'lines') {
-			return returnAnsLines(fileContents, startCharIdx, matchedText);
-		}
-		return returnAns(fileContents, startCharIdx, matchedText);
+		return opts.returnType === 'lines'
+			? returnAnsLines(fileContents, startCharIdx, matchedText)
+			: returnAns(fileContents, startCharIdx, matchedText);
 	};
 
-	/**
-	 * Validates that the matched text makes sense before returning.
-	 * Returns true if the match appears valid.
-	 */
-	const validateMatch = (matchedText: string, searchText: string, strategy: string): boolean => {
-		// The matched text should be non-empty
-		if (!matchedText || matchedText.length === 0) {
-			console.warn(`[editCodeService] ${strategy}: Empty matched text, rejecting`);
-			return false;
-		}
-		// For exact match, the text should be identical
-		// For other strategies, we just need non-empty text
-		return true;
-	};
+	const startingAtLineIdx = (fileContents: string) =>
+		opts?.startingAtLine !== undefined
+			? fileContents.split('\n').slice(0, opts.startingAtLine).join('\n').length
+			: 0;
 
-	const startingAtLineIdx = (fileContents: string) => opts?.startingAtLine !== undefined ?
-		fileContents.split('\n').slice(0, opts.startingAtLine).join('\n').length
-		: 0
+	// ========== EXACT MATCH ONLY ==========
 
-	const startIdx = startingAtLineIdx(fileContents)
+	const startIdx = startingAtLineIdx(fileContents);
+	const idx = fileContents.indexOf(text, startIdx);
 
-	// Strategy 1: Exact match (fastest, most reliable)
-	let idx = fileContents.indexOf(text, startIdx)
-	if (idx !== -1) {
-		return returnBasedOnType(fileContents, idx, text)
+	if (idx === -1) {
+		return 'Not found' as const;
 	}
 
-	// Strategy 2: Anchor-based matching (handles "// ... existing code ..." placeholders)
-	// This allows LLMs to omit parts of the file to save tokens/time
-	const anchorPlaceholder = /\/\/ \.\.\. (?:existing|original) code \.\.\./gi
-	if (text.match(anchorPlaceholder)) {
-		const anchors = text.split(anchorPlaceholder).map(a => a.trim()).filter(a => a.length > 0)
-		if (anchors.length >= 2) {
-			let currentSearchIdx = startIdx
-			let firstAnchorIdx = -1
-			let lastAnchorIdx = -1
-			let lastAnchorLen = 0
-			let allFound = true
-
-			for (let i = 0; i < anchors.length; i++) {
-				const anchor = anchors[i]
-				const foundIdx = fileContents.indexOf(anchor, currentSearchIdx)
-				if (foundIdx === -1) {
-					allFound = false
-					break
-				}
-				if (i === 0) firstAnchorIdx = foundIdx
-				lastAnchorIdx = foundIdx
-				lastAnchorLen = anchor.length
-				currentSearchIdx = foundIdx + lastAnchorLen
-			}
-
-			if (allFound) {
-				// Verify uniqueness - try to find another first anchor
-				const secondFirstAnchorIdx = fileContents.indexOf(anchors[0], firstAnchorIdx + 1)
-				if (secondFirstAnchorIdx === -1) {
-					// Unique match found via anchors
-					const matchedText = fileContents.substring(firstAnchorIdx, lastAnchorIdx + lastAnchorLen)
-					return returnBasedOnType(fileContents, firstAnchorIdx, matchedText)
-				}
-			}
-		}
+	// Verify uniqueness - text must appear exactly once
+	const lastIdx = fileContents.lastIndexOf(text);
+	if (lastIdx !== idx) {
+		return 'Not unique' as const;
 	}
 
-	// Only use fuzzy matching if explicitly allowed
-	if (!canFallbackToRemoveWhitespace)
-		return 'Not found' as const
-
-	// Strategy 2.5: Trailing whitespace normalization
-	// LLMs often add/omit trailing whitespace inconsistently
-	const textTrailingNorm = stripTrailingWhitespace(text);
-	const fileContentsTrailingNorm = stripTrailingWhitespace(fileContents);
-	idx = fileContentsTrailingNorm.indexOf(textTrailingNorm, startingAtLineIdx(fileContentsTrailingNorm));
-
-	if (idx !== -1) {
-		// Verify uniqueness
-		const lastIdx = fileContentsTrailingNorm.lastIndexOf(textTrailingNorm);
-		if (lastIdx === idx) {
-			// Rebuild original matched text by tracking trailing whitespace
-			const originalLines = fileContents.split('\n');
-			const normLines = fileContentsTrailingNorm.split('\n');
-
-			// Find line number in normalized content
-			let charCount = 0;
-			let startLineIdx = 0;
-			for (let i = 0; i < normLines.length; i++) {
-				if (charCount + normLines[i].length >= idx) {
-					startLineIdx = i;
-					break;
-				}
-				charCount += normLines[i].length + 1; // +1 for newline
-			}
-
-			// Number of lines in search text
-			const searchNumLines = text.split('\n').length;
-			const matchedText = originalLines.slice(startLineIdx, startLineIdx + searchNumLines).join('\n');
-
-			// Calculate character position
-			const charIdx = originalLines.slice(0, startLineIdx).join('\n').length + (startLineIdx > 0 ? 1 : 0);
-
-			if (validateMatch(matchedText, text, 'Trailing whitespace normalization')) {
-				return returnBasedOnType(fileContents, charIdx, matchedText);
-			}
-		}
-	}
-
-	// Strategy 2.6: Tab/space normalization
-	// Handles mixed tab/space indentation
-	const textTabNorm = normalizeTabsToSpaces(text);
-	const fileContentsTabNorm = normalizeTabsToSpaces(fileContents);
-	idx = fileContentsTabNorm.indexOf(textTabNorm, startingAtLineIdx(fileContentsTabNorm));
-
-	if (idx !== -1) {
-		// Verify uniqueness
-		const lastIdx = fileContentsTabNorm.lastIndexOf(textTabNorm);
-		if (lastIdx === idx) {
-			// Use flexible regex matching to find the actual position in original content
-			const normMatchWords = textTabNorm.split(/\s+/).filter(w => w.length > 0);
-			if (normMatchWords.length > 0) {
-				const flexiblePattern = normMatchWords.slice(0, Math.min(10, normMatchWords.length))
-					.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-					.join('\\s*');
-				const regex = new RegExp(flexiblePattern, 'm');
-
-				const match = fileContents.match(regex);
-				if (match && match.index !== undefined) {
-					const matchedText = match[0];
-					if (validateMatch(matchedText, text, 'Tab/space normalization')) {
-						// Verify by normalizing and comparing
-						if (normalizeTabsToSpaces(matchedText).trim() === textTabNorm.trim()) {
-							return returnBasedOnType(fileContents, match.index, matchedText);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Strategy 2.7: Combined trailing whitespace + tab normalization
-	// Most robust for LLM output with both issues
-	const textCombinedNorm = stripTrailingWhitespace(normalizeTabsToSpaces(text));
-	const fileContentsCombinedNorm = stripTrailingWhitespace(normalizeTabsToSpaces(fileContents));
-	idx = fileContentsCombinedNorm.indexOf(textCombinedNorm, startingAtLineIdx(fileContentsCombinedNorm));
-
-	if (idx !== -1) {
-		// Verify uniqueness
-		const lastIdx = fileContentsCombinedNorm.lastIndexOf(textCombinedNorm);
-		if (lastIdx === idx) {
-			// Use flexible regex matching
-			const normMatchWords = textCombinedNorm.split(/\s+/).filter(w => w.length > 0);
-			if (normMatchWords.length > 0) {
-				const flexiblePattern = normMatchWords.slice(0, Math.min(10, normMatchWords.length))
-					.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-					.join('\\s*');
-				const regex = new RegExp(flexiblePattern, 'm');
-
-				const match = fileContents.match(regex);
-				if (match && match.index !== undefined) {
-					const matchedText = match[0];
-					if (validateMatch(matchedText, text, 'Combined normalization')) {
-						const matchedNorm = stripTrailingWhitespace(normalizeTabsToSpaces(matchedText));
-						if (matchedNorm === textCombinedNorm) {
-							return returnBasedOnType(fileContents, match.index, matchedText);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Strategy 3: Soft normalization - trim lines only, preserve internal whitespace (good for HTML/XML)
-	// This strategy preserves line count, so mapping is simpler
-	const textSoftNorm = normalizeWhitespaceSoft(text)
-	const fileContentsSoftNorm = normalizeWhitespaceSoft(fileContents)
-	idx = fileContentsSoftNorm.indexOf(textSoftNorm, startingAtLineIdx(fileContentsSoftNorm))
-
-	if (idx !== -1) {
-		// Verify uniqueness
-		const lastIdx = fileContentsSoftNorm.lastIndexOf(textSoftNorm)
-		if (lastIdx !== idx) {
-			return 'Not unique' as const
-		}
-
-		// SOFT NORMALIZATION: Line count is preserved, so we can map by line number
-		// Count lines before the match in normalized content
-		const linesBeforeMatch = fileContentsSoftNorm.substring(0, idx).split('\n').length - 1;
-		const charInNormLine = idx - (fileContentsSoftNorm.lastIndexOf('\n', idx - 1) === -1 ? 0 : fileContentsSoftNorm.lastIndexOf('\n', idx - 1) + 1);
-
-		// Map to original: same line number, same character position within line
-		const originalLines = fileContents.split('\n');
-		const originalLine = originalLines[linesBeforeMatch] || '';
-
-		// The matched line in original might have leading whitespace that was trimmed
-		// Find where the trimmed content starts
-		const trimmedStart = originalLine.trimStart();
-		const leadingWsLen = originalLine.length - trimmedStart.length;
-
-		// Calculate character position in original content
-		const charIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length
-			+ (linesBeforeMatch > 0 ? 1 : 0) // newline before this line
-			+ leadingWsLen // leading whitespace in original
-			+ charInNormLine; // position within trimmed content
-
-		// For soft normalization, the number of lines in the match is preserved
-		// Extract matched text using the same line count as the search text
-		const searchNumLines = text.split('\n').length;
-		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + searchNumLines).join('\n');
-
-		if (!validateMatch(matchedText, text, 'Soft normalization')) {
-			// Fall through to next strategy
-		} else {
-			return returnBasedOnType(fileContents, charIdx, matchedText);
-		}
-	}
-
-	// Strategy 4: Aggressive normalization - collapse all whitespace (handles indentation differences)
-	// WARNING: This can merge/split lines, so we need careful position mapping
-	const textNormalized = normalizeWhitespace(text)
-	const fileContentsNormalized = normalizeWhitespace(fileContents)
-	idx = fileContentsNormalized.indexOf(textNormalized, startingAtLineIdx(fileContentsNormalized))
-
-	if (idx !== -1) {
-		// CRITICAL: Verify uniqueness in normalized content
-		const lastIdx = fileContentsNormalized.lastIndexOf(textNormalized)
-		if (lastIdx !== idx) {
-			return 'Not unique' as const
-		}
-
-		// AGGRESSIVE NORMALIZATION: Lines may be merged!
-		// We need to find the actual position by matching content
-		// Strategy: Find the normalized match position, then map back to original
-
-		// Get the normalized match content
-		const normalizedMatchStart = idx;
-		const normalizedMatchEnd = idx + textNormalized.length;
-		const normalizedMatchContent = fileContentsNormalized.substring(normalizedMatchStart, normalizedMatchEnd);
-
-		// Split both into normalized "words" for matching
-		const normMatchWords = normalizedMatchContent.split(/\s+/).filter(w => w.length > 0);
-		const normFirstWord = normMatchWords[0];
-		const normLastWord = normMatchWords[normMatchWords.length - 1];
-
-		if (!normFirstWord || !normLastWord) {
-			// Degenerate case, fall through
-		} else {
-			// Build a regex that matches the normalized pattern with flexible whitespace
-			const flexiblePattern = normMatchWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*');
-			const regex = new RegExp(flexiblePattern, 'm');
-
-			const match = fileContents.match(regex);
-			if (match && match.index !== undefined) {
-				// Found a flexible match in original content
-				const matchStart = match.index;
-
-				// Extract the matched text
-				const matchedText = match[0];
-
-				// The match should have similar content to what we're looking for
-				// Verify by normalizing and comparing
-				const matchedNorm = normalizeWhitespace(matchedText);
-				if (matchedNorm === textNormalized) {
-					return returnBasedOnType(fileContents, matchStart, matchedText);
-				}
-			}
-		}
-	}
-
-	// Strategy 5: Indentation-preserving match (handles different indentation levels)
-	// This strategy works on a line-by-line basis, preserving line count
-	const { normalized: textIndentNorm, indentMap: textIndents } = normalizePreservingIndentation(text);
-	const fileLines = fileContents.split('\n');
-	const textLines = text.split('\n');
-
-	// Limit iterations to prevent blocking - max 2000 candidates checked
-	const maxIterations = Math.min(2000, fileLines.length - textLines.length + 1);
-	const step = Math.max(1, Math.floor((fileLines.length - textLines.length + 1) / maxIterations));
-
-	for (let i = 0; i <= fileLines.length - textLines.length; i += step) {
-		const candidateLines = fileLines.slice(i, i + textLines.length);
-		const { normalized: candidateNorm, indentMap: candidateIndents } = normalizePreservingIndentation(candidateLines.join('\n'));
-
-		// Check if normalized content matches and relative indentation is similar
-		if (textIndentNorm === candidateNorm) {
-			const indentDiff = textIndents.map((indent, idx) => Math.abs(indent - candidateIndents[idx]));
-			const avgDiff = indentDiff.reduce((a, b) => a + b, 0) / indentDiff.length;
-
-			// Allow if average indentation difference is small (< 2 spaces per line)
-			if (avgDiff < 2) {
-				const matchedText = candidateLines.join('\n');
-				const charIdx = fileLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
-				return returnBasedOnType(fileContents, charIdx, matchedText);
-			}
-		}
-	}
-
-	// Strategy 6: Fuzzy matching using Levenshtein distance (handles minor typos and changes)
-	// WARNING: Fuzzy matching can produce false positives - only used as last resort with high threshold
-	const fuzzyMatch = findBestFuzzyMatch(text, fileContents, opts?.startingAtLine);
-	if (fuzzyMatch && fuzzyMatch.score >= 0.88) {
-		// Log warning when fuzzy matching is used - helps debug potential false matches
-		console.warn(`[editCodeService] Levenshtein fuzzy match used (${Math.round(fuzzyMatch.score * 100)}% similarity). This may indicate mismatched search text.`);
-
-		// FIXED: Extract matched text using character positions, not line counts
-		// The fuzzyMatch.idx is a character position in the original fileContents
-		// We need to extract the same number of lines as the search text
-		const originalLines = fileContents.split('\n');
-		const textNumLines = text.split('\n').length;
-
-		// Find which line the character position is on
-		let charCount = 0;
-		let startLineIdx = 0;
-		for (let i = 0; i < originalLines.length; i++) {
-			if (charCount + originalLines[i].length >= fuzzyMatch.idx) {
-				startLineIdx = i;
-				break;
-			}
-			charCount += originalLines[i].length + 1; // +1 for newline
-		}
-
-		// Extract the matched text using the same line count as search text
-		// But also try to find the actual end by looking for content changes
-		const matchedText = originalLines.slice(startLineIdx, startLineIdx + textNumLines).join('\n');
-
-		// Validate the fuzzy match makes sense using Levenshtein similarity
-		// The similarity should still be high when we compare the extracted text
-		const extractedSimilarity = levenshteinSimilarity(
-			normalizeWhitespace(text),
-			normalizeWhitespace(matchedText)
-		);
-		if (extractedSimilarity >= 0.85) {
-			const charIdx = originalLines.slice(0, startLineIdx).join('\n').length + (startLineIdx > 0 ? 1 : 0);
-			return returnBasedOnType(fileContents, charIdx, matchedText);
-		}
-		// If similarity is too low, the fuzzy match position was wrong, reject it
-		console.warn(`[editCodeService] Fuzzy match validation failed: extracted text similarity ${(extractedSimilarity * 100).toFixed(1)}% < 85%`);
-	}
-
-	// All strategies failed - return detailed error with suggestions
-	return 'Not found' as const
+	return returnBasedOnType(fileContents, idx, text);
 }
 
 
