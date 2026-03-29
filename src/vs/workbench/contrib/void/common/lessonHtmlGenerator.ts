@@ -17,6 +17,7 @@ export interface LessonSection {
 	type: 'objectives' | 'prerequisites' | 'module' | 'project' | 'summary' | 'content';
 	order: number;
 	exercises?: LessonExercise[];
+	quiz?: LessonQuiz;
 }
 
 export interface LessonExercise {
@@ -27,7 +28,32 @@ export interface LessonExercise {
 	initialCode: string;
 	language?: string;
 	expectedSolution?: string;
+	testCases?: ExerciseTestCase[];
 	hints?: string[];
+}
+
+export interface ExerciseTestCase {
+	input?: string;
+	expectedOutput?: string;
+	description?: string;
+}
+
+export interface LessonQuiz {
+	id: string;
+	title?: string;
+	questions: QuizQuestion[];
+	passingScore?: number; // Percentage needed to pass (default 70)
+}
+
+export interface QuizQuestion {
+	id: string;
+	type: 'multiple_choice' | 'fill_blank' | 'code_output' | 'true_false';
+	question: string;
+	options?: string[]; // For multiple_choice
+	correctAnswer: string | string[]; // Can be single answer or array for multiple correct
+	explanation?: string; // Shown after answering
+	code?: string; // Optional code snippet for context
+	points?: number; // Default 1
 }
 
 export interface LessonData {
@@ -38,6 +64,27 @@ export interface LessonData {
 	sections: LessonSection[];
 	studentLevel?: 'beginner' | 'intermediate' | 'advanced';
 	estimatedTime?: string;
+}
+
+// Course structure for linked lessons
+export interface CourseData {
+	id: string;
+	title: string;
+	description?: string;
+	lessons: CourseLesson[];
+	instructor?: string;
+	difficulty?: 'beginner' | 'intermediate' | 'advanced';
+	tags?: string[];
+}
+
+export interface CourseLesson {
+	id: string;
+	title: string;
+	description?: string;
+	estimatedTime?: string;
+	isCompleted?: boolean;
+	isLocked?: boolean;
+	order: number;
 }
 
 export interface LessonTheme {
@@ -245,8 +292,165 @@ function generateExerciseHtml(exercise: LessonExercise, theme: LessonTheme, inde
 	</div>`;
 }
 
+// Generate quiz HTML
+function generateQuizHtml(quiz: LessonQuiz, theme: LessonTheme): string {
+	const questionsHtml = quiz.questions.map((q, idx) => {
+		const questionId = q.id;
+		const isMultiple = Array.isArray(q.correctAnswer);
+
+		if (q.type === 'multiple_choice' || q.type === 'true_false') {
+			const options = q.type === 'true_false' ? ['True', 'False'] : (q.options || []);
+			const optionsHtml = options.map((opt, optIdx) => `
+				<label class="quiz-option flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--background-light)] cursor-pointer hover:border-[var(--primary)] transition-all" data-question="${questionId}" data-value="${escapeHtml(opt)}">
+					<input type="${isMultiple ? 'checkbox' : 'radio'}" name="quiz-${quiz.id}-q-${questionId}" value="${escapeHtml(opt)}" class="w-4 h-4 text-[var(--primary)] focus:ring-[var(--primary)]">
+					<span class="text-gray-200">${escapeHtml(opt)}</span>
+				</label>
+			`).join('');
+
+			return `
+				<div class="quiz-question mb-6" data-question-id="${questionId}" data-question-type="${q.type}" data-correct="${isMultiple ? (q.correctAnswer as string[]).join('|||') : q.correctAnswer}" data-points="${q.points || 1}">
+					<div class="flex items-start gap-3 mb-3">
+						<span class="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--primary)] text-white font-bold text-sm flex-shrink-0">${idx + 1}</span>
+						<div class="flex-1">
+							<p class="text-white font-medium">${markdownToHtml(q.question)}</p>
+							${q.code ? `<pre class="mt-2 rounded-lg overflow-hidden"><code class="language-typescript">${escapeHtml(q.code)}</code></pre>` : ''}
+						</div>
+					</div>
+					<div class="space-y-2 ml-10">
+						${optionsHtml}
+					</div>
+					${q.explanation ? `<div class="quiz-explanation hidden mt-3 ml-10 p-3 rounded-lg bg-[var(--background-light)] border border-[var(--border)] text-sm text-gray-300"></div>` : ''}
+				</div>
+			`;
+		} else if (q.type === 'fill_blank') {
+			return `
+				<div class="quiz-question mb-6" data-question-id="${questionId}" data-question-type="fill_blank" data-correct="${Array.isArray(q.correctAnswer) ? q.correctAnswer.join('|||') : q.correctAnswer}" data-points="${q.points || 1}">
+					<div class="flex items-start gap-3 mb-3">
+						<span class="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--primary)] text-white font-bold text-sm flex-shrink-0">${idx + 1}</span>
+						<div class="flex-1">
+							<p class="text-white font-medium">${markdownToHtml(q.question)}</p>
+						</div>
+					</div>
+					<div class="ml-10">
+						<input type="text" name="quiz-${quiz.id}-q-${questionId}" class="quiz-input w-full max-w-md px-4 py-2 rounded-lg bg-[var(--background-light)] border border-[var(--border)] text-white placeholder-gray-500 focus:outline-none focus:border-[var(--primary)] transition-colors" placeholder="Type your answer...">
+					</div>
+					${q.explanation ? `<div class="quiz-explanation hidden mt-3 ml-10 p-3 rounded-lg bg-[var(--background-light)] border border-[var(--border)] text-sm text-gray-300"></div>` : ''}
+				</div>
+			`;
+		} else if (q.type === 'code_output') {
+			return `
+				<div class="quiz-question mb-6" data-question-id="${questionId}" data-question-type="code_output" data-correct="${Array.isArray(q.correctAnswer) ? q.correctAnswer.join('|||') : q.correctAnswer}" data-points="${q.points || 1}">
+					<div class="flex items-start gap-3 mb-3">
+						<span class="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--primary)] text-white font-bold text-sm flex-shrink-0">${idx + 1}</span>
+						<div class="flex-1">
+							<p class="text-white font-medium">${markdownToHtml(q.question)}</p>
+							${q.code ? `<pre class="mt-3 rounded-lg overflow-hidden"><code class="language-typescript">${escapeHtml(q.code)}</code></pre>` : ''}
+						</div>
+					</div>
+					<div class="ml-10">
+						<input type="text" name="quiz-${quiz.id}-q-${questionId}" class="quiz-input w-full max-w-md px-4 py-2 rounded-lg bg-[var(--background-light)] border border-[var(--border)] text-white placeholder-gray-500 focus:outline-none focus:border-[var(--primary)] transition-colors font-mono text-sm" placeholder="What does this output?">
+					</div>
+					${q.explanation ? `<div class="quiz-explanation hidden mt-3 ml-10 p-3 rounded-lg bg-[var(--background-light)] border border-[var(--border)] text-sm text-gray-300"></div>` : ''}
+				</div>
+			`;
+		}
+		return '';
+	}).join('');
+
+	return `
+	<div class="quiz-container mt-8 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)]" data-quiz-id="${quiz.id}">
+		<div class="quiz-header px-5 py-4 bg-gradient-to-r from-[var(--accent)]10 to-transparent border-b border-[var(--border)]">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-3">
+					<div class="w-10 h-10 rounded-xl bg-[var(--accent)]20 flex items-center justify-center">
+						<svg class="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+						</svg>
+					</div>
+					<div>
+						<h3 class="text-lg font-semibold text-white">${escapeHtml(quiz.title || 'Knowledge Check')}</h3>
+						<p class="text-sm text-[var(--text-muted)]">${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}</p>
+					</div>
+				</div>
+				<div class="quiz-score hidden">
+					<span class="px-3 py-1 rounded-full text-sm font-medium"></span>
+				</div>
+			</div>
+		</div>
+
+		<div class="quiz-content p-5">
+			${questionsHtml}
+
+			<div class="flex justify-end gap-3 mt-6">
+				<button onclick="checkQuiz('${quiz.id}')" class="px-5 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all font-medium">
+					<svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+					</svg>
+					Check Answers
+				</button>
+			</div>
+		</div>
+	</div>`;
+}
+
+// Generate sidebar navigation HTML
+function generateSidebarHtml(course: CourseData | undefined, currentLessonId: string, sections: LessonSection[], theme: LessonTheme): string {
+	if (!course) return '';
+
+	const courseNav = `
+		<div class="course-info mb-6 p-4 rounded-xl bg-[var(--surface)] border border-[var(--border)]">
+			<div class="flex items-center gap-3 mb-3">
+				<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center">
+					<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+					</svg>
+				</div>
+				<div>
+					<h3 class="font-semibold text-white text-sm">${escapeHtml(course.title)}</h3>
+					<p class="text-xs text-[var(--text-muted)]">${course.lessons.length} lesson${course.lessons.length !== 1 ? 's' : ''}</p>
+				</div>
+			</div>
+			${course.instructor ? `<p class="text-xs text-[var(--text-muted)]">by ${escapeHtml(course.instructor)}</p>` : ''}
+		</div>
+
+		<div class="lessons-list space-y-1">
+			${course.lessons.map(lesson => `
+				<a href="${lesson.id}.html" class="lesson-link flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${lesson.id === currentLessonId ? 'bg-[var(--primary)]15 text-[var(--primary)]' : 'text-gray-400 hover:text-white hover:bg-[var(--background-light)]'} ${lesson.isLocked ? 'opacity-50 pointer-events-none' : ''}" data-lesson-id="${lesson.id}">
+					<span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${lesson.isCompleted ? 'bg-emerald-500/20 text-emerald-400' : lesson.id === currentLessonId ? 'bg-[var(--primary)] text-white' : 'bg-[var(--background-light)] text-gray-500'}">
+						${lesson.isCompleted ? '<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' : lesson.order}
+					</span>
+					<span class="flex-1 text-sm truncate">${escapeHtml(lesson.title)}</span>
+					${lesson.isLocked ? '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>' : ''}
+				</a>
+			`).join('')}
+		</div>
+	`;
+
+	const sectionOutline = `
+		<div class="section-outline mt-6 pt-6 border-t border-[var(--border)]">
+			<h4 class="text-xs uppercase tracking-wider text-[var(--text-muted)] mb-3 px-3">On This Page</h4>
+			<div class="space-y-1">
+				${sections.map(section => `
+					<a href="#section-${section.id}" class="section-link flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white hover:bg-[var(--background-light)] transition-all" data-section-id="${section.id}">
+						<span class="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+						<span class="truncate">${escapeHtml(section.title)}</span>
+					</a>
+				`).join('')}
+			</div>
+		</div>
+	`;
+
+	return `
+	<aside class="sidebar hidden lg:block w-64 flex-shrink-0 sticky top-20 h-[calc(100vh-5rem)] overflow-y-auto">
+		<div class="p-4">
+			${courseNav}
+			${sectionOutline}
+		</div>
+	</aside>`;
+}
+
 // Generate the full HTML document
-export function generateLessonHtml(data: LessonData): string {
+export function generateLessonHtml(data: LessonData, course?: CourseData): string {
 	const theme = generateTheme(data.id);
 	const lessonId = data.id;
 
@@ -400,26 +604,92 @@ export function generateLessonHtml(data: LessonData): string {
 			pointer-events: none;
 			animation: confetti-fall 3s ease-out forwards;
 		}
+
+		/* Quiz styles */
+		.quiz-question.correct .quiz-option:has(input:checked) {
+			border-color: #10b981;
+			background: rgba(16, 185, 129, 0.1);
+		}
+		.quiz-question.correct .quiz-option:has(input:checked) span {
+			color: #10b981;
+		}
+		.quiz-question.incorrect .quiz-option:has(input:checked) {
+			border-color: #ef4444;
+			background: rgba(239, 68, 68, 0.1);
+		}
+		.quiz-question.incorrect .quiz-option:has(input:checked) span {
+			color: #ef4444;
+		}
+		.quiz-question.correct .quiz-input {
+			border-color: #10b981;
+			background: rgba(16, 185, 129, 0.1);
+		}
+		.quiz-question.incorrect .quiz-input {
+			border-color: #ef4444;
+			background: rgba(239, 68, 68, 0.1);
+		}
+
+		/* Sidebar styles */
+		.sidebar {
+			scrollbar-width: thin;
+			scrollbar-color: var(--border) transparent;
+		}
+		.sidebar::-webkit-scrollbar {
+			width: 4px;
+		}
+		.sidebar::-webkit-scrollbar-track {
+			background: transparent;
+		}
+		.sidebar::-webkit-scrollbar-thumb {
+			background: var(--border);
+			border-radius: 2px;
+		}
+
+		/* Lesson link active state */
+		.lesson-link.active {
+			background: rgba(var(--primary), 0.1);
+			color: var(--primary);
+		}
+
+		/* Section link active state */
+		.section-link.active {
+			color: white;
+			background: rgba(255, 255, 255, 0.05);
+		}
+		.section-link.active span:first-child {
+			background: var(--primary);
+		}
 	</style>
 </head>
 <body class="min-h-screen bg-void-bg-1">
 	<!-- Header -->
 	<header class="sticky top-0 z-50 backdrop-blur-xl bg-void-bg-1/90 border-b border-void-border-1">
-		<div class="max-w-5xl mx-auto px-6 py-4">
+		<div class="max-w-7xl mx-auto px-6 py-4">
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-4">
-					<div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center shadow-lg shadow-[var(--primary)]20">
-						<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					${course ? `
+					<a href="index.html" class="flex items-center gap-3 text-gray-400 hover:text-white transition-colors">
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+						</svg>
+					</a>
+					<div class="w-px h-6 bg-void-border-1"></div>
+					` : ''}
+					<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center shadow-lg shadow-[var(--primary)]20">
+						<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
 						</svg>
 					</div>
 					<div>
-						<h1 class="text-xl font-bold text-white">${escapeHtml(data.title)}</h1>
-						${data.topic ? `<p class="text-sm text-[var(--text-muted)]">${escapeHtml(data.topic)}</p>` : ''}
+						<h1 class="text-lg font-bold text-white">${escapeHtml(data.title)}</h1>
+						${course ? `<p class="text-xs text-[var(--text-muted)]">${escapeHtml(course.title)}</p>` : ''}
 					</div>
 				</div>
 
-				<div class="flex items-center gap-4">
+				<div class="flex items-center gap-3">
+					${data.studentLevel ? `
+					<span class="px-2 py-1 rounded-md text-xs font-medium bg-[var(--surface)] border border-[var(--border)] text-gray-400">${data.studentLevel}</span>
+					` : ''}
 					${data.estimatedTime ? `
 					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-void-bg-2 border border-void-border-1">
 						<svg class="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -436,22 +706,26 @@ export function generateLessonHtml(data: LessonData): string {
 			</div>
 
 			<!-- Progress bar -->
-			<div class="mt-4 h-1 bg-void-bg-3 rounded-full overflow-hidden">
+			<div class="mt-3 h-1 bg-void-bg-3 rounded-full overflow-hidden">
 				<div id="global-progress" class="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--accent)] transition-all duration-500" style="width: 0%"></div>
 			</div>
 		</div>
 	</header>
 
-	<main class="max-w-5xl mx-auto px-6 py-8">
-		<!-- Lesson metadata -->
-		${data.description ? `
-		<div class="mb-8 p-4 rounded-xl bg-void-bg-2 border border-void-border-1">
-			<p class="text-gray-300">${markdownToHtml(data.description)}</p>
-		</div>
-		` : ''}
+	<!-- Main content with sidebar -->
+	<div class="flex max-w-7xl mx-auto">
+		${generateSidebarHtml(course, data.id, data.sections, theme)}
 
-		<!-- Sections -->
-		<div class="space-y-4" id="sections-container">
+		<main class="flex-1 min-w-0 px-6 py-8 ${course ? 'lg:pl-0' : ''}">
+			<!-- Lesson metadata -->
+			${data.description ? `
+			<div class="mb-6 p-4 rounded-xl bg-void-bg-2 border border-void-border-1">
+				<p class="text-gray-300">${markdownToHtml(data.description)}</p>
+			</div>
+			` : ''}
+
+			<!-- Sections -->
+			<div class="space-y-4" id="sections-container">
 			${data.sections.map((section, idx) => `
 			<section
 				class="section-card rounded-xl overflow-hidden border border-void-border-1 bg-void-bg-2"
@@ -483,7 +757,7 @@ export function generateLessonHtml(data: LessonData): string {
 					</div>
 				</button>
 
-				<div class="section-content ${idx === 0 ? 'expanded' : ''} px-5">
+				<div class="section-content ${idx === 0 ? 'expanded' : ''} px-5" id="section-${section.id}">
 					<div class="content prose prose-invert max-w-none">
 						${markdownToHtml(section.content)}
 					</div>
@@ -493,6 +767,8 @@ export function generateLessonHtml(data: LessonData): string {
 						${section.exercises.map((ex, exIdx) => generateExerciseHtml(ex, theme, exIdx)).join('')}
 					</div>
 					` : ''}
+
+					${section.quiz ? generateQuizHtml(section.quiz, theme) : ''}
 
 					<div class="flex justify-end mt-6">
 						<button
@@ -527,11 +803,31 @@ export function generateLessonHtml(data: LessonData): string {
 				</button>
 			</div>
 		</div>
+
+		<!-- Lesson Navigation -->
+		${course ? `
+		<div class="lesson-navigation mt-8 flex items-center justify-between pt-6 border-t border-[var(--border)]">
+			${course.lessons.findIndex(l => l.id === lessonId) > 0 ? `
+				<a href="${course.lessons[course.lessons.findIndex(l => l.id === lessonId) - 1].id}.html" class="nav-prev flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-gray-300 hover:text-white hover:border-[var(--primary)] transition-all">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+					<span>Previous</span>
+				</a>
+			` : '<div></div>'}
+			${course.lessons.findIndex(l => l.id === lessonId) < course.lessons.length - 1 ? `
+				<a href="${course.lessons[course.lessons.findIndex(l => l.id === lessonId) + 1].id}.html" class="nav-next flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all">
+					<span>Next Lesson</span>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+				</a>
+			` : '<div></div>'}
+		</div>
+		` : ''}
+		</div>
 	</main>
+	</div>
 
 	<!-- Footer -->
 	<footer class="mt-16 border-t border-void-border-1 py-8">
-		<div class="max-w-5xl mx-auto px-6 text-center">
+		<div class="max-w-7xl mx-auto px-6 text-center">
 			<p class="text-sm text-gray-500">Generated by A-Coder • ${new Date().toLocaleDateString()}</p>
 		</div>
 	</footer>
@@ -540,12 +836,14 @@ export function generateLessonHtml(data: LessonData): string {
 		// Lesson state management
 		const lessonId = '${lessonId}';
 		const lessonData = ${JSON.stringify(data)};
+		const courseData = ${course ? JSON.stringify(course) : 'null'};
 		const storageKey = \`lesson-progress-\${lessonId}\`;
 
 		// Default state
 		const defaultState = {
 			sections: {},
 			exercises: {},
+			quizzes: {},
 			timeStarted: Date.now(),
 			lastAccessed: Date.now(),
 		};
@@ -765,6 +1063,21 @@ export function generateLessonHtml(data: LessonData): string {
 				return;
 			}
 
+			// Check against expected solution if provided
+			if (exercise && exercise.expectedSolution) {
+				const userCode = code.trim().replace(/\\s+/g, ' ');
+				const expectedCode = exercise.expectedSolution.trim().replace(/\\s+/g, ' ');
+				if (userCode !== expectedCode) {
+					// Try normalized comparison
+					const normalize = (str) => str.replace(/\\s+/g, ' ').toLowerCase().trim();
+					if (normalize(userCode) !== normalize(expectedCode)) {
+						feedbackContainer.className = 'feedback-container mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30';
+						feedbackContainer.innerHTML = '<p class="text-sm text-amber-400">⚠ Your code looks good but doesn\\'t match exactly. Double-check your implementation.</p>';
+						return;
+					}
+				}
+			}
+
 			// Mark as solved
 			state.exercises[exerciseId] = { solved: true, code };
 			saveState(state);
@@ -778,6 +1091,85 @@ export function generateLessonHtml(data: LessonData): string {
 			statusBadge.classList.remove('hidden');
 			statusBadge.className = 'status-badge px-2 py-1 rounded-full text-xs font-medium badge-success text-white';
 			statusBadge.textContent = 'Solved';
+		}
+
+		// Quiz functions
+		function checkQuiz(quizId) {
+			const quizContainer = document.querySelector(\`[data-quiz-id="\${quizId}"]\`);
+			const questions = quizContainer.querySelectorAll('.quiz-question');
+			let correctCount = 0;
+			let totalPoints = 0;
+
+			questions.forEach(question => {
+				const questionId = question.dataset.questionId;
+				const questionType = question.dataset.questionType;
+				const correctAnswer = question.dataset.correct;
+				const points = parseInt(question.dataset.points) || 1;
+				totalPoints += points;
+
+				let userAnswer = '';
+				let isCorrect = false;
+
+				if (questionType === 'multiple_choice' || questionType === 'true_false') {
+					const selected = question.querySelectorAll('input:checked');
+					if (selected.length > 0) {
+						const answers = Array.from(selected).map(input => input.value);
+						userAnswer = answers.join('|||');
+						const correctAnswers = correctAnswer.split('|||');
+						isCorrect = answers.length === correctAnswers.length && answers.every(a => correctAnswers.includes(a));
+					}
+				} else if (questionType === 'fill_blank' || questionType === 'code_output') {
+					const input = question.querySelector('.quiz-input');
+					userAnswer = input.value.trim();
+					const correctAnswers = correctAnswer.split('|||').map(a => a.trim().toLowerCase());
+					isCorrect = correctAnswers.includes(userAnswer.toLowerCase());
+				}
+
+				if (isCorrect) {
+					correctCount += points;
+					question.classList.add('correct');
+					question.querySelectorAll('.quiz-option').forEach(opt => {
+						opt.classList.remove('hover:border-[var(--primary)]');
+					});
+				} else {
+					question.classList.add('incorrect');
+					const explanation = question.querySelector('.quiz-explanation');
+					if (explanation) {
+						explanation.classList.remove('hidden');
+						const questionData = lessonData.sections
+							.flatMap(s => s.quiz?.questions || [])
+							.find(q => q.id === questionId);
+						if (questionData && questionData.explanation) {
+							explanation.innerHTML = \`
+								<div class="flex items-start gap-2">
+									<svg class="w-5 h-5 text-[var(--primary)] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+									</svg>
+									<div>
+										<p class="font-medium text-white mb-1">Explanation</p>
+										<p class="text-gray-300">\${questionData.explanation}</p>
+									</div>
+								</div>
+							\`;
+						}
+					}
+				}
+			});
+
+			// Show score
+			const scoreContainer = quizContainer.querySelector('.quiz-score');
+			const percent = Math.round((correctCount / totalPoints) * 100);
+			const passingScore = lessonData.sections.find(s => s.quiz?.id === quizId)?.quiz?.passingScore || 70;
+			const passed = percent >= passingScore;
+
+			scoreContainer.classList.remove('hidden');
+			const scoreBadge = scoreContainer.querySelector('span');
+			scoreBadge.className = \`px-3 py-1 rounded-full text-sm font-medium \${passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}\`;
+			scoreBadge.textContent = \`\${correctCount}/\${totalPoints} (\${percent}%)\`;
+
+			// Save quiz state
+			state.quizzes[quizId] = { score: percent, passed, completed: true };
+			saveState(state);
 		}
 
 		// Initialize on load
@@ -830,6 +1222,151 @@ export function generateLessonHtml(data: LessonData): string {
 			}
 		});
 	</script>
+</body>
+</html>`;
+}
+
+// Generate course index HTML
+export function generateCourseIndexHtml(course: CourseData): string {
+	const theme = generateTheme(course.id);
+
+	return `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>${escapeHtml(course.title)} - A-Coder Course</title>
+
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script>
+		tailwind.config = {
+			darkMode: 'class',
+			theme: {
+				extend: {
+					colors: {
+						void: {
+							bg: { 1: '#0f0f0f', 2: '#1a1a1a', 3: '#242424' },
+							fg: { 1: '#f5f5f5', 2: '#d4d4d4', 3: '#a1a1a1', 4: '#737373' },
+							accent: '${theme.primary}',
+							border: { 1: '#333333', 2: '#404040' }
+						}
+					}
+				}
+			}
+		}
+	</script>
+
+	<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+
+	<style>
+		:root {
+			--primary: ${theme.primary};
+			--primary-light: ${theme.primaryLight};
+			--primary-dark: ${theme.primaryDark};
+			--accent: ${theme.accent};
+			--accent-light: ${theme.accentLight};
+			--background: ${theme.background};
+			--background-light: ${theme.backgroundLight};
+			--surface: ${theme.surface};
+			--text: ${theme.text};
+			--text-muted: ${theme.textMuted};
+			--border: ${theme.border};
+		}
+
+		html { scroll-behavior: smooth; }
+
+		body {
+			background: var(--background);
+			color: var(--text);
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+		}
+
+		::-webkit-scrollbar { width: 8px; height: 8px; }
+		::-webkit-scrollbar-track { background: var(--background); }
+		::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+		::-webkit-scrollbar-thumb:hover { background: #555; }
+	</style>
+</head>
+<body class="min-h-screen bg-void-bg-1">
+	<!-- Header -->
+	<header class="sticky top-0 z-50 backdrop-blur-xl bg-void-bg-1/90 border-b border-void-border-1">
+		<div class="max-w-5xl mx-auto px-6 py-4">
+			<div class="flex items-center gap-4">
+				<div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center shadow-lg shadow-[var(--primary)]20">
+					<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+					</svg>
+				</div>
+				<div>
+					<h1 class="text-xl font-bold text-white">${escapeHtml(course.title)}</h1>
+					${course.description ? `<p class="text-sm text-[var(--text-muted)] mt-1">${escapeHtml(course.description)}</p>` : ''}
+				</div>
+			</div>
+
+			${course.instructor ? `
+			<div class="flex items-center gap-2 mt-3 text-sm text-gray-400">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+				</svg>
+				<span>${escapeHtml(course.instructor)}</span>
+			</div>
+			` : ''}
+
+			${course.difficulty ? `
+			<div class="flex items-center gap-3 mt-3">
+				<span class="px-2 py-1 rounded-md text-xs font-medium ${
+					course.difficulty === 'beginner' ? 'bg-emerald-500/20 text-emerald-400' :
+					course.difficulty === 'intermediate' ? 'bg-amber-500/20 text-amber-400' :
+					'bg-red-500/20 text-red-400'
+				}">${course.difficulty}</span>
+				<span class="text-sm text-gray-400">${course.lessons.length} lessons</span>
+			</div>
+			` : ''}
+
+			${course.tags && course.tags.length > 0 ? `
+			<div class="flex flex-wrap gap-2 mt-3">
+				${course.tags.map(tag => `
+					<span class="px-2 py-0.5 rounded-full text-xs bg-[var(--surface)] border border-[var(--border)] text-gray-400">${escapeHtml(tag)}</span>
+				`).join('')}
+			</div>
+			` : ''}
+		</div>
+	</header>
+
+	<main class="max-w-5xl mx-auto px-6 py-8">
+		<div class="space-y-3">
+			${course.lessons.map((lesson, idx) => `
+				<a href="${lesson.id}.html" class="lesson-card block rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)] hover:border-[var(--primary)] transition-all group">
+					<div class="p-5 flex items-center gap-4">
+						<span class="flex items-center justify-center w-10 h-10 rounded-xl ${lesson.isCompleted ? 'bg-emerald-500/20 text-emerald-400' : lesson.isLocked ? 'bg-gray-700 text-gray-500' : 'bg-[var(--primary)]20 text-[var(--primary)]'} font-bold text-sm flex-shrink-0">
+							${lesson.isCompleted ? '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' : lesson.isLocked ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>' : idx + 1}
+						</span>
+						<div class="flex-1 min-w-0">
+							<h3 class="font-semibold text-white group-hover:text-[var(--primary)] transition-colors">${escapeHtml(lesson.title)}</h3>
+							${lesson.description ? `<p class="text-sm text-gray-400 mt-1 line-clamp-2">${escapeHtml(lesson.description)}</p>` : ''}
+						</div>
+						${lesson.estimatedTime ? `
+						<div class="flex items-center gap-2 text-sm text-gray-400 flex-shrink-0">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+							</svg>
+							<span>${escapeHtml(lesson.estimatedTime)}</span>
+						</div>
+						` : ''}
+						<svg class="w-5 h-5 text-gray-400 group-hover:text-[var(--primary)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+						</svg>
+					</div>
+				</a>
+			`).join('')}
+		</div>
+	</main>
+
+	<footer class="mt-16 border-t border-void-border-1 py-8">
+		<div class="max-w-5xl mx-auto px-6 text-center">
+			<p class="text-sm text-gray-500">Generated by A-Coder • ${new Date().toLocaleDateString()}</p>
+		</div>
+	</footer>
 </body>
 </html>`;
 }
