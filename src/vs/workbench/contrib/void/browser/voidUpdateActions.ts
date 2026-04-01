@@ -20,7 +20,7 @@ import { IAction } from '../../../../base/common/actions.js';
 
 
 
-const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifService: INotificationService, updateService: IUpdateService): INotificationHandle => {
+const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifService: INotificationService, updateService: IUpdateService, onDismiss?: () => void): INotificationHandle => {
 	const message = res?.message || 'This is a very old version of A-Coder, please download the latest version! [A-Coder Editor](https://github.com/hamishfromatech/A-Coder/releases/latest)!'
 
 	let actions: INotificationActions | undefined
@@ -120,11 +120,14 @@ const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifSe
 		actions: actions,
 	})
 
+	// Track when user dismisses the notification
+	if (onDismiss) {
+		notifController.onDidClose(() => {
+			onDismiss()
+		})
+	}
+
 	return notifController
-	// const d = notifController.onDidClose(() => {
-	// 	notifyYesUpdate(notifService, res)
-	// 	d.dispose()
-	// })
 }
 const notifyErrChecking = (notifService: INotificationService): INotificationHandle => {
 	const message = `A-Coder Error: There was an error checking for updates. If this persists, please get in touch or reinstall A-Coder [here](https://github.com/hamishfromatech/A-Coder/releases/latest)!`
@@ -143,7 +146,7 @@ const performVoidCheck = async (
 	voidUpdateService: IVoidUpdateService,
 	metricsService: IMetricsService,
 	updateService: IUpdateService,
-): Promise<INotificationHandle | null> => {
+): Promise<{ controller: INotificationHandle | null; version: string | undefined }> => {
 
 	const metricsTag = explicit ? 'Manual' : 'Auto'
 
@@ -152,25 +155,45 @@ const performVoidCheck = async (
 	if (!res) {
 		const notifController = notifyErrChecking(notifService);
 		metricsService.capture(`A-Coder Update ${metricsTag}: Error`, { res })
-		return notifController
+		return { controller: notifController, version: undefined }
+	}
+
+	// Get version from response if available
+	const version = 'version' in res ? res.version : undefined
+
+	if (res.message) {
+		// Skip showing notification if user already dismissed this version (non-explicit only)
+		if (!explicit && version && version === userDismissedVersion) {
+			metricsService.capture(`A-Coder Update ${metricsTag}: Dismissed`, { res })
+			return { controller: null, version }
+		}
+
+		const notifController = notifyUpdate(res, notifService, updateService, () => {
+			// Track dismissed version when user closes notification
+			if (version) {
+				userDismissedVersion = version
+			}
+		})
+		metricsService.capture(`A-Coder Update ${metricsTag}: Yes`, { res })
+		return { controller: notifController, version }
 	}
 	else {
-		if (res.message) {
-			const notifController = notifyUpdate(res, notifService, updateService)
-			metricsService.capture(`A-Coder Update ${metricsTag}: Yes`, { res })
-			return notifController
-		}
-		else {
-			metricsService.capture(`A-Coder Update ${metricsTag}: No`, { res })
-			return null
-		}
+		metricsService.capture(`A-Coder Update ${metricsTag}: No`, { res })
+		return { controller: null, version }
 	}
 }
 
 
 // Action
 let lastNotifController: INotificationHandle | null = null
+let userDismissedVersion: string | null = null
 
+const closeLastNotification = () => {
+	if (lastNotifController) {
+		lastNotifController.close()
+		lastNotifController = null
+	}
+}
 
 registerAction2(class extends Action2 {
 	constructor() {
@@ -191,13 +214,14 @@ registerAction2(class extends Action2 {
 		const metricsService = accessor.get(IMetricsService)
 		const updateService = accessor.get(IUpdateService)
 
-		const currNotifController = lastNotifController
+		// Clear the dismissed flag when manually checking for updates
+		userDismissedVersion = null
+		closeLastNotification()
 
-		const newController = await performVoidCheck(true, notifService, voidUpdateService, metricsService, updateService)
+		const result = await performVoidCheck(true, notifService, voidUpdateService, metricsService, updateService)
 
-		if (newController) {
-			currNotifController?.close()
-			lastNotifController = newController
+		if (result.controller) {
+			lastNotifController = result.controller
 		}
 	}
 })
@@ -213,8 +237,15 @@ class VoidUpdateWorkbenchContribution extends Disposable implements IWorkbenchCo
 	) {
 		super()
 
-		const autoCheck = () => {
-			performVoidCheck(false, notifService, voidUpdateService, metricsService, updateService)
+		const autoCheck = async () => {
+			// Close any existing notification before showing a new one
+			closeLastNotification()
+
+			const result = await performVoidCheck(false, notifService, voidUpdateService, metricsService, updateService)
+
+			if (result.controller) {
+				lastNotifController = result.controller
+			}
 		}
 
 		// check once 5 seconds after mount

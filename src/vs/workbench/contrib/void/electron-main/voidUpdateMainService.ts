@@ -79,7 +79,8 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 		if (this._updateService.state.type === StateType.Ready) {
 			// Update is ready
-			return { message: 'Restart A-Coder to update!', action: 'restart' } as const
+			const version = this._updateService.state.update?.version
+			return { message: 'Restart A-Coder to update!', action: 'restart', version } as const
 		}
 
 		if (this._updateService.state.type === StateType.Disabled) {
@@ -134,7 +135,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 					message = null
 				}
 			}
-			return { message, action } as const
+			return { message, action, version: latestVersion } as const
 		}
 		catch (e) {
 			if (explicit) {

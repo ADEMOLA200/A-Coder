@@ -6,6 +6,7 @@
 export type VoidCheckUpdateRespose = {
 	message: string,
 	action?: 'reinstall' | 'restart' | 'download' | 'apply'
+	version?: string // The latest version available (if known)
 } | {
 	message: null,
 	actions?: undefined,
