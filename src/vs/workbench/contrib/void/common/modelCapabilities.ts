@@ -71,6 +71,9 @@ export const defaultProviderSettings = {
 	openAdapter: {
 		apiKey: '',
 	},
+	llamaCpp: {
+		endpoint: 'http://127.0.0.1:8080',
+	},
 
 } as const
 
@@ -167,6 +170,7 @@ export const defaultModelsOfProvider = {
 		'claude-opus-4-20250514',
 	],
 	openAdapter: [], // autodetected from /v1/models
+	llamaCpp: [], // autodetected from /v1/models
 
 
 } as const satisfies Record<ProviderName, string[]>
@@ -2017,6 +2021,25 @@ const openAdapterSettings: VoidStaticProviderInfo = {
 	},
 }
 
+// llama.cpp provider - Local inference with OpenAI-compatible API
+const llamaCppSettings: VoidStaticProviderInfo = {
+	modelOptions: {
+		// Models are fetched dynamically from /v1/models
+	},
+	modelOptionsFallback: (modelName) => {
+		// Use the extensive fallback for unknown models
+		const res = extensiveModelOptionsFallback(modelName)
+		if (res) {
+			res.specialToolFormat = 'openai-style'
+		}
+		return res
+	},
+	providerReasoningIOSettings: {
+		// llama.cpp supports OpenAI-style reasoning
+		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
+		output: { nameOfFieldInDelta: 'reasoning_content' },
+	},
+}
 
 
 // ---------------- model settings of everything above ----------------
@@ -2046,6 +2069,7 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	awsBedrock: awsBedrockSettings,
 	aCoder: aCoderSettings,
 	openAdapter: openAdapterSettings,
+	llamaCpp: llamaCppSettings,
 } as const
 
 

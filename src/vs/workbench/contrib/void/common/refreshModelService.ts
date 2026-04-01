@@ -47,6 +47,7 @@ const refreshBasedOn: { [k in RefreshableProviderName]: (keyof SettingsOfProvide
 	ollama: ['_didFillInProviderSettings', 'endpoint'],
 	vLLM: ['_didFillInProviderSettings', 'endpoint'],
 	lmStudio: ['_didFillInProviderSettings', 'endpoint'],
+	llamaCpp: ['_didFillInProviderSettings', 'endpoint'],
 	aCoder: ['_didFillInProviderSettings', 'apiKey'],
 	openAdapter: ['_didFillInProviderSettings', 'apiKey'],
 	// openAICompatible: ['_didFillInProviderSettings', 'endpoint', 'apiKey'],
@@ -146,6 +147,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 		ollama: { state: 'init', timeoutId: null },
 		vLLM: { state: 'init', timeoutId: null },
 		lmStudio: { state: 'init', timeoutId: null },
+		llamaCpp: { state: 'init', timeoutId: null },
 		aCoder: { state: 'init', timeoutId: null },
 		openAdapter: { state: 'init', timeoutId: null },
 	}
@@ -178,6 +180,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 						if (providerName === 'ollama') return (model as OllamaModelResponse).name;
 						else if (providerName === 'vLLM') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'lmStudio') return (model as OpenaiCompatibleModelResponse).id;
+						else if (providerName === 'llamaCpp') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'aCoder') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'openAdapter') return (model as OpenaiCompatibleModelResponse).id;
 						else throw new Error(`refreshMode fn: unknown provider ${providerName}`);

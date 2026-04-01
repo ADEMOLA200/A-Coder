@@ -271,6 +271,14 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			...commonPayloadOpts
 		})
 	}
+	else if (providerName === 'llamaCpp') {
+		const thisConfig = settingsOfProvider[providerName]
+		return new OpenAI({
+			baseURL: thisConfig.endpoint + '/v1',
+			apiKey: 'no-key-needed', // llama.cpp doesn't require an API key
+			...commonPayloadOpts
+		})
+	}
 
 	else throw new Error(`Provider "${providerName}" is not supported.`)
 }
@@ -1598,6 +1606,11 @@ export const sendLLMMessageToProviderImplementation = {
 		list: (params) => _openaiCompatibleList(params),
 	},
 	openAdapter: {
+		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendFIM: null,
+		list: (params) => _openaiCompatibleList(params),
+	},
+	llamaCpp: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
 		sendFIM: null,
 		list: (params) => _openaiCompatibleList(params),

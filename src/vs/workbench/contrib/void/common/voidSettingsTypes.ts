@@ -16,7 +16,7 @@ type UnionOfKeys<T> = T extends T ? keyof T : never;
 export type ProviderName = keyof typeof defaultProviderSettings
 export const providerNames = Object.keys(defaultProviderSettings) as ProviderName[]
 
-export const localProviderNames = ['ollama', 'vLLM', 'lmStudio'] satisfies ProviderName[] // all local names
+export const localProviderNames = ['ollama', 'vLLM', 'lmStudio', 'llamaCpp'] satisfies ProviderName[] // all local names
 export const nonlocalProviderNames = providerNames.filter((name) => !(localProviderNames as string[]).includes(name)) // all non-local names
 
 type CustomSettingName = UnionOfKeys<typeof defaultProviderSettings[ProviderName]>
@@ -112,6 +112,9 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 	else if (providerName === 'openAdapter') {
 		return { title: 'OpenAdapter', desc: 'OpenAI-compatible API aggregator' }
 	}
+	else if (providerName === 'llamaCpp') {
+		return { title: 'llama.cpp', desc: 'Local inference with OpenAI-compatible API' }
+	}
 
 	throw new Error(`descOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -136,6 +139,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
 	if (providerName === 'aCoder') return 'Get your API key from [A-Coder](https://a-coder.dev).'
 	if (providerName === 'openAdapter') return 'Get your [API Key here](https://openadapter.in). Models are fetched automatically from api.openadapter.in/v1/models.'
+	if (providerName === 'llamaCpp') return 'Run llama.cpp with `./llama-server` to start the OpenAI-compatible API. Models are fetched from the endpoint.'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -176,20 +180,22 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 			title: providerName === 'ollama' ? 'Endpoint' :
 				providerName === 'vLLM' ? 'Endpoint' :
 					providerName === 'lmStudio' ? 'Endpoint' :
-						providerName === 'openAICompatible' ? 'baseURL' : // (do not include /chat/completions)
-							providerName === 'googleVertex' ? 'baseURL' :
-								providerName === 'microsoftAzure' ? 'baseURL' :
-									providerName === 'liteLLM' ? 'baseURL' :
-										providerName === 'awsBedrock' ? 'Endpoint' :
-											'(never)',
+						providerName === 'llamaCpp' ? 'Endpoint' :
+							providerName === 'openAICompatible' ? 'baseURL' : // (do not include /chat/completions)
+								providerName === 'googleVertex' ? 'baseURL' :
+									providerName === 'microsoftAzure' ? 'baseURL' :
+										providerName === 'liteLLM' ? 'baseURL' :
+											providerName === 'awsBedrock' ? 'Endpoint' :
+												'(never)',
 
 			placeholder: providerName === 'ollama' ? defaultProviderSettings.ollama.endpoint
 				: providerName === 'vLLM' ? defaultProviderSettings.vLLM.endpoint
 					: providerName === 'openAICompatible' ? 'https://my-website.com/v1'
 						: providerName === 'lmStudio' ? defaultProviderSettings.lmStudio.endpoint
-							: providerName === 'liteLLM' ? 'http://localhost:4000'
-								: providerName === 'awsBedrock' ? 'http://localhost:4000/v1'
-									: '(never)',
+							: providerName === 'llamaCpp' ? defaultProviderSettings.llamaCpp.endpoint
+								: providerName === 'liteLLM' ? 'http://localhost:4000'
+									: providerName === 'awsBedrock' ? 'http://localhost:4000/v1'
+										: '(never)',
 
 
 		}
@@ -374,6 +380,12 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.openAdapter),
 		_didFillInProviderSettings: undefined,
 	},
+	llamaCpp: {
+		...defaultCustomSettings,
+		...defaultProviderSettings.llamaCpp,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.llamaCpp),
+		_didFillInProviderSettings: undefined,
+	},
 }
 
 
@@ -415,7 +427,7 @@ export const displayInfoOfFeatureName = (featureName: FeatureName) => {
 
 // the models of these can be refreshed (in theory all can, but not all should)
 export const refreshableProviderNames = [...localProviderNames, 'aCoder', 'openAdapter'] as const
-export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'aCoder' | 'openAdapter'
+export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'llamaCpp' | 'aCoder' | 'openAdapter'
 
 // models that come with download buttons
 export const hasDownloadButtonsOnModelsProviderNames = ['ollama'] as const satisfies ProviderName[]
