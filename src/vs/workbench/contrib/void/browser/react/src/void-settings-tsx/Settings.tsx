@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -129,6 +129,33 @@ const SettingsButton = ({ children, disabled, onClick, className, variant = 'sec
 			onClick={onClick}
 		>
 			{children}
+		</button>
+	)
+}
+
+// Quick toggle card for feature grid
+const QuickToggleCard = ({ title, description, icon: Icon, enabled, onToggle }: { title: string, description: string, icon: React.ComponentType<{ size?: number, className?: string }>, enabled: boolean, onToggle: () => void }) => {
+	return (
+		<button
+			onClick={onToggle}
+			className={`p-4 rounded-xl border transition-all duration-200 text-left group ${
+				enabled
+					? 'bg-void-accent/5 border-void-accent/30 hover:border-void-accent/50'
+					: 'bg-void-bg-2/30 border-void-border-2 hover:border-void-border-1'
+			}`}
+		>
+			<div className="flex items-start justify-between mb-3">
+				<div className={`w-8 h-8 rounded-lg flex items-center justify-center ${enabled ? 'bg-void-accent text-white' : 'bg-void-bg-3 text-void-fg-3'}`}>
+					<Icon size={16} />
+				</div>
+				<div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+					enabled ? 'border-void-accent bg-void-accent' : 'border-void-border-2'
+				}`}>
+					{enabled && <Check size={12} className="text-white" />}
+				</div>
+			</div>
+			<h3 className={`text-sm font-medium ${enabled ? 'text-void-fg-1' : 'text-void-fg-2'}`}>{title}</h3>
+			<p className="text-[11px] text-void-fg-3 mt-1 leading-relaxed">{description}</p>
 		</button>
 	)
 }
@@ -2620,6 +2647,38 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 													<div className="mb-6">
 														<h2 className="text-xl font-medium text-void-fg-1">Feature Options</h2>
 														<p className="text-sm text-void-fg-3 mt-1">Customize A-Coder's behavior and capabilities.</p>
+													</div>
+
+													{/* Quick Settings Grid */}
+													<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+														<QuickToggleCard
+															title="Autocomplete"
+															description="AI-powered code completion"
+															icon={Zap}
+															enabled={settingsState.globalSettings.enableAutocomplete}
+															onToggle={() => voidSettingsService.setGlobalSetting('enableAutocomplete', !settingsState.globalSettings.enableAutocomplete)}
+														/>
+														<QuickToggleCard
+															title="Media Generation"
+															description="Generate images with AI"
+															icon={Sparkles}
+															enabled={settingsState.globalSettings.enableMediaGeneration}
+															onToggle={() => voidSettingsService.setGlobalSetting('enableMediaGeneration', !settingsState.globalSettings.enableMediaGeneration)}
+														/>
+														<QuickToggleCard
+															title="Tool Orchestration"
+															description="Smart tool selection"
+															icon={Brain}
+															enabled={settingsState.globalSettings.enableToolOrchestration}
+															onToggle={() => voidSettingsService.setGlobalSetting('enableToolOrchestration', !settingsState.globalSettings.enableToolOrchestration)}
+														/>
+														<QuickToggleCard
+															title="Auto-refresh Models"
+															description="Detect local models"
+															icon={RefreshCw}
+															enabled={settingsState.globalSettings.autoRefreshModels}
+															onToggle={() => voidSettingsService.setGlobalSetting('autoRefreshModels', !settingsState.globalSettings.autoRefreshModels)}
+														/>
 													</div>
 
 													<div className="space-y-6">

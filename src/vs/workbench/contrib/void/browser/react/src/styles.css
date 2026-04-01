@@ -8,107 +8,201 @@
 @tailwind utilities;
 
 & {
-	/* Core Backgrounds */
+	/* ============================================
+	   TYPOGRAPHY SYSTEM
+	   Premium fonts with proper hierarchy
+	   ============================================ */
+
+	/* Font stack - System fonts with distinctive character */
+	--void-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--void-font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+	--void-font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+	/* Type scale - Precise hierarchy */
+	--void-text-xs: 0.6875rem;    /* 11px - badges, labels */
+	--void-text-sm: 0.8125rem;   /* 13px - body small */
+	--void-text-base: 0.875rem;  /* 14px - body */
+	--void-text-lg: 0.9375rem;   /* 15px - emphasized */
+	--void-text-xl: 1.125rem;    /* 18px - section headers */
+	--void-text-2xl: 1.375rem;   /* 22px - page titles */
+	--void-text-3xl: 1.75rem;    /* 28px - display */
+
+	/* Letter spacing - Tighter for headlines */
+	--void-tracking-tight: -0.025em;
+	--void-tracking-normal: 0;
+	--void-tracking-wide: 0.025em;
+
+	/* Line heights - Optimal readability */
+	--void-leading-tight: 1.25;
+	--void-leading-normal: 1.5;
+	--void-leading-relaxed: 1.625;
+
+	/* ============================================
+	   CORE BACKGROUNDS
+	   Theme-aware with subtle warmth
+	   ============================================ */
+
 	--void-bg-1: var(--vscode-input-background);
 	--void-bg-1-alt: var(--vscode-badge-background);
 	--void-bg-2: var(--vscode-sideBar-background);
 	--void-bg-2-alt: color-mix(in srgb, var(--vscode-editor-background) 30%, var(--vscode-sideBar-background) 70%);
 	--void-bg-2-hover: color-mix(in srgb, var(--vscode-editor-foreground) 8%, var(--vscode-sideBar-background) 92%);
 	--void-bg-3: var(--vscode-editor-background);
-	/* Smokey black glassy variant - darker with subtle transparency feel */
 	--void-bg-4: color-mix(in srgb, var(--vscode-editor-background) 70%, black 30%);
 	--void-bg-4-hover: color-mix(in srgb, var(--vscode-editor-background) 60%, black 40%);
 
-	/* Foregrounds */
+	/* ============================================
+	   FOREGROUNDS
+	   Clear hierarchy
+	   ============================================ */
+
 	--void-fg-0: color-mix(in srgb, var(--vscode-tab-activeForeground) 90%, black 10%);
 	--void-fg-1: var(--vscode-editor-foreground);
 	--void-fg-2: var(--vscode-input-foreground);
 	--void-fg-3: var(--vscode-input-placeholderForeground);
 	--void-fg-4: var(--vscode-list-deemphasizedForeground);
+	--void-fg-muted: color-mix(in srgb, var(--vscode-editor-foreground) 60%, transparent);
 
-	/* Warning/Status */
-	--void-warning: var(--vscode-charts-yellow);
+	/* ============================================
+	   ACCENT COLORS - VS CODE THEME AWARE
+	   Derive from VS Code's button/theme colors
+	   ============================================ */
 
-	/* Borders - softer, less harsh for premium feel */
+	/* Primary accent - Derived from VS Code button colors */
+	--void-accent-primary: var(--vscode-button-background);
+	--void-accent-hover: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+	--void-accent-muted: color-mix(in srgb, var(--vscode-button-background) 70%, var(--vscode-editor-background));
+
+	/* Semantic colors - Use VS Code's built-in semantic colors */
+	--void-success: var(--vscode-testing-iconPassed, #22c55e);
+	--void-error: var(--vscode-errorForeground, #ef4444);
+	--void-warning: var(--vscode-problemsWarningIcon-foreground, #f59e0b);
+	--void-info: var(--vscode-textLink-foreground, #3b82f6);
+
+	/* Accent gradient - Theme aware */
+	--void-accent-start: var(--vscode-button-background);
+	--void-accent-end: color-mix(in srgb, var(--vscode-button-background) 85%, var(--vscode-button-foreground));
+	--void-accent-gradient: linear-gradient(135deg, var(--vscode-button-background), var(--void-accent-end));
+	--void-accent-gradient-hover: linear-gradient(135deg,
+		var(--vscode-button-hoverBackground, var(--vscode-button-background)),
+		color-mix(in srgb, var(--vscode-button-hoverBackground, var(--vscode-button-background)) 85%, var(--vscode-button-foreground)));
+
+	/* Secondary accent for hover states */
+	--void-accent-secondary: var(--vscode-button-secondaryBackground);
+	--void-accent-secondary-hover: var(--vscode-button-secondaryHoverBackground);
+
+	/* ============================================
+	   BORDERS
+	   Softer, theme-aware
+	   ============================================ */
+
 	--void-border-1: color-mix(in srgb, var(--vscode-commandCenter-activeBorder) 60%, transparent);
 	--void-border-2: color-mix(in srgb, var(--vscode-commandCenter-border) 50%, transparent);
 	--void-border-3: color-mix(in srgb, var(--vscode-commandCenter-inactiveBorder) 40%, transparent);
 	--void-border-4: var(--vscode-editorGroup-border);
 
-	/* Ring/Focus */
-	--void-ring-color: var(--vscode-focusBorder);
-	--void-link-color: var(--vscode-textLink-foreground);
-
 	/* ============================================
-	   PREMIUM DESIGN SYSTEM - Theme-Aware Design
+	   BORDER RADIUS SYSTEM
+	   Variable radii for visual hierarchy
 	   ============================================ */
 
-	/* Depth System - Uses VS Code theme variables for seamless theming */
+	--void-radius-xs: 4px;    /* Badges, pills, small elements */
+	--void-radius-sm: 6px;    /* Inputs, small buttons */
+	--void-radius-md: 10px;   /* Cards, containers */
+	--void-radius-lg: 14px;   /* Large panels, modals */
+	--void-radius-xl: 20px;   /* Hero elements */
+	--void-radius-full: 9999px; /* Circular */
+
+	/* ============================================
+	   SHADOWS - THEME AWARE
+	   Tinted to match VS Code theme colors
+	   ============================================ */
+
+	/* Shadows use VS Code's widget-shadow for theme awareness */
+	--void-shadow-sm: 0 1px 2px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.1));
+	--void-shadow-md: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.15));
+	--void-shadow-lg: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
+	--void-shadow-xl: 0 16px 48px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
+
+	/* Inner shadows for depth */
+	--void-shadow-inner: inset 0 1px 2px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.05));
+	--void-shadow-inset: inset 0 2px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.08));
+
+	/* Glow effects - Use VS Code focus border for theme consistency */
+	--void-glow-accent: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent),
+		0 2px 8px color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
+	--void-glow-subtle: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+
+	/* ============================================
+	   DEPTH SYSTEM
+	   Layered surfaces
+	   ============================================ */
+
 	--void-depth-base: var(--vscode-editor-background);
 	--void-depth-elevated: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--void-depth-floating: var(--vscode-dropdown-background, var(--vscode-input-background));
 	--void-depth-modal: var(--vscode-panel-background, var(--vscode-sideBar-background));
 
-	/* Glassmorphism - Uses panel background for subtle transparency effect */
-	--void-glass-bg: var(--vscode-widget-shadow, rgba(0,0,0,0.1));
+	/* ============================================
+	   ANIMATION TIMING
+	   Spring physics, not linear
+	   ============================================ */
 
-	/* Shadow System - Theme-aware shadows (darker in dark themes, lighter in light) */
-	--void-shadow-sm: 0 1px 2px var(--vscode-widget-shadow, rgba(0,0,0,0.1));
-	--void-shadow-md: 0 4px 12px var(--vscode-widget-shadow, rgba(0,0,0,0.15));
-	--void-shadow-lg: 0 8px 24px var(--vscode-widget-shadow, rgba(0,0,0,0.2));
-	--void-shadow-xl: 0 16px 48px var(--vscode-widget-shadow, rgba(0,0,0,0.25));
-	--void-shadow-inner: inset 0 2px 4px var(--vscode-widget-shadow, rgba(0,0,0,0.05));
+	--void-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--void-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	--void-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--void-duration-fast: 150ms;
+	--void-duration-normal: 200ms;
+	--void-duration-slow: 300ms;
 
 	/* ============================================
-	   Signature Accent Color System
+	   LEGACY COMPATIBILITY
 	   ============================================ */
-	/* Primary brand gradient - Uses button colors from theme as base */
-	--void-accent-start: var(--vscode-button-background, #6366f1);
-	--void-accent-end: color-mix(in srgb, var(--vscode-button-background, #6366f1) 80%, #8b5cf6);
-	--void-accent-gradient: linear-gradient(135deg, var(--void-accent-start), var(--void-accent-end));
-	--void-accent-gradient-hover: linear-gradient(135deg,
-		color-mix(in srgb, var(--void-accent-start) 80%, white),
-		color-mix(in srgb, var(--void-accent-end) 80%, white));
+
+	--void-ring-color: var(--vscode-focusBorder);
+	--void-link-color: var(--vscode-textLink-foreground);
+	--void-warning: var(--void-warning);
+	--void-accent-glow: var(--void-glow-accent);
+	--void-accent-glow-subtle: var(--void-glow-subtle);
+	--void-accent-glow-strong: var(--void-glow-accent);
+	--void-success-glow: 0 0 12px color-mix(in srgb, var(--void-success) 25%, transparent);
+	--void-error-glow: 0 0 12px color-mix(in srgb, var(--void-error) 25%, transparent);
+	--void-warning-glow: 0 0 12px color-mix(in srgb, var(--void-warning) 25%, transparent);
+	--void-info-glow: 0 0 12px color-mix(in srgb, var(--void-info) 25%, transparent);
 	--void-accent-gradient-subtle: linear-gradient(135deg,
-		color-mix(in srgb, var(--void-accent-start) 15%, transparent),
-		color-mix(in srgb, var(--void-accent-end) 15%, transparent));
-
-	/* Glow Effects - Theme-aware opacity */
-	--void-accent-glow: 0 0 20px color-mix(in srgb, var(--void-accent-start) 30%, transparent);
-	--void-accent-glow-strong: 0 0 30px color-mix(in srgb, var(--void-accent-start) 50%, transparent);
-	--void-accent-glow-subtle: 0 0 12px color-mix(in srgb, var(--void-accent-start) 15%, transparent);
-
-	/* Secondary Accents - Use VS Code theme colors */
-	--void-success: var(--vscode-testing-iconPassed, #22c55e);
-	--void-success-glow: 0 0 12px color-mix(in srgb, var(--void-testing-iconPassed, #22c55e) 30%, transparent);
-	--void-error: var(--vscode-errorForeground, #ef4444);
-	--void-error-glow: 0 0 12px color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 30%, transparent);
-	--void-warning-accent: var(--vscode-charts-yellow, #f59e0b);
-	--void-warning-glow: 0 0 12px color-mix(in srgb, var(--vscode-charts-yellow, #f59e0b) 30%, transparent);
-	--void-info: var(--vscode-textLink-foreground, #3b82f6);
-	--void-info-glow: 0 0 12px color-mix(in srgb, var(--vscode-textLink-foreground, #3b82f6) 30%, transparent);
+		color-mix(in srgb, var(--void-accent-primary) 10%, transparent),
+		color-mix(in srgb, var(--void-accent-hover) 10%, transparent));
+	--void-glass-bg: oklch(0 0 0 / 0.03);
 }
 
-/* Theme-aware glassmorphism - CPU OPTIMIZATION: Reduced blur intensity */
+/* ============================================
+   GLASSMORPHISM - TRUE REFRACTION
+   Inner border + shadow for edge simulation
+   Theme-aware using VS Code colors
+   ============================================ */
+
 .void-glass {
-	background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
-	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
 }
 
 .void-glass-strong {
-	background: color-mix(in srgb, var(--vscode-editor-background) 95%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
+	background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	box-shadow: var(--void-shadow-md), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
 }
 
 .void-glass-subtle {
-	background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+	background: color-mix(in srgb, var(--vscode-editor-background) 65%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
 }
 
 .select-child-restyle select {
@@ -137,14 +231,15 @@
    GLASSMORPHISM SYSTEM - Theme Aware
    ============================================ */
 
-/* Glass with gradient border effect - Theme Aware - CPU OPTIMIZATION: Reduced blur */
+/* Premium glass with spotlight border effect - Theme aware */
 .void-glass-premium {
-	background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
+	background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 	border: 1px solid transparent;
 	background-clip: padding-box;
 	position: relative;
+	box-shadow: var(--void-shadow-md), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
 }
 
 .void-glass-premium::before {
@@ -153,10 +248,9 @@
 	inset: -1px;
 	border-radius: inherit;
 	padding: 1px;
-	background: linear-gradient(135deg,
-		color-mix(in srgb, var(--vscode-button-background) 30%, transparent),
-		color-mix(in srgb, var(--vscode-button-background) 10%, transparent),
-		transparent);
+	background: linear-gradient(180deg,
+		color-mix(in srgb, var(--vscode-foreground) 8%, transparent) 0%,
+		transparent 100%);
 	-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
 	-webkit-mask-composite: xor;
 	mask-composite: exclude;
@@ -164,12 +258,13 @@
 }
 
 /* ============================================
-   INTERACTIVE STATES & MICRO-INTERACTIONS
+   INTERACTIVE STATES - SPRING PHYSICS
+   Tactile feedback on all interactions
    ============================================ */
 
 /* Base interactive element */
 .void-interactive {
-	transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
 	cursor: pointer;
 }
 
@@ -178,14 +273,16 @@
 }
 
 .void-interactive:active {
-	transform: scale(0.97);
-	transition-duration: 100ms;
+	transform: scale(0.97) translateY(0);
+	transition-duration: 50ms;
 }
 
-/* Card hover effect */
+/* Card hover effect with spotlight */
 .void-card {
-	transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: transform var(--void-duration-normal) var(--void-ease-out),
+		box-shadow var(--void-duration-normal) var(--void-ease-out);
 	will-change: transform, box-shadow;
+	position: relative;
 }
 
 .void-card:hover {
@@ -197,35 +294,84 @@
 	transform: translateY(0) scale(0.98);
 }
 
-/* Focus states with glow */
+/* Spotlight border cards - illuminate under cursor */
+.void-card-spotlight {
+	position: relative;
+	overflow: hidden;
+}
+
+.void-card-spotlight::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	background: radial-gradient(
+		400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+		oklch(1 0 0 / 8%),
+		transparent 60%
+	);
+	transition: opacity var(--void-duration-slow) var(--void-ease-out);
+	pointer-events: none;
+}
+
+.void-card-spotlight:hover::after {
+	opacity: 1;
+}
+
+/* Focus states - Visible, accessible */
 .void-focus:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-accent-glow);
+	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-glow-subtle);
 }
 
 .void-focus-subtle:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 1.5px var(--void-accent-start);
+	box-shadow: 0 0 0 1.5px var(--void-accent-primary);
 }
 
-/* Button styles */
+/* ============================================
+   BUTTON SYSTEM
+   Primary, secondary, ghost with all states
+   ============================================ */
+
 .void-btn-primary {
 	background: var(--void-accent-gradient);
 	color: white;
 	font-weight: 500;
-	transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+	border-radius: var(--void-radius-md);
+	padding: 10px 18px;
+	transition: all var(--void-duration-normal) var(--void-ease-out);
 	box-shadow: var(--void-shadow-sm);
+	position: relative;
+	overflow: hidden;
+}
+
+.void-btn-primary::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: oklch(1 0 0 / 10%);
+	opacity: 0;
+	transition: opacity var(--void-duration-fast) var(--void-ease-out);
 }
 
 .void-btn-primary:hover {
-	background: var(--void-accent-gradient-hover);
-	box-shadow: var(--void-accent-glow), var(--void-shadow-md);
+	box-shadow: var(--void-shadow-md), var(--void-glow-subtle);
 	transform: translateY(-1px);
 }
 
+.void-btn-primary:hover::before {
+	opacity: 1;
+}
+
 .void-btn-primary:active {
-	transform: scale(0.97);
+	transform: translateY(0) scale(0.98);
 	box-shadow: var(--void-shadow-sm);
+	transition-duration: 50ms;
+}
+
+.void-btn-primary:focus-visible {
+	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-glow-subtle);
 }
 
 .void-btn-secondary {
@@ -233,62 +379,119 @@
 	color: var(--void-fg-1);
 	border: 1px solid var(--void-border-2);
 	font-weight: 500;
-	transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+	border-radius: var(--void-radius-md);
+	padding: 10px 18px;
+	transition: all var(--void-duration-normal) var(--void-ease-out);
 }
 
 .void-btn-secondary:hover {
-	background: var(--void-depth-floating);
+	background: var(--void-bg-2-hover);
 	border-color: var(--void-border-1);
 	box-shadow: var(--void-shadow-sm);
 }
 
 .void-btn-secondary:active {
-	transform: scale(0.97);
+	transform: scale(0.98);
+	transition-duration: 50ms;
 }
 
 /* Ghost button (icon only) */
 .void-btn-ghost {
 	background: transparent;
 	color: var(--void-fg-3);
-	transition: all 150ms ease-out;
+	border-radius: var(--void-radius-sm);
+	padding: 8px;
+	transition: all var(--void-duration-fast) var(--void-ease-out);
 }
 
 .void-btn-ghost:hover {
-	background: rgba(var(--void-bg-3-rgb), 0.5);
+	background: color-mix(in srgb, var(--void-fg-1) 8%, transparent);
 	color: var(--void-fg-1);
 }
 
+.void-btn-ghost:active {
+	transform: scale(0.95);
+}
+
+/* Icon button with accent on hover */
+.void-btn-icon {
+	background: transparent;
+	color: var(--void-fg-3);
+	border-radius: var(--void-radius-sm);
+	padding: 8px;
+	transition: all var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-btn-icon:hover {
+	background: color-mix(in srgb, var(--void-accent-primary) 12%, transparent);
+	color: var(--void-accent-primary);
+}
+
+.void-btn-icon:active {
+	transform: scale(0.95);
+}
+
 /* ============================================
-   MESSAGE BUBBLES (Chat Interface)
+   MESSAGE BUBBLES - CHAT INTERFACE
+   Distinctive, asymmetric borders
    ============================================ */
 
+/* User message - accent-aligned, left border emphasis */
 .message-user {
-	background: var(--void-depth-elevated);
-	border-left: 3px solid var(--void-accent-start);
-	box-shadow: var(--void-shadow-sm);
-	border-radius: 12px;
-	border-top-left-radius: 4px;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 8%, var(--void-depth-elevated)) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 4%, var(--void-depth-elevated)) 100%
+	);
+	border-left: 2px solid var(--vscode-button-background);
+	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	border-radius: var(--void-radius-md);
+	border-top-left-radius: var(--void-radius-xs);
+	padding: 12px 16px;
+	position: relative;
 }
 
+.message-user::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--void-accent-gradient);
+	opacity: 0.6;
+}
+
+/* Assistant message - subtle, clean */
 .message-assistant {
-	background: transparent;
-	border: 1px solid var(--void-border-2);
-	border-radius: 12px;
-	border-top-left-radius: 4px;
+	background: var(--void-depth-elevated);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+	border-radius: var(--void-radius-md);
+	border-top-left-radius: var(--void-radius-xs);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+	padding: 12px 16px;
 }
 
+/* System message - accent gradient */
 .message-system {
-	background: var(--void-accent-gradient-subtle);
-	border: 1px solid rgba(99, 102, 241, 0.2);
-	border-radius: 12px;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 12%, transparent) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 8%, transparent) 100%
+	);
+	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
+	border-radius: var(--void-radius-md);
+	padding: 12px 16px;
 }
 
 /* ============================================
    TOOL CARDS & RESULTS
+   Layered depth with subtle accent indicators
    ============================================ */
 
 .tool-card {
-	transition: transform 150ms ease-out, opacity 150ms ease-out;
+	transition: transform var(--void-duration-fast) var(--void-ease-out),
+		opacity var(--void-duration-fast) var(--void-ease-out);
 	will-change: transform;
 }
 
@@ -299,25 +502,38 @@
 .tool-card-premium {
 	background: var(--void-depth-floating);
 	backdrop-filter: blur(8px);
-	border-radius: 12px;
-	border: 1px solid rgba(255, 255, 255, 0.06);
-	box-shadow: var(--void-shadow-sm);
-	transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+	border-radius: var(--void-radius-md);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
+	position: relative;
+	overflow: hidden;
 }
 
 .tool-card-premium:hover {
 	box-shadow: var(--void-shadow-md);
-	border-color: rgba(99, 102, 241, 0.2);
+	border-color: color-mix(in srgb, var(--vscode-button-background) 25%, transparent);
 	transform: translateY(-2px);
 }
 
-/* Tool result wrapper with gradient border */
+.tool-card-premium::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vscode-foreground) 6%, transparent), transparent);
+}
+
+/* Tool result wrapper with accent indicator */
 .tool-result-wrapper {
 	position: relative;
 	background: var(--void-depth-elevated);
-	border-radius: 12px;
+	border-radius: var(--void-radius-md);
 	border: 1px solid var(--void-border-2);
 	overflow: hidden;
+	box-shadow: var(--void-shadow-sm);
 }
 
 .tool-result-wrapper::before {
@@ -326,35 +542,79 @@
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 2px;
-	background: var(--void-accent-gradient);
-	opacity: 0.6;
+	height: 1px;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in srgb, var(--vscode-button-background) 40%, transparent) 50%,
+		transparent 100%
+	);
+	opacity: 0.8;
+}
+
+/* Collapsible tool header */
+.tool-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	border-bottom: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+	cursor: pointer;
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+}
+
+.tool-header:hover {
+	background: var(--void-bg-2-hover);
 }
 
 /* ============================================
    FORM INPUTS
+   Clear states, proper focus indication
    ============================================ */
 
 .void-input {
 	background: var(--void-depth-elevated);
 	border: 1px solid var(--void-border-2);
-	border-radius: 8px;
+	border-radius: var(--void-radius-sm);
 	color: var(--void-fg-1);
-	transition: all 200ms ease-out;
+	padding: 10px 14px;
+	font-size: var(--void-text-base);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
+	box-shadow: inset 0 1px 0 oklch(0 0 0 / 4%);
 }
 
 .void-input:hover {
-	border-color: var(--void-border-1);
+	border-color: color-mix(in srgb, var(--void-border-1) 60%, transparent);
 }
 
 .void-input:focus {
 	outline: none;
-	border-color: var(--void-border-1);
-	box-shadow: none;
+	border-color: var(--void-accent-primary);
+	box-shadow: var(--void-glow-subtle), inset 0 1px 0 oklch(0 0 0 / 4%);
 }
 
 .void-input::placeholder {
-	color: var(--void-fg-3);
+	color: var(--void-fg-muted);
+}
+
+/* Textarea variant */
+.void-textarea {
+	background: var(--void-depth-elevated);
+	border: 1px solid var(--void-border-2);
+	border-radius: var(--void-radius-md);
+	color: var(--void-fg-1);
+	padding: 12px 16px;
+	font-size: var(--void-text-base);
+	line-height: var(--void-leading-normal);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
+	resize: vertical;
+	min-height: 80px;
+}
+
+.void-textarea:focus {
+	outline: none;
+	border-color: var(--void-accent-primary);
+	box-shadow: var(--void-glow-subtle);
 }
 
 /* Floating label input */
@@ -365,87 +625,125 @@
 .void-input-floating input {
 	background: var(--void-depth-elevated);
 	border: 1px solid var(--void-border-2);
-	border-radius: 8px;
-	padding: 16px 12px 8px;
+	border-radius: var(--void-radius-sm);
+	padding: 18px 14px 8px;
 	color: var(--void-fg-1);
 	width: 100%;
-	transition: all 200ms ease-out;
+	font-size: var(--void-text-base);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
 }
 
 .void-input-floating label {
 	position: absolute;
-	left: 12px;
+	left: 14px;
 	top: 50%;
 	transform: translateY(-50%);
-	color: var(--void-fg-3);
-	font-size: 13px;
+	color: var(--void-fg-muted);
+	font-size: var(--void-text-sm);
 	pointer-events: none;
-	transition: all 200ms ease-out;
+	transition: all var(--void-duration-normal) var(--void-ease-spring);
 }
 
 .void-input-floating input:focus + label,
 .void-input-floating input:not(:placeholder-shown) + label {
-	top: 8px;
+	top: 10px;
 	transform: translateY(0);
-	font-size: 10px;
-	color: var(--void-accent-start);
+	font-size: var(--void-text-xs);
+	color: var(--void-accent-primary);
+	font-weight: 500;
 }
 
 /* ============================================
    STATUS INDICATORS
+   Subtle, functional feedback
    ============================================ */
 
 .status-dot {
 	width: 8px;
 	height: 8px;
-	border-radius: 50%;
-	box-shadow: 0 0 8px currentColor;
+	border-radius: var(--void-radius-full);
 }
 
 .status-dot-success {
 	background: var(--void-success);
-	box-shadow: var(--void-success-glow);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--void-success) 40%, transparent);
 }
 
 .status-dot-error {
 	background: var(--void-error);
-	box-shadow: var(--void-error-glow);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--void-error) 40%, transparent);
 }
 
 .status-dot-warning {
-	background: var(--void-warning-accent);
-	box-shadow: var(--void-warning-glow);
+	background: var(--void-warning);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--void-warning) 40%, transparent);
 }
 
 .status-dot-info {
 	background: var(--void-info);
-	box-shadow: var(--void-info-glow);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--void-info) 40%, transparent);
 }
 
-/* Pills/Badges */
+/* Status with pulse animation */
+.status-dot-pulse {
+	animation: void-pulse-status 2s ease-in-out infinite;
+}
+
+@keyframes void-pulse-status {
+	0%, 100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.7;
+		transform: scale(1.1);
+	}
+}
+
+/* Pills/Badges - Square, not pill-shaped (anti-generic) */
 .void-pill {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px 8px;
-	border-radius: 9999px;
-	font-size: 11px;
+	padding: 3px 8px;
+	border-radius: var(--void-radius-xs);
+	font-size: var(--void-text-xs);
 	font-weight: 500;
+	font-variant-numeric: tabular-nums;
 }
 
 .void-pill-accent {
-	background: rgba(99, 102, 241, 0.15);
-	color: var(--void-accent-start);
-	border: 1px solid rgba(99, 102, 241, 0.25);
+	background: color-mix(in srgb, var(--vscode-button-background) 12%, transparent);
+	color: var(--vscode-button-background);
+	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
 }
 
 .void-pill-success {
-	background: rgba(34, 197, 94, 0.15);
-	color: var(--void-success);
-	border: 1px solid rgba(34, 197, 94, 0.25);
+	background: color-mix(in srgb, var(--vscode-testing-iconPassed, #22c55e) 12%, transparent);
+	color: var(--vscode-testing-iconPassed, #22c55e);
+	border: 1px solid color-mix(in srgb, var(--vscode-testing-iconPassed, #22c55e) 20%, transparent);
+}
+
+.void-pill-error {
+	background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 12%, transparent);
+	color: var(--vscode-errorForeground, #ef4444);
+	border: 1px solid color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 20%, transparent);
+}
+
+.void-pill-warning {
+	background: color-mix(in srgb, var(--vscode-problemsWarningIcon-foreground, #f59e0b) 12%, transparent);
+	color: var(--vscode-problemsWarningIcon-foreground, #f59e0b);
+	border: 1px solid color-mix(in srgb, var(--vscode-problemsWarningIcon-foreground, #f59e0b) 20%, transparent);
+}
+
+.void-pill-neutral {
+	background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	color: var(--vscode-foreground);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 15%, transparent);
 }
 
 /* ============================================
-   ANIMATIONS
+   ANIMATIONS - SPRING PHYSICS
+   Natural, weighted motion
    ============================================ */
 
 @keyframes shimmer {
@@ -459,17 +757,17 @@
 }
 
 @keyframes slide-up {
-	from { opacity: 0; transform: translateY(10px); }
+	from { opacity: 0; transform: translateY(12px); }
 	to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fade-in-scale {
-	from { opacity: 0; transform: scale(0.97); }
+	from { opacity: 0; transform: scale(0.96); }
 	to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes slide-in-right {
-	from { opacity: 0; transform: translateX(-10px); }
+	from { opacity: 0; transform: translateX(-12px); }
 	to { opacity: 1; transform: translateX(0); }
 }
 
@@ -488,9 +786,23 @@
 	50% { transform: translateY(-4px); }
 }
 
-@keyframes glow-pulse {
-	0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
-	50% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.5); }
+/* Spring entrance - overshoot and settle */
+@keyframes spring-in {
+	0% { opacity: 0; transform: scale(0.9) translateY(8px); }
+	60% { opacity: 1; transform: scale(1.02) translateY(-2px); }
+	100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Typewriter cursor blink */
+@keyframes cursor-blink {
+	0%, 50% { opacity: 1; }
+	51%, 100% { opacity: 0; }
+}
+
+/* Breathing status dot */
+@keyframes breathe {
+	0%, 100% { opacity: 1; transform: scale(1); }
+	50% { opacity: 0.7; transform: scale(1.05); }
 }
 
 .animate-shimmer {
@@ -507,49 +819,72 @@
 	animation: float 3s ease-in-out infinite;
 }
 
-.animate-glow-pulse {
-	animation: glow-pulse 2s ease-in-out infinite;
+.animate-spring-in {
+	animation: spring-in 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-breathe {
+	animation: breathe 2s ease-in-out infinite;
 }
 
 .animate-slide-in-right {
-	animation: slide-in-right 300ms ease-out forwards;
+	animation: slide-in-right 300ms var(--void-ease-out) forwards;
 }
 
-/* Staggered list animations */
+/* Staggered list animations - CSS cascade */
+.void-stagger > * {
+	opacity: 0;
+	transform: translateY(8px);
+	animation: slide-up 400ms var(--void-ease-out) forwards;
+}
+
+.void-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.void-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.void-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.void-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.void-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.void-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.void-stagger > *:nth-child(7) { animation-delay: 300ms; }
+.void-stagger > *:nth-child(8) { animation-delay: 350ms; }
+.void-stagger > *:nth-child(9) { animation-delay: 400ms; }
+.void-stagger > *:nth-child(10) { animation-delay: 450ms; }
+
+/* Legacy stagger-item for backwards compatibility */
 .stagger-item {
 	opacity: 0;
 	transform: translateY(10px);
-	animation: slide-up 400ms ease-out forwards;
+	animation: slide-up 400ms var(--void-ease-out) forwards;
 }
 
 .stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 80ms; }
-.stagger-item:nth-child(3) { animation-delay: 160ms; }
-.stagger-item:nth-child(4) { animation-delay: 240ms; }
-.stagger-item:nth-child(5) { animation-delay: 320ms; }
-.stagger-item:nth-child(6) { animation-delay: 400ms; }
-.stagger-item:nth-child(7) { animation-delay: 480ms; }
+.stagger-item:nth-child(2) { animation-delay: 60ms; }
+.stagger-item:nth-child(3) { animation-delay: 120ms; }
+.stagger-item:nth-child(4) { animation-delay: 180ms; }
+.stagger-item:nth-child(5) { animation-delay: 240ms; }
+.stagger-item:nth-child(6) { animation-delay: 300ms; }
+.stagger-item:nth-child(7) { animation-delay: 360ms; }
+.stagger-item:nth-child(8) { animation-delay: 420ms; }
 .stagger-item:nth-child(8) { animation-delay: 560ms; }
 
-/* Message transitions */
+/* Message transitions - Spring physics */
 .message-enter {
 	opacity: 0;
-	transform: translateY(10px);
+	transform: translateY(12px);
 }
 
 .message-enter-active {
 	opacity: 1;
 	transform: translateY(0);
-	transition: opacity 300ms ease-out, transform 300ms ease-out;
+	transition: opacity 300ms var(--void-ease-out), transform 300ms var(--void-ease-spring);
 }
 
 /* State transitions */
 .state-transition {
-	transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: all 300ms var(--void-ease-out);
 }
 
 .state-transition-fast {
-	transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+	transition: all 150ms var(--void-ease-out);
 }
 
 /* Progress indicators */
@@ -558,12 +893,12 @@
 }
 
 .progress-ring-circle {
-	transition: stroke-dashoffset 300ms ease-in-out;
+	transition: stroke-dashoffset 300ms var(--void-ease-out);
 }
 
 /* Smooth height transitions */
 .smooth-height {
-	transition: max-height 200ms ease-out, opacity 200ms ease-out;
+	transition: max-height 200ms var(--void-ease-out), opacity 200ms var(--void-ease-out);
 	overflow: hidden;
 	will-change: max-height, opacity;
 }
@@ -574,38 +909,134 @@
 }
 
 .attention-scale {
-	animation: fade-in-scale 0.3s ease-out;
+	animation: fade-in-scale 0.3s var(--void-ease-out);
 }
 
-/* Skeleton loading */
+/* ============================================
+   SKELETON LOADING STATES
+   Match actual content layout
+   ============================================ */
+
 .skeleton {
 	background: linear-gradient(
 		90deg,
-		var(--void-bg-3) 25%,
-		var(--void-bg-2) 50%,
-		var(--void-bg-3) 75%
+		var(--void-bg-3) 0%,
+		color-mix(in srgb, var(--void-fg-1) 5%, var(--void-bg-3)) 50%,
+		var(--void-bg-3) 100%
 	);
 	background-size: 200% 100%;
-	animation: skeleton-shimmer 1.5s infinite;
+	animation: skeleton-shimmer 1.5s ease-in-out infinite;
+	border-radius: var(--void-radius-xs);
 }
 
-/* Loading dots */
+/* Skeleton variants - Match real content sizes */
+.skeleton-text {
+	height: 1em;
+	border-radius: var(--void-radius-xs);
+}
+
+.skeleton-heading {
+	height: 1.5em;
+	width: 60%;
+	border-radius: var(--void-radius-xs);
+}
+
+.skeleton-title {
+	height: 1.25em;
+	width: 40%;
+	border-radius: var(--void-radius-xs);
+}
+
+.skeleton-avatar {
+	width: 40px;
+	height: 40px;
+	border-radius: var(--void-radius-full);
+}
+
+.skeleton-card {
+	height: 120px;
+	border-radius: var(--void-radius-md);
+}
+
+.skeleton-button {
+	height: 36px;
+	width: 100px;
+	border-radius: var(--void-radius-sm);
+}
+
+/* Loading dots - Typewriter style */
 .loading-dots {
 	display: inline-flex;
-	gap: 4px;
+	gap: 5px;
+	align-items: center;
 }
 
 .loading-dots > div {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background-color: var(--vscode-void-accent, var(--void-accent-start));
-	animation: pulse-gentle 1.4s ease-in-out infinite;
+	width: 6px;
+	height: 6px;
+	border-radius: var(--void-radius-full);
+	background: var(--vscode-button-background);
+	animation: breathe 1.4s ease-in-out infinite;
 }
 
 .loading-dots > div:nth-child(1) { animation-delay: 0s; }
-.loading-dots > div:nth-child(2) { animation-delay: 0.2s; }
-.loading-dots > div:nth-child(3) { animation-delay: 0.4s; }
+.loading-dots > div:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots > div:nth-child(3) { animation-delay: 0.3s; }
+
+/* ============================================
+   EMPTY STATES
+   Composed "getting started" views
+   ============================================ */
+
+.void-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 24px;
+	text-align: center;
+}
+
+.void-empty-state-icon {
+	width: 64px;
+	height: 64px;
+	border-radius: var(--void-radius-lg);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 15%, transparent) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 8%, transparent) 100%
+	);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 16px;
+}
+
+.void-empty-state-icon svg {
+	width: 28px;
+	height: 28px;
+	color: var(--vscode-button-background);
+}
+
+.void-empty-state-title {
+	font-size: var(--void-text-lg);
+	font-weight: 600;
+	color: var(--void-fg-1);
+	margin-bottom: 8px;
+	letter-spacing: var(--void-tracking-tight);
+}
+
+.void-empty-state-description {
+	font-size: var(--void-text-sm);
+	color: var(--void-fg-muted);
+	max-width: 320px;
+	line-height: var(--void-leading-relaxed);
+	margin-bottom: 20px;
+}
+
+.void-empty-state-action {
+	margin-top: 8px;
+}
 
 /* ============================================
    SCROLLBAR STYLING
@@ -814,22 +1245,22 @@
 /* Focus ring */
 .void-focus-ring {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-accent-glow-subtle);
+	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-glow-subtle);
 }
 
 /* ============================================
    TEXT SELECTION HIGHLIGHTING
+   Theme-aware using VS Code selection colors
    ============================================ */
 
-/* Enable text selection highlighting in React components */
 ::selection {
-	background: color-mix(in srgb, var(--void-accent-start) 40%, transparent);
-	color: var(--void-fg-1);
+	background: color-mix(in srgb, var(--vscode-button-background) 30%, transparent);
+	color: var(--vscode-editor-foreground);
 }
 
 ::-moz-selection {
-	background: color-mix(in srgb, var(--void-accent-start) 40%, transparent);
-	color: var(--void-fg-1);
+	background: color-mix(in srgb, var(--vscode-button-background) 30%, transparent);
+	color: var(--vscode-editor-foreground);
 }
 
 /* Ensure text is selectable in React components */
@@ -843,10 +1274,856 @@
 /* Code blocks selection */
 .@@void-scope pre::selection,
 .@@void-scope code::selection {
-	background: color-mix(in srgb, var(--void-accent-start) 50%, transparent);
+	background: color-mix(in srgb, var(--vscode-button-background) 35%, transparent);
 }
 
 .@@void-scope pre::-moz-selection,
 .@@void-scope code::-moz-selection {
-	background: color-mix(in srgb, var(--void-accent-start) 50%, transparent);
+	background: color-mix(in srgb, var(--vscode-button-background) 35%, transparent);
+}
+
+/* ============================================
+   TYPOGRAPHY UTILITIES
+   ============================================ */
+
+/* Tabular numbers for data */
+.void-tabular-nums {
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: 'tnum' 1;
+}
+
+/* Text balance for better orphans */
+.void-text-balance {
+	text-wrap: balance;
+}
+
+/* Headings with presence */
+.void-heading-display {
+	font-size: var(--void-text-3xl);
+	font-weight: 600;
+	letter-spacing: var(--void-tracking-tight);
+	line-height: var(--void-leading-tight);
+}
+
+.void-heading-section {
+	font-size: var(--void-text-xl);
+	font-weight: 600;
+	letter-spacing: var(--void-tracking-tight);
+	line-height: var(--void-leading-tight);
+}
+
+.void-heading-subsection {
+	font-size: var(--void-text-lg);
+	font-weight: 500;
+	letter-spacing: var(--void-tracking-normal);
+	line-height: var(--void-leading-normal);
+}
+
+/* Body text */
+.void-body {
+	font-size: var(--void-text-base);
+	line-height: var(--void-leading-normal);
+	max-width: 65ch;
+}
+
+.void-body-sm {
+	font-size: var(--void-text-sm);
+	line-height: var(--void-leading-normal);
+}
+
+/* Labels and captions */
+.void-label {
+	font-size: var(--void-text-xs);
+	font-weight: 500;
+	letter-spacing: var(--void-tracking-wide);
+	text-transform: uppercase;
+}
+
+.void-caption {
+	font-size: var(--void-text-xs);
+	color: var(--void-fg-muted);
+	line-height: var(--void-leading-normal);
+}
+
+/* Monospace for code and data */
+.void-mono {
+	font-family: var(--void-font-mono);
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Skip link for keyboard navigation */
+.void-skip-link {
+	position: absolute;
+	top: -40px;
+	left: 0;
+	background: var(--void-accent-primary);
+	color: white;
+	padding: 8px 16px;
+	z-index: 1000;
+	transition: top var(--void-duration-fast) var(--void-ease-out);
+	border-radius: var(--void-radius-sm);
+}
+
+.void-skip-link:focus {
+	top: 0;
+}
+
+/* High contrast focus indicators */
+.void-focus-visible:focus-visible {
+	outline: 2px solid var(--void-ring-color);
+	outline-offset: 2px;
+}
+
+/* Screen reader only */
+.void-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* ============================================
+   CHAT INPUT AREA
+   Modernized input with actions
+   ============================================ */
+
+.void-chat-input-container {
+	position: relative;
+	background: var(--void-depth-elevated);
+	border-radius: var(--void-radius-lg);
+	border: 1px solid var(--void-border-2);
+	box-shadow: var(--void-shadow-sm);
+	transition: border-color var(--void-duration-normal) var(--void-ease-out),
+		box-shadow var(--void-duration-normal) var(--void-ease-out);
+}
+
+.void-chat-input-container:focus-within {
+	border-color: color-mix(in srgb, var(--vscode-button-background) 50%, var(--void-border-1));
+	box-shadow: var(--void-shadow-md), var(--void-glow-subtle);
+}
+
+.void-chat-input {
+	width: 100%;
+	min-height: 60px;
+	max-height: 200px;
+	padding: 16px;
+	padding-right: 100px; /* Space for send button */
+	background: transparent;
+	border: none;
+	resize: none;
+	font-size: var(--void-text-base);
+	line-height: var(--void-leading-normal);
+	color: var(--void-fg-1);
+}
+
+.void-chat-input::placeholder {
+	color: var(--void-fg-muted);
+}
+
+.void-chat-input:focus {
+	outline: none;
+}
+
+.void-chat-actions {
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.void-send-button {
+	width: 36px;
+	height: 36px;
+	border-radius: var(--void-radius-sm);
+	background: var(--void-accent-gradient);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: transform var(--void-duration-fast) var(--void-ease-out),
+		box-shadow var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-send-button:hover {
+	transform: scale(1.05);
+	box-shadow: var(--void-glow-subtle);
+}
+
+.void-send-button:active {
+	transform: scale(0.95);
+}
+
+/* ============================================
+   THREAD LIST ITEM
+   Modernized thread selector
+   ============================================ */
+
+.void-thread-item {
+	position: relative;
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: var(--void-radius-md);
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+	cursor: pointer;
+}
+
+.void-thread-item:hover {
+	background: var(--void-bg-2-hover);
+}
+
+.void-thread-item[data-active="true"] {
+	background: color-mix(in srgb, var(--vscode-button-background) 8%, transparent);
+	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
+}
+
+.void-thread-item[data-active="true"]::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 2px;
+	height: 24px;
+	background: var(--vscode-button-background);
+	border-radius: var(--void-radius-full);
+}
+
+.void-thread-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: var(--void-radius-sm);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 15%, transparent) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 8%, transparent) 100%
+	);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.void-thread-icon svg {
+	width: 16px;
+	height: 16px;
+	color: var(--vscode-button-background);
+}
+
+.void-thread-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.void-thread-title {
+	font-size: var(--void-text-sm);
+	font-weight: 500;
+	color: var(--void-fg-1);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.void-thread-meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 4px;
+	font-size: var(--void-text-xs);
+	color: var(--void-fg-muted);
+}
+
+.void-thread-actions {
+	opacity: 0;
+	transition: opacity var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-thread-item:hover .void-thread-actions {
+	opacity: 1;
+}
+
+/* ============================================
+   SETTINGS PAGE
+   Modernized settings layout
+   ============================================ */
+
+.void-settings-container {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 32px 24px;
+}
+
+.void-settings-section {
+	margin-bottom: 40px;
+}
+
+.void-settings-section-header {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.void-settings-section-icon {
+	width: 40px;
+	height: 40px;
+	border-radius: var(--void-radius-md);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 12%, transparent) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 6%, transparent) 100%
+	);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.void-settings-section-icon svg {
+	width: 20px;
+	height: 20px;
+	color: var(--vscode-button-background);
+}
+
+.void-settings-section-title {
+	font-size: var(--void-text-xl);
+	font-weight: 600;
+	color: var(--void-fg-1);
+	letter-spacing: var(--void-tracking-tight);
+}
+
+.void-settings-section-description {
+	font-size: var(--void-text-sm);
+	color: var(--void-fg-muted);
+	margin-top: 4px;
+	line-height: var(--void-leading-relaxed);
+}
+
+.void-settings-card {
+	background: var(--void-depth-elevated);
+	border: 1px solid var(--void-border-2);
+	border-radius: var(--void-radius-lg);
+	padding: 20px;
+	box-shadow: var(--void-shadow-sm);
+}
+
+.void-settings-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 24px;
+	align-items: start;
+	padding: 16px 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--void-border-2) 30%, transparent);
+}
+
+.void-settings-row:last-child {
+	border-bottom: none;
+}
+
+.void-settings-row-label {
+	font-size: var(--void-text-sm);
+	font-weight: 500;
+	color: var(--void-fg-1);
+}
+
+.void-settings-row-description {
+	font-size: var(--void-text-xs);
+	color: var(--void-fg-muted);
+	margin-top: 4px;
+	line-height: var(--void-leading-relaxed);
+}
+
+/* ============================================
+   TASK PLAN COMPONENT
+   Lighter, more organized
+   ============================================ */
+
+.void-task-plan {
+	border-radius: var(--void-radius-md);
+	border: 1px solid var(--void-border-2);
+	background: var(--void-depth-elevated);
+	overflow: hidden;
+}
+
+.void-task-plan-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 18px;
+	border-bottom: 1px solid var(--void-border-2);
+	background: color-mix(in srgb, var(--void-accent-primary) 5%, transparent);
+	cursor: pointer;
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-task-plan-header:hover {
+	background: color-mix(in srgb, var(--void-accent-primary) 8%, transparent);
+}
+
+.void-task-plan-title {
+	font-size: var(--void-text-sm);
+	font-weight: 600;
+	color: var(--void-fg-1);
+}
+
+.void-task-plan-progress {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.void-task-plan-progress-bar {
+	width: 80px;
+	height: 4px;
+	background: var(--void-bg-3);
+	border-radius: var(--void-radius-full);
+	overflow: hidden;
+}
+
+.void-task-plan-progress-fill {
+	height: 100%;
+	background: var(--void-accent-gradient);
+	transition: width var(--void-duration-slow) var(--void-ease-out);
+}
+
+.void-task-plan-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 14px 18px;
+	border-bottom: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-task-plan-item:hover {
+	background: var(--void-bg-2-hover);
+}
+
+.void-task-plan-item:last-child {
+	border-bottom: none;
+}
+
+/* ============================================
+   MODELS SETTINGS PAGE
+   Premium model management UI
+   ============================================ */
+
+/* Models header section */
+.void-models-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 24px;
+	padding-bottom: 20px;
+	border-bottom: 1px solid var(--void-border-2);
+}
+
+.void-models-header-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.void-models-header-title {
+	font-size: 20px;
+	font-weight: 600;
+	color: var(--void-fg-1);
+	letter-spacing: -0.02em;
+	margin-bottom: 4px;
+}
+
+.void-models-header-description {
+	font-size: 13px;
+	color: var(--void-fg-muted);
+	line-height: 1.5;
+}
+
+/* Search input with icon for models */
+.void-models-search-wrapper {
+	position: relative;
+	margin-bottom: 16px;
+}
+
+.void-models-search-wrapper svg {
+	position: absolute;
+	left: 14px;
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--void-fg-3);
+	pointer-events: none;
+}
+
+.void-models-search-input {
+	width: 100%;
+	padding: 12px 16px 12px 42px;
+	border-radius: var(--void-radius-md);
+	border: 1px solid var(--void-border-2);
+	background: var(--void-depth-elevated);
+	color: var(--void-fg-1);
+	font-size: 13px;
+	transition: all var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-models-search-input:focus {
+	outline: none;
+	border-color: var(--void-accent-primary);
+	box-shadow: var(--void-glow-subtle);
+}
+
+.void-models-search-input::placeholder {
+	color: var(--void-fg-muted);
+}
+
+/* Model list container */
+.void-models-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+/* Provider group separator */
+.void-provider-group {
+	margin-bottom: 8px;
+}
+
+.void-provider-group-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 16px;
+	background: color-mix(in srgb, var(--void-fg-1) 2%, transparent);
+	border-radius: var(--void-radius-sm) var(--void-radius-sm) 0 0;
+	cursor: pointer;
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+	user-select: none;
+}
+
+.void-provider-group-header:hover {
+	background: color-mix(in srgb, var(--void-fg-1) 4%, transparent);
+}
+
+.void-provider-group-chevron {
+	transition: transform var(--void-duration-fast) var(--void-ease-out);
+	color: var(--void-fg-3);
+}
+
+.void-provider-group-chevron[data-expanded="true"] {
+	transform: rotate(90deg);
+}
+
+.void-provider-group-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--void-fg-3);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.void-provider-group-count {
+	font-size: 10px;
+	padding: 2px 8px;
+	border-radius: var(--void-radius-full);
+	background: var(--void-bg-3);
+	color: var(--void-fg-3);
+	font-weight: 500;
+}
+
+/* Model list item */
+.void-model-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 14px 16px;
+	border-radius: var(--void-radius-md);
+	background: transparent;
+	transition: all var(--void-duration-fast) var(--void-ease-out);
+	border: 1px solid transparent;
+	position: relative;
+}
+
+.void-model-item:hover {
+	background: color-mix(in srgb, var(--void-fg-1) 3%, transparent);
+	border-color: var(--void-border-2);
+}
+
+.void-model-item[data-active="true"] {
+	background: color-mix(in srgb, var(--void-accent-primary) 6%, transparent);
+	border-color: color-mix(in srgb, var(--void-accent-primary) 20%, transparent);
+}
+
+.void-model-item-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	flex: 1;
+}
+
+.void-model-item-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--void-fg-1);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.void-model-item-provider {
+	font-size: 11px;
+	color: var(--void-fg-3);
+}
+
+.void-model-item-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	opacity: 0;
+	transition: opacity var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-model-item:hover .void-model-item-actions,
+.void-model-item:focus-within .void-model-item-actions {
+	opacity: 1;
+}
+
+/* Model status badges */
+.void-model-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: var(--void-radius-xs);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+.void-model-badge-default {
+	background: color-mix(in srgb, var(--void-success) 10%, transparent);
+	color: var(--void-success);
+}
+
+.void-model-badge-custom {
+	background: color-mix(in srgb, var(--void-info) 10%, transparent);
+	color: var(--void-info);
+}
+
+.void-model-badge-detected {
+	background: color-mix(in srgb, var(--void-accent-primary) 10%, transparent);
+	color: var(--void-accent-primary);
+}
+
+.void-model-badge-disabled {
+	background: color-mix(in srgb, var(--void-fg-3) 8%, transparent);
+	color: var(--void-fg-3);
+}
+
+/* Config panel (inline expansion) */
+.void-model-config-panel {
+	margin: 0 16px 16px;
+	padding: 16px;
+	border-radius: var(--void-radius-md);
+	background: var(--void-bg-2);
+	border: 1px solid var(--void-border-2);
+	animation: void-slide-down 200ms var(--void-ease-out);
+}
+
+@keyframes void-slide-down {
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.void-model-config-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	margin-bottom: 12px;
+}
+
+.void-model-config-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--void-fg-1);
+}
+
+.void-model-config-subtitle {
+	font-size: 11px;
+	color: var(--void-fg-3);
+	margin-top: 4px;
+}
+
+.void-model-config-textarea {
+	width: 100%;
+	height: 120px;
+	padding: 12px;
+	border-radius: var(--void-radius-sm);
+	border: 1px solid var(--void-border-2);
+	background: var(--void-bg-1);
+	color: var(--void-fg-1);
+	font-family: var(--void-font-mono);
+	font-size: 11px;
+	line-height: 1.5;
+	resize: vertical;
+	transition: border-color var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-model-config-textarea:focus {
+	outline: none;
+	border-color: var(--void-accent-primary);
+}
+
+.void-model-config-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+/* Add model section */
+.void-add-model-section {
+	padding: 16px;
+	border-top: 1px solid var(--void-border-2);
+}
+
+.void-add-model-form {
+	display: flex;
+	gap: 12px;
+	align-items: flex-end;
+}
+
+.void-add-model-form > *:first-child {
+	flex: 1;
+}
+
+/* Refresh models section */
+.void-refresh-section {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-radius: var(--void-radius-md);
+	background: var(--void-bg-2);
+	border: 1px solid var(--void-border-2);
+	margin-top: 16px;
+}
+
+.void-refresh-section-text {
+	font-size: 13px;
+	color: var(--void-fg-2);
+}
+
+.void-refresh-section-success {
+	color: var(--void-success);
+}
+
+.void-refresh-section-error {
+	color: var(--void-error);
+}
+
+/* Empty state for models */
+.void-models-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 24px;
+	text-align: center;
+}
+
+.void-models-empty-icon {
+	width: 56px;
+	height: 56px;
+	border-radius: var(--void-radius-lg);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--void-accent-primary) 12%, transparent) 0%,
+		color-mix(in srgb, var(--void-accent-primary) 6%, transparent) 100%
+	);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 16px;
+}
+
+.void-models-empty-icon svg {
+	width: 28px;
+	height: 28px;
+	color: var(--void-accent-primary);
+}
+
+.void-models-empty-title {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--void-fg-1);
+	margin-bottom: 8px;
+}
+
+.void-models-empty-description {
+	font-size: 13px;
+	color: var(--void-fg-muted);
+	max-width: 280px;
+	line-height: 1.5;
+	margin-bottom: 16px;
+}
+
+/* Provider status indicator */
+.void-provider-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px;
+	border-radius: var(--void-radius-xs);
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.void-provider-status-connected {
+	background: color-mix(in srgb, var(--void-success) 12%, transparent);
+	color: var(--void-success);
+}
+
+.void-provider-status-disconnected {
+	background: color-mix(in srgb, var(--void-fg-3) 8%, transparent);
+	color: var(--void-fg-3);
+}
+
+.void-provider-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: var(--void-radius-full);
+	background: currentColor;
+}
+
+.void-provider-status-connected .void-provider-status-dot {
+	animation: void-pulse-status 2s ease-in-out infinite;
 }

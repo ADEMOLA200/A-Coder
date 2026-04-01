@@ -146,7 +146,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	// During streaming, result may not be available yet - show a simple loading state
 	if (!result) {
 		return (
-			<div className="void-planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
+			<div className="planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
 				<div className="flex items-center gap-2 px-3 py-2">
 					<div
 						className="w-3 h-3 border-2 rounded-full border-void-accent"
@@ -185,7 +185,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	const hiddenCount = tasks.length - visibleTasks.length
 
 	return (
-		<div className="void-planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm hover:shadow-md">
+		<div className="planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm hover:shadow-md">
 			{/* Header - clickable to expand/collapse */}
 			<div
 				className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 hover:brightness-125 transition-all duration-150"

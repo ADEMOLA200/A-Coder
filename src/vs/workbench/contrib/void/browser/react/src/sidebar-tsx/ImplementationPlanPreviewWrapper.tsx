@@ -69,7 +69,7 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	const result = latestPlan.result
 	if (!result) {
 		return (
-			<div className="void-implementation-plan-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
+			<div className="implementation-plan-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
 				<div className="flex items-center gap-2 px-3 py-2">
 					<div
 						className="w-3 h-3 border-2 rounded-full border-void-accent"
@@ -327,7 +327,7 @@ My requested changes:`
 
 	return (
 		<div className="@@void-scope">
-			<div className="void-implementation-plan-preview border border-void-border-2 rounded-lg overflow-hidden shadow-sm bg-void-bg-4">
+			<div className="implementation-plan-preview border border-void-border-2 rounded-lg overflow-hidden shadow-sm bg-void-bg-4">
 				{/* Header */}
 				<div
 					className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors border-b border-void-border-2 bg-void-bg-4/50"

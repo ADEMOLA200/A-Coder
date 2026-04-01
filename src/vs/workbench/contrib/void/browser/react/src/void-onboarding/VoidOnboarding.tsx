@@ -75,7 +75,7 @@ const VoidIcon = () => {
 		return () => d.dispose()
 	}, [])
 
-	return <div ref={divRef} className='@@void-void-icon' />
+	return <div ref={divRef} className='@@void-icon' />
 }
 
 const FADE_DURATION_MS = 2000
@@ -751,7 +751,7 @@ const VoidOnboardingContent = () => {
 					{/* Logo */}
 					<div className="relative group">
 						<div className="absolute -inset-4 bg-void-accent/20 rounded-full blur-2xl group-hover:bg-void-accent/30 transition-all duration-1000" />
-						{!isLinux && <div className='@@void-void-icon relative z-10' style={{ width: '120px', height: '120px', opacity: 0.9 }} />}
+						{!isLinux && <div className='@@void-icon relative z-10' style={{ width: '120px', height: '120px', opacity: 0.9 }} />}
 					</div>
 
 					{/* Title & Tagline */}

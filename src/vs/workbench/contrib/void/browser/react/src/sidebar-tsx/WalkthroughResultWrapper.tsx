@@ -122,7 +122,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	if (toolType === 'running_now' || toolType === 'tool_request') {
 		return (
 			<div className="@@void-scope">
-				<div className="void-walkthrough-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
+				<div className="walkthrough-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
 					<div className="flex items-center gap-2 px-3 py-2">
 						<div
 							className="w-3 h-3 border-2 rounded-full border-void-accent"
@@ -144,7 +144,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	if (toolType === 'tool_error') {
 		return (
 			<div className="@@void-scope">
-				<div className="void-walkthrough-result border border-void-warning/50 rounded-lg overflow-hidden bg-void-warning/5 p-3">
+				<div className="walkthrough-result border border-void-warning/50 rounded-lg overflow-hidden bg-void-warning/5 p-3">
 					<div className="flex items-start gap-2 text-void-fg-1">
 						<span className="text-lg">{'\u{26A0}\u{FE0F}'}</span>
 						<div className="flex flex-col">
@@ -168,7 +168,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 		return (
 			<div className="@@void-scope">
-				<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-2 p-3">
+				<div className="walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-2 p-3">
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-2 text-void-fg-1">
 							<span className="text-lg">👁️</span>
@@ -253,7 +253,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	return (
 		<div className="@@void-scope">
-			<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-4 shadow-sm">
+			<div className="walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-4 shadow-sm">
 				{/* Header */}
 				<div className="bg-void-bg-4/50 px-3 py-2">
 					<div

@@ -83,7 +83,7 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 	if (images.length === 0) return null;
 
 	return (
-		<div className="flex flex-wrap gap-2 mb-2 p-2 void-card">
+		<div className="flex flex-wrap gap-2 mb-2 p-2 card">
 			{images.map((image, index) => (
 				<div key={index} className="relative group">
 					<img
@@ -189,7 +189,7 @@ const TaskPlanView = ({
 	}
 
 	return (
-		<div className="mb-4 void-card-premium">
+		<div className="mb-4 card-premium">
 			{/* Header */}
 			<div
 				className="flex items-center justify-between p-4 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-inset"
@@ -206,7 +206,7 @@ const TaskPlanView = ({
 					/>
 					<div className="flex items-center gap-2">
 						<span className="text-sm font-semibold text-void-fg-1">Task Plan</span>
-						<span className="px-2 py-0.5 text-xs font-medium bg-void-bg-3 text-void-fg-3 rounded-full">
+						<span className="pill pill-neutral">
 							{completedCount}/{totalCount}
 						</span>
 					</div>
@@ -221,7 +221,7 @@ const TaskPlanView = ({
 								style={{ width: `${progressPercentage}%` }}
 							/>
 						</div>
-						<span className="text-xs text-void-fg-4 font-medium">
+						<span className="text-xs text-void-fg-4 font-medium tabular-nums">
 							{Math.round(progressPercentage)}%
 						</span>
 					</div>
@@ -230,7 +230,7 @@ const TaskPlanView = ({
 							e.stopPropagation();
 							onClearPlan();
 						}}
-						className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
+						className="btn-ghost min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
 						title="Clear all tasks"
 					>
 						<Trash2 className="w-4 h-4 text-void-fg-4" />
@@ -270,7 +270,7 @@ const TaskPlanView = ({
 								<select
 									value={task.status}
 									onChange={(e) => onUpdateTaskStatus(task.id, e.target.value as TaskPlan['status'])}
-									className="text-xs px-3 py-1.5 void-input rounded-lg text-void-fg-2"
+									className="text-xs px-3 py-1.5 input rounded-lg text-void-fg-2"
 								>
 									<option value="pending">Pending</option>
 									<option value="in_progress">In Progress</option>
@@ -281,7 +281,7 @@ const TaskPlanView = ({
 								{/* Delete button */}
 								<button
 									onClick={() => onDeleteTask(task.id)}
-									className="p-2 hover:bg-void-bg-3 rounded-lg transition-colors duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
+									className="btn-ghost opacity-0 group-hover:opacity-100 focus:opacity-100 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
 									title="Delete task"
 								>
 									<X className="w-4 h-4 text-void-fg-4" />
@@ -307,12 +307,12 @@ const TaskPlanView = ({
 										}
 									}}
 									placeholder="Enter task description..."
-									className="void-input flex-1"
+									className="input flex-1"
 									autoFocus
 								/>
 								<button
 									onClick={handleAddTask}
-									className="px-4 py-2 text-xs font-medium bg-void-accent text-white rounded-lg hover:bg-void-accent-hover transition-colors duration-200"
+									className="btn-primary px-4 py-2 text-xs font-medium"
 								>
 									Add Task
 								</button>
@@ -321,7 +321,7 @@ const TaskPlanView = ({
 										setIsAddingTask(false);
 										setNewTaskDescription('');
 									}}
-									className="px-4 py-2 text-xs font-medium border border-void-border-2 rounded-lg hover:bg-void-bg-4 transition-colors duration-200"
+									className="btn-secondary px-4 py-2 text-xs font-medium"
 								>
 									Cancel
 								</button>
@@ -329,7 +329,7 @@ const TaskPlanView = ({
 						) : (
 							<button
 								onClick={() => setIsAddingTask(true)}
-								className="flex items-center gap-2 px-3 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 border border-void-border-2 rounded-lg transition-all duration-200"
+								className="flex items-center gap-2 px-3 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 border border-void-border-2 rounded-lg transition-all duration-200 void-interactive"
 							>
 								<CirclePlus className="w-4 h-4" />
 								Add Task
@@ -347,8 +347,8 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 	// Show default state if no token usage data
 	if (!tokenUsage || tokenUsage.total === 0) {
 		return (
-			<div className='flex items-center gap-1.5 text-xs text-void-fg-4 px-2 py-1 rounded bg-void-bg-2 border border-void-border-2'>
-				<span className='font-mono'>0/0</span>
+			<div className='pill pill-neutral'>
+				<span className='font-mono tabular-nums'>0/0</span>
 				<span className='font-medium'>(0.0%)</span>
 			</div>
 		);
@@ -359,10 +359,9 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 	const isMedium = percentage >= 50 && percentage < 80;
 
 	return (
-		<div className='flex items-center gap-1.5 text-xs text-void-fg-3 px-2 py-1 rounded bg-void-bg-2 border border-void-border-2'>
-			<span className='font-mono'>{used.toLocaleString()}/{total.toLocaleString()}</span>
-			<span className={`font-medium ${isHigh ? 'text-orange-500' : isMedium ? 'text-yellow-500' : 'text-void-fg-4'
-				}`}>
+		<div className={`pill ${isHigh ? 'pill-error' : isMedium ? 'pill-warning' : 'pill-neutral'}`}>
+			<span className='font-mono tabular-nums'>{used.toLocaleString()}/{total.toLocaleString()}</span>
+			<span className='font-medium'>
 				({percentage.toFixed(1)}%)
 			</span>
 		</div>
@@ -458,7 +457,7 @@ const VoidIcon = ({ size = 96, opacity = 0.9, className = '' }: { size?: number;
 
 	return (
 		<div
-			className={`@@void-void-icon ${className}`}
+			className={`@@void-icon ${className}`}
 			style={{
 				width: `${size}px`,
 				height: `${size}px`,
@@ -871,13 +870,11 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 			ref={divRef}
 			className={`
 					flex flex-col p-3 relative text-left shrink-0 w-full
-					rounded-2xl border border-void-border-2
+					glass-premium rounded-2xl
 					transition-all duration-300 ease-out
-					focus-within:border-void-border-1
-					hover:border-void-border-1 hover:shadow-void-sm
+					focus-within:border-void-accent/30
+					hover:border-void-border-1 hover:shadow-void-md
 					max-h-[80vh] overflow-visible
-					${isDark ? 'bg-void-depth-elevated' : 'bg-void-depth-elevated'}
-					shadow-void-sm
 					${className}
 				`}
 			onClick={(e) => {
@@ -962,7 +959,7 @@ export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: But
 			focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 focus:ring-offset-void-bg-1
 			${disabled
 				? 'bg-void-depth-base cursor-not-allowed opacity-50 border border-void-border-2'
-				: 'void-btn-primary cursor-pointer'
+				: 'btn-primary cursor-pointer shadow-void-sm'
 			}
 			${className}
 		`}
@@ -984,7 +981,7 @@ export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLBut
 		className={`
 			rounded-xl flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center
 			transition-all duration-200 ease-out
-			void-btn-secondary
+			btn-secondary
 			focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-void-bg-1
 			${className}
 		`}
@@ -1519,11 +1516,11 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 		>
 			<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
 				<div
-					// style chatbubble according to role
+					// style chatbubble according to role - using modernized message-user class
 					className={`
 					group relative
 					${mode === 'edit' ? 'w-full'
-							: mode === 'display' ? 'px-4 py-3 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2/50 rounded-2xl rounded-tr-none text-void-fg-1 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5' : ''
+							: mode === 'display' ? 'message-user cursor-pointer' : ''
 						}
 				`}
 					onClick={() => { if (mode === 'display') { onOpenEdit() } }}
@@ -1586,9 +1583,9 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 						</div>
 					}
 
-					{/* assistant message */}
+					{/* assistant message - using modernized message-assistant class */}
 					{chatMessage.displayContent &&
-						<div className="w-full px-1">
+						<div className="message-assistant w-full">
 							<ProseWrapper>
 								<ChatMarkdownRender
 									string={chatMessage.displayContent || ''}
@@ -1630,9 +1627,9 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 
 	return (
 		<div className="my-3 mx-1">
-			<div className={`rounded-xl border border-void-border-2 overflow-hidden transition-all duration-300 ${isWriting ? 'bg-void-bg-2/30 border-void-accent/20' : 'bg-void-bg-2/10'}`}>
+			<div className={`tool-card-premium overflow-hidden ${isWriting ? 'border-void-accent/30' : ''}`}>
 				<div
-					className={`flex items-center justify-between px-3 py-2 cursor-pointer select-none transition-colors duration-150 group`}
+					className="tool-header group"
 					onClick={() => setIsOpen(v => !v)}
 				>
 					<div className="flex items-center gap-2">
@@ -1641,7 +1638,7 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 							className={`transition-transform duration-200 text-void-fg-4 group-hover:text-void-fg-2 ${isOpen ? 'rotate-90 text-void-accent' : ''}`}
 						/>
 						<div className="flex items-center gap-2">
-							<Brain size={12} className={isWriting ? 'text-void-accent animate-pulse' : 'text-void-fg-4'} />
+							<Brain size={12} className={isWriting ? 'text-void-accent animate-breathe' : 'text-void-fg-4'} />
 							<span className={`text-[10px] font-bold uppercase tracking-wider ${isWriting ? 'text-void-accent' : 'text-void-fg-3 group-hover:text-void-fg-2'}`}>
 								{statusText}
 							</span>
@@ -1649,8 +1646,8 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 					</div>
 
 					{isWriting && (
-						<div className="flex items-center gap-1.5 px-2 py-0.5 bg-void-accent/10 rounded-full border border-void-accent/20">
-							<span className="text-[9px] font-bold text-void-accent uppercase tracking-widest">Thinking</span>
+						<div className="pill pill-accent">
+							<span className="text-[9px] font-bold uppercase tracking-widest">Thinking</span>
 							<Loader2 className="w-2.5 h-2.5 animate-spin text-void-accent" />
 						</div>
 					)}
