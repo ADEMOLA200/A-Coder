@@ -263,6 +263,14 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			...commonPayloadOpts
 		})
 	}
+	else if (providerName === 'openAdapter') {
+		const thisConfig = settingsOfProvider[providerName]
+		return new OpenAI({
+			baseURL: 'https://api.openadapter.in/v1',
+			apiKey: thisConfig.apiKey,
+			...commonPayloadOpts
+		})
+	}
 
 	else throw new Error(`Provider "${providerName}" is not supported.`)
 }
@@ -1585,6 +1593,11 @@ export const sendLLMMessageToProviderImplementation = {
 		list: null,
 	},
 	aCoder: {
+		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendFIM: null,
+		list: (params) => _openaiCompatibleList(params),
+	},
+	openAdapter: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
 		sendFIM: null,
 		list: (params) => _openaiCompatibleList(params),

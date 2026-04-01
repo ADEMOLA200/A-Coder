@@ -68,6 +68,9 @@ export const defaultProviderSettings = {
 	aCoder: {
 		apiKey: '',
 	},
+	openAdapter: {
+		apiKey: '',
+	},
 
 } as const
 
@@ -163,6 +166,7 @@ export const defaultModelsOfProvider = {
 		'claude-3-5-haiku-20241022',
 		'claude-opus-4-20250514',
 	],
+	openAdapter: [], // autodetected from /v1/models
 
 
 } as const satisfies Record<ProviderName, string[]>
@@ -1987,7 +1991,31 @@ const aCoderSettings: VoidStaticProviderInfo = {
 	},
 }
 
-
+// OpenAdapter provider - OpenAI-compatible API at https://api.openadapter.in
+const openAdapterSettings: VoidStaticProviderInfo = {
+	modelOptions: {
+		// Models are fetched dynamically from /v1/models
+	},
+	modelOptionsFallback: (modelName) => {
+		// Use the extensive fallback for unknown models
+		const res = extensiveModelOptionsFallback(modelName)
+		if (res) {
+			res.specialToolFormat = 'openai-style'
+		}
+		// Override context window and reserved output token space for ALL OpenAdapter models
+		// These values take precedence over the extensive fallback defaults
+		if (res) {
+			res.contextWindow = 256867
+			res.reservedOutputTokenSpace = 16758
+		}
+		return res
+	},
+	providerReasoningIOSettings: {
+		// OpenAdapter supports OpenAI-style reasoning
+		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
+		output: { nameOfFieldInDelta: 'reasoning_content' },
+	},
+}
 
 
 
@@ -2017,6 +2045,7 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	microsoftAzure: microsoftAzureSettings,
 	awsBedrock: awsBedrockSettings,
 	aCoder: aCoderSettings,
+	openAdapter: openAdapterSettings,
 } as const
 
 

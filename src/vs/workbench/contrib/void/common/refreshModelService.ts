@@ -48,6 +48,7 @@ const refreshBasedOn: { [k in RefreshableProviderName]: (keyof SettingsOfProvide
 	vLLM: ['_didFillInProviderSettings', 'endpoint'],
 	lmStudio: ['_didFillInProviderSettings', 'endpoint'],
 	aCoder: ['_didFillInProviderSettings', 'apiKey'],
+	openAdapter: ['_didFillInProviderSettings', 'apiKey'],
 	// openAICompatible: ['_didFillInProviderSettings', 'endpoint', 'apiKey'],
 }
 const REFRESH_INTERVAL = 5_000
@@ -146,6 +147,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 		vLLM: { state: 'init', timeoutId: null },
 		lmStudio: { state: 'init', timeoutId: null },
 		aCoder: { state: 'init', timeoutId: null },
+		openAdapter: { state: 'init', timeoutId: null },
 	}
 
 
@@ -177,6 +179,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 						else if (providerName === 'vLLM') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'lmStudio') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'aCoder') return (model as OpenaiCompatibleModelResponse).id;
+						else if (providerName === 'openAdapter') return (model as OpenaiCompatibleModelResponse).id;
 						else throw new Error(`refreshMode fn: unknown provider ${providerName}`);
 					}),
 					{ enableProviderOnSuccess: options.enableProviderOnSuccess, hideRefresh: options.doNotFire }

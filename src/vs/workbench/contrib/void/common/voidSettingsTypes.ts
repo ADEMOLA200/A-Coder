@@ -109,6 +109,9 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 	else if (providerName === 'aCoder') {
 		return { title: 'A-Coder', desc: 'Cloud-hosted AI models' }
 	}
+	else if (providerName === 'openAdapter') {
+		return { title: 'OpenAdapter', desc: 'OpenAI-compatible API aggregator' }
+	}
 
 	throw new Error(`descOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -132,6 +135,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	if (providerName === 'lmStudio') return 'Read more about custom [Endpoints here](https://lmstudio.ai/docs/app/api/endpoints/openai).'
 	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
 	if (providerName === 'aCoder') return 'Get your API key from [A-Coder](https://a-coder.dev).'
+	if (providerName === 'openAdapter') return 'Get your [API Key here](https://openadapter.in). Models are fetched automatically from api.openadapter.in/v1/models.'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -161,7 +165,8 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 													providerName === 'microsoftAzure' ? 'key-...' :
 														providerName === 'awsBedrock' ? 'key-...' :
 															providerName === 'aCoder' ? 'acoder-key...' :
-																'',
+																providerName === 'openAdapter' ? 'sk-...' :
+																	'',
 
 			isPasswordField: true,
 		}
@@ -363,6 +368,12 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.aCoder),
 		_didFillInProviderSettings: undefined,
 	},
+	openAdapter: {
+		...defaultCustomSettings,
+		...defaultProviderSettings.openAdapter,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.openAdapter),
+		_didFillInProviderSettings: undefined,
+	},
 }
 
 
@@ -403,8 +414,8 @@ export const displayInfoOfFeatureName = (featureName: FeatureName) => {
 
 
 // the models of these can be refreshed (in theory all can, but not all should)
-export const refreshableProviderNames = [...localProviderNames, 'aCoder'] as const
-export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'aCoder'
+export const refreshableProviderNames = [...localProviderNames, 'aCoder', 'openAdapter'] as const
+export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'aCoder' | 'openAdapter'
 
 // models that come with download buttons
 export const hasDownloadButtonsOnModelsProviderNames = ['ollama'] as const satisfies ProviderName[]
