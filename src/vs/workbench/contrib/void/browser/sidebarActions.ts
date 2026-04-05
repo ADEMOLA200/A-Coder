@@ -171,23 +171,31 @@ registerAction2(class extends Action2 {
 		const oldThreadId = chatThreadsService.state.currentThreadId
 		const oldThread = chatThreadsService.state.allThreads[oldThreadId]
 
-		const oldUI = await oldThread?.state.mountedInfo?.whenMounted
+		// Wait for old thread UI with timeout to prevent hanging
+		const oldUI = await Promise.race([
+			oldThread?.state.mountedInfo?.whenMounted ?? Promise.resolve(null),
+			new Promise<null>(resolve => setTimeout(() => resolve(null), 1000))
+		])
 
 		const oldSelns = oldThread?.state.stagingSelections
 		const oldVal = oldUI?.textAreaRef?.current?.value
 
 		// open and focus new thread
 		chatThreadsService.openNewThread()
-		// Yield to allow React to process the state update before awaiting mount
-		await new Promise(resolve => setTimeout(resolve, 0))
-		await chatThreadsService.focusCurrentChat()
 
+		// Use focusCurrentChat with its built-in timeout protection
+		await chatThreadsService.focusCurrentChat()
 
 		// set new thread values
 		const newThreadId = chatThreadsService.state.currentThreadId
 		const newThread = chatThreadsService.state.allThreads[newThreadId]
 
-		const newUI = await newThread?.state.mountedInfo?.whenMounted
+		// Wait for new thread UI with timeout
+		const newUI = await Promise.race([
+			newThread?.state.mountedInfo?.whenMounted ?? Promise.resolve(null),
+			new Promise<null>(resolve => setTimeout(() => resolve(null), 1000))
+		])
+
 		chatThreadsService.setCurrentThreadState({ stagingSelections: oldSelns, })
 		if (newUI?.textAreaRef?.current && oldVal) newUI.textAreaRef.current.value = oldVal
 

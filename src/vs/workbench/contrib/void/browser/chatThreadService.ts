@@ -495,7 +495,7 @@ export interface IChatThreadService {
 	clearMessageQueue(threadId: string): void;
 	forceSendQueuedMessage(threadId: string, index: number): Promise<void>;
 
-	focusCurrentChat: () => Promise<void>
+	focusCurrentChat: (timeout?: number) => Promise<void>
 	blurCurrentChat: () => Promise<void>
 
 	getAutoContinuePreference(threadId: string): boolean;
@@ -643,13 +643,29 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		super.dispose();
 	}
 
-	async focusCurrentChat() {
+	async focusCurrentChat(timeout: number = 5000): Promise<void> {
 		const threadId = this.state.currentThreadId
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return
-		const s = await thread.state.mountedInfo?.whenMounted
-		if (!this.isCurrentlyFocusingMessage()) {
-			s?.textAreaRef.current?.focus()
+
+		// Wait for mountedInfo with timeout to prevent hanging
+		const mountedInfo = thread.state.mountedInfo
+		if (!mountedInfo?.whenMounted) return
+
+		// Race between mount and timeout
+		try {
+			const s = await Promise.race([
+				mountedInfo.whenMounted,
+				new Promise<WhenMounted | null>((_, reject) =>
+					setTimeout(() => reject(new Error('focusCurrentChat timeout')), timeout)
+				)
+			])
+			if (!this.isCurrentlyFocusingMessage()) {
+				s?.textAreaRef.current?.focus()
+			}
+		} catch {
+			// Timeout - component may not have mounted yet, just skip focusing
+			console.log('[chatThreadService] focusCurrentChat timed out waiting for mount')
 		}
 	}
 	async blurCurrentChat() {

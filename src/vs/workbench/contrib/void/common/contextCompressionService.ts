@@ -31,7 +31,7 @@ export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
 	targetUsage: 0.85, // Use 85% of context window (more aggressive)
 	keepLastNMessages: 10, // Keep last 10 messages (5 turns) for better context
 	enableSummarization: true,
-	maxToolResultLength: 1500, // More aggressive truncation of tool results
+	maxToolResultLength: 50000, // Allow larger tool results for file operations (was 1500, too aggressive)
 	reservedTokens: 8192, // Reserve 8K tokens for system + output (adjustable per model)
 	emergencyKeepLastN: 4, // In emergency, keep only last 4 messages
 };

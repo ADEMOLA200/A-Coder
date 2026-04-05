@@ -32,28 +32,77 @@ type Tab =
 
 // --- Shared Components ---
 
-export const SettingRow = ({ label, description, children, className = '' }: { label: React.ReactNode, description?: React.ReactNode, children: React.ReactNode, className?: string }) => (
-	<div className={`flex items-start justify-between gap-10 py-3 ${className}`}>
+export const SettingRow = ({
+	label,
+	description,
+	children,
+	className = ''
+}: {
+	label: React.ReactNode
+	description?: React.ReactNode
+	children: React.ReactNode
+	className?: string
+}) => (
+	<div className={`flex items-start justify-between gap-8 py-4 group ${className}`}>
 		<div className="flex flex-col gap-1.5 flex-1 min-w-0">
-			<span className="text-[13px] font-medium text-void-fg-1">{label}</span>
-			{description && <div className="text-[12px] text-void-fg-3/80 leading-relaxed">{description}</div>}
+			<span className="text-[13px] font-medium text-void-fg-1 tracking-tight">{label}</span>
+			{description && (
+				<div className="text-[12px] text-void-fg-3/70 leading-relaxed max-w-md">{description}</div>
+			)}
 		</div>
-		<div className="flex-shrink-0 pt-0.5">{children}</div>
+		<div className="flex-shrink-0 pt-0.5 transition-transform duration-200 group-hover:scale-[1.02]">
+			{children}
+		</div>
 	</div>
 )
 
-// Cursor-inspired minimal setting components
-export const SettingBox = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
-	<div className={`p-5 void-card ${className}`}>
-		{children}
-	</div>
-)
+// Premium setting components with double-bezel architecture
+export const SettingBox = ({ children, className = '', variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'nested' }) => {
+	if (variant === 'nested') {
+		return (
+			<div className={`p-1.5 rounded-[1.25rem] bg-void-bg-2/30 ring-1 ring-void-border-2/40 ${className}`}>
+				<div className="p-5 rounded-[calc(1.25rem-6px)] bg-void-depth-elevated shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+					{children}
+				</div>
+			</div>
+		)
+	}
+	return (
+		<div className={`p-5 rounded-xl bg-void-depth-elevated border border-void-border-2/60 shadow-sm ${className}`}>
+			{children}
+		</div>
+	)
+}
 
-export const SettingCard = ({ title, description, children, className = '' }: { title: string, description?: string, children: React.ReactNode, className?: string }) => (
-	<div className={`py-10 first:pt-0 ${className}`}>
-		<div className="mb-8">
-			<h3 className="text-[18px] font-semibold text-void-fg-1 tracking-tight">{title}</h3>
-			{description && <p className="text-[13px] text-void-fg-3/70 mt-1.5 leading-relaxed">{description}</p>}
+export const SettingCard = ({
+	title,
+	description,
+	children,
+	className = '',
+	eyebrow,
+	icon: Icon,
+	isDark
+}: {
+	title: string
+	description?: string
+	children: React.ReactNode
+	className?: string
+	eyebrow?: string
+	icon?: React.ComponentType<{ size?: number; className?: string }>
+	isDark?: boolean
+}) => (
+	<div className={`py-12 first:pt-0 ${className}`}>
+		<div className="mb-10">
+			{eyebrow && (
+				<div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-void-accent/8 border border-void-accent/20">
+					{Icon && <Icon size={12} className="text-void-accent" />}
+					<span className="text-[10px] uppercase tracking-[0.2em] font-medium text-void-accent">{eyebrow}</span>
+				</div>
+			)}
+			<h3 className="text-[20px] font-semibold text-void-fg-1 tracking-tight">{title}</h3>
+			{description && (
+				<p className="text-[13px] text-void-fg-3/70 mt-2 leading-relaxed max-w-lg">{description}</p>
+			)}
 		</div>
 		<div className="space-y-6">
 			{children}
@@ -112,14 +161,14 @@ export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, cl
 }
 
 
-// premium button component
+// Premium button component with spring physics
 const SettingsButton = ({ children, disabled, onClick, className, variant = 'secondary' }: { children: React.ReactNode; disabled?: boolean; onClick: () => void; className?: string, variant?: 'primary' | 'secondary' | 'danger' }) => {
-	const baseClasses = "px-4 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none";
+	const baseClasses = "px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none";
 
 	const variants = {
-		primary: "bg-void-accent hover:bg-void-accent/90 text-white shadow-sm hover:shadow-md",
-		secondary: "void-btn-secondary hover:border-void-border-1 text-void-fg-1",
-		danger: "bg-void-error/10 border border-void-error/20 text-void-error hover:bg-void-error hover:text-white"
+		primary: "bg-gradient-to-br from-void-accent to-void-accent/90 text-white shadow-lg shadow-void-accent/20 hover:shadow-xl hover:shadow-void-accent/30 hover:-translate-y-0.5",
+		secondary: "bg-void-depth-elevated border border-void-border-2 text-void-fg-1 hover:bg-void-bg-2-hover hover:border-void-border-1 hover:shadow-sm",
+		danger: "bg-void-error/10 border border-void-error/20 text-void-error hover:bg-void-error hover:text-white hover:border-void-error"
 	};
 
 	return (
@@ -133,29 +182,78 @@ const SettingsButton = ({ children, disabled, onClick, className, variant = 'sec
 	)
 }
 
-// Quick toggle card for feature grid
-const QuickToggleCard = ({ title, description, icon: Icon, enabled, onToggle }: { title: string, description: string, icon: React.ComponentType<{ size?: number, className?: string }>, enabled: boolean, onToggle: () => void }) => {
+// Premium Quick toggle card for feature grid with haptic feel
+const QuickToggleCard = ({
+	title,
+	description,
+	icon: Icon,
+	enabled,
+	onToggle
+}: {
+	title: string
+	description: string
+	icon: React.ComponentType<{ size?: number; className?: string }>
+	enabled: boolean
+	onToggle: () => void
+}) => {
 	return (
 		<button
 			onClick={onToggle}
-			className={`p-4 rounded-xl border transition-all duration-200 text-left group ${
-				enabled
-					? 'bg-void-accent/5 border-void-accent/30 hover:border-void-accent/50'
-					: 'bg-void-bg-2/30 border-void-border-2 hover:border-void-border-1'
-			}`}
+			className={`
+				group relative overflow-hidden
+				p-5 rounded-2xl border transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
+				text-left active:scale-[0.98]
+				${enabled
+					? 'bg-gradient-to-br from-void-accent/8 to-void-accent/2 border-void-accent/30 shadow-lg shadow-void-accent/5'
+					: 'bg-void-bg-2/20 border-void-border-2/50 hover:border-void-border-1 hover:bg-void-bg-2/40'
+				}
+			`}
 		>
-			<div className="flex items-start justify-between mb-3">
-				<div className={`w-8 h-8 rounded-lg flex items-center justify-center ${enabled ? 'bg-void-accent text-white' : 'bg-void-bg-3 text-void-fg-3'}`}>
-					<Icon size={16} />
+			{/* Glow effect on enabled */}
+			{enabled && (
+				<div className="absolute inset-0 bg-gradient-to-br from-void-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+			)}
+
+			<div className="relative flex items-start justify-between mb-4">
+				<div className={`
+					w-10 h-10 rounded-xl flex items-center justify-center
+					transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
+					${enabled
+						? 'bg-void-accent text-white shadow-lg shadow-void-accent/30'
+						: 'bg-void-bg-3 text-void-fg-3 group-hover:bg-void-bg-4'
+					}
+				`}>
+					<Icon size={18} strokeWidth={enabled ? 2.5 : 2} />
 				</div>
-				<div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-					enabled ? 'border-void-accent bg-void-accent' : 'border-void-border-2'
-				}`}>
-					{enabled && <Check size={12} className="text-white" />}
+
+				{/* Toggle indicator */}
+				<div className={`
+					w-5 h-5 rounded-full flex items-center justify-center
+					transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+					${enabled
+						? 'bg-void-accent border-void-accent'
+						: 'border-2 border-void-border-2 group-hover:border-void-border-1'
+					}
+				`}>
+					<Check
+						size={12}
+						strokeWidth={3}
+						className={`
+							transition-all duration-300
+							${enabled ? 'text-white scale-100 opacity-100' : 'scale-50 opacity-0'}
+						`}
+					/>
 				</div>
 			</div>
-			<h3 className={`text-sm font-medium ${enabled ? 'text-void-fg-1' : 'text-void-fg-2'}`}>{title}</h3>
-			<p className="text-[11px] text-void-fg-3 mt-1 leading-relaxed">{description}</p>
+
+			<h3 className={`
+				text-sm font-semibold tracking-tight mb-1
+				transition-colors duration-200
+				${enabled ? 'text-void-fg-1' : 'text-void-fg-2 group-hover:text-void-fg-1'}
+			`}>
+				{title}
+			</h3>
+			<p className="text-[11px] text-void-fg-3/80 leading-relaxed">{description}</p>
 		</button>
 	)
 }
@@ -2531,72 +2629,81 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
 			<div className={`flex h-full w-full bg-void-depth-base`} style={{ height: '100%', width: '100%', overflow: 'hidden' }}>
-				{/* ──────────────  SIDEBAR  ────────────── */}
-				<aside
-					className={`w-56 h-full flex-shrink-0 flex flex-col border-r border-void-border-2/50
-						${isDark ? 'bg-void-depth-elevated/30' : 'bg-void-depth-elevated/30'}
-					`}
-				>
-				{/* Logo */}
-				<div className="flex items-center gap-3 px-5 py-5 select-none">
-					<div className="@@void-void-icon w-7 h-7 rounded-full opacity-90" />
-					<div className="text-[13px] font-semibold text-void-fg-1 tracking-tight">A-Coder</div>
-				</div>
+				{/* ──────────────  PREMIUM SIDEBAR  ────────────── */}
+				<aside className="w-60 h-full flex-shrink-0 flex flex-col border-r border-void-border-2/30 bg-void-depth-elevated/20">
+					{/* Logo with premium treatment */}
+					<div className="flex items-center gap-3 px-6 py-6 select-none border-b border-void-border-2/20">
+						<div className="@@void-void-icon w-8 h-8 rounded-full ring-2 ring-void-accent/20 opacity-90" />
+						<div className="flex flex-col">
+							<span className="text-[14px] font-semibold text-void-fg-1 tracking-tight">A-Coder</span>
+							<span className="text-[10px] text-void-fg-4/70 uppercase tracking-wider">Settings</span>
+						</div>
+					</div>
 
-				{/* Navigation */}
-				<nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
-					{navItems.map(({ tab, label, icon: Icon }) => {
-						const isActive = selectedSection === tab;
-						return (
-							<button
-								key={tab}
-								onClick={() => {
-									if (tab === 'all') {
-										setSelectedSection('all');
-									} else {
-										setSelectedSection(tab);
-									}
-								}}
-								className={`
-									w-full flex items-center gap-3 px-3 py-2 text-[13px] rounded-lg transition-all duration-200
-									${isActive
-										? 'bg-void-accent/10 text-void-accent font-medium'
-										: 'text-void-fg-3 hover:bg-void-depth-floating/50 hover:text-void-fg-1'
-									}
-								`}
-							>
-								<Icon size={15} strokeWidth={isActive ? 2.5 : 2} />
-								{label}
-							</button>
-						);
-					})}
-				</nav>
+					{/* Navigation with staggered animation */}
+					<nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+						{navItems.map(({ tab, label, icon: Icon }, index) => {
+							const isActive = selectedSection === tab;
+							return (
+								<button
+									key={tab}
+									onClick={() => setSelectedSection(tab)}
+									className={`
+										group relative w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium rounded-xl
+										transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+										${isActive
+											? 'bg-void-accent/10 text-void-accent shadow-sm'
+											: 'text-void-fg-3 hover:bg-void-depth-floating/60 hover:text-void-fg-1'
+										}
+									`}
+									style={{ animationDelay: `${index * 30}ms` }}
+								>
+									<Icon
+										size={16}
+										strokeWidth={isActive ? 2.5 : 2}
+										className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}
+									/>
+									<span>{label}</span>
+									{isActive && (
+										<div className="ml-auto w-1.5 h-1.5 rounded-full bg-void-accent animate-pulse" />
+									)}
+								</button>
+							);
+						})}
+					</nav>
 
-				{/* Footer/Version */}
-				<div className="px-5 py-4 border-t border-void-border-2/50 text-[11px] text-void-fg-4">
-					v{productService.voidVersion || productService.version}
-				</div>
-			</aside>
+					{/* Premium footer with version */}
+					<div className="px-6 py-5 border-t border-void-border-2/20">
+						<div className="flex items-center justify-between">
+							<span className="text-[11px] text-void-fg-4/60">Version</span>
+							<span className="text-[11px] font-medium text-void-fg-3 tabular-nums">
+								v{productService.voidVersion || productService.version}
+							</span>
+						</div>
+					</div>
+				</aside>
 
-			{/* ───────────── MAIN PANE ───────────── */}
-			<main className={`flex-1 h-full overflow-y-auto bg-void-depth-base`}>
-				<div className="max-w-3xl mx-auto px-8 py-10 pb-32">
-
-					{/* Header */}
-					<div className="flex items-center justify-between mb-10">
+			{/* ───────────── PREMIUM MAIN PANE ───────────── */}
+			<main className="flex-1 h-full overflow-y-auto bg-void-depth-base">
+				<div className="max-w-3xl mx-auto px-12 py-16 pb-40 void-settings-animate-in">
+					{/* Premium Header */}
+					<div className="flex items-center justify-between mb-16">
 						<div>
-							<h1 className='text-[22px] font-semibold text-void-fg-1 tracking-tight'>Settings</h1>
-							<p className="text-[13px] text-void-fg-3 mt-1">Configure your A-Coder experience</p>
+							<h1 className="text-[26px] font-semibold text-void-fg-1 tracking-tight">Settings</h1>
+							<p className="text-[14px] text-void-fg-3/70 mt-2 leading-relaxed">Configure your A-Coder experience</p>
 						</div>
 						<ErrorBoundary>
-							<RedoOnboardingButton className="text-[11px] px-3 py-1.5 rounded-full border border-void-border-2/50 hover:bg-void-depth-elevated/50 transition-colors text-void-fg-3" />
+							<RedoOnboardingButton className="text-[11px] px-4 py-2 rounded-full border border-void-border-2/50 hover:bg-void-depth-elevated/60 hover:border-void-border-1 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] text-void-fg-3 hover:text-void-fg-1 active:scale-[0.98]" />
 						</ErrorBoundary>
 					</div>
+
+					{/* Content sections with staggered entry */}
+					<div className="space-y-12 void-settings-stagger">
 
 					{/* Models section */}
 					<div className={shouldShowTab('models') ? '' : 'hidden'}>
 						<ErrorBoundary>
-							<SettingCard title="Models" description="Manage your AI models and providers." isDark={isDark}>
+							<SettingCard title="Models" description="Manage your AI models and providers.">
 								<SettingBox className="p-0 overflow-hidden">
 									<ModelDump />
 								</SettingBox>
@@ -3515,6 +3622,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 						</ErrorBoundary>
 					</div>
 
+					</div>
 				</div>
 			</main>
 		</div>

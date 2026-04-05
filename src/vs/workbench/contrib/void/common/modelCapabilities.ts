@@ -182,7 +182,7 @@ export type VoidStaticModelInfo = { // not stateful
 	// for some examples, see openAIModelOptions and anthropicModelOptions (below).
 
 	contextWindow: number; // input tokens
-	reservedOutputTokenSpace: number | null; // reserve this much space in the context window for output, defaults to 4096 if null
+	reservedOutputTokenSpace: number | null; // reserve this much space in the context window for output, defaults to 16384 if null
 
 	supportsSystemMessage: false | 'system-role' | 'developer-role' | 'separated'; // typically you should use 'system-role'. 'separated' means the system message is passed as a separate field (e.g. anthropic)
 	specialToolFormat?: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style', // typically you should use 'openai-style'. null means "can't call tools by default", and asks the LLM to output XML in agent mode
@@ -264,7 +264,7 @@ type VoidStaticProviderInfo = { // doesn't change (not stateful)
 
 const defaultModelOptions = {
 	contextWindow: 4_096,
-	reservedOutputTokenSpace: 4_096,
+	reservedOutputTokenSpace: 16_384, // Increased from 4096 to allow larger file content in tool calls
 	cost: { input: 0, output: 0 },
 	downloadable: false,
 	supportsSystemMessage: false,
@@ -282,28 +282,28 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: false,
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: false, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] },
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'deepseekCoderV3': {
 		supportsFIM: false,
 		supportsSystemMessage: false, // unstable
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'deepseekCoderV2': {
 		supportsFIM: false,
 		supportsSystemMessage: false, // unstable
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'codestral': {
 		supportsFIM: true,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'devstral': {
 		supportsFIM: false,
@@ -317,7 +317,7 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false, // built on qwen 2.5 32B instruct
-		contextWindow: 128_000, reservedOutputTokenSpace: 4_096
+		contextWindow: 128_000, reservedOutputTokenSpace: 16_384
 	},
 
 	// really only phi4-reasoning supports reasoning... simpler to combine them though
@@ -326,7 +326,7 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] },
-		contextWindow: 16_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 16_000, reservedOutputTokenSpace: 16_384,
 	},
 
 	'gemma': { // https://news.ycombinator.com/item?id=43451406
@@ -334,7 +334,7 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	// llama 4 https://ai.meta.com/blog/llama-4-multimodal-intelligence/
 	'llama4-scout': {
@@ -342,14 +342,14 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 10_000_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 10_000_000, reservedOutputTokenSpace: 16_384,
 	},
 	'llama4-maverick': {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 10_000_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 10_000_000, reservedOutputTokenSpace: 16_384,
 	},
 
 	// llama 3
@@ -358,28 +358,28 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'llama3.1': {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'llama3.2': {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'llama3.3': {
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	// qwen
 	'qwen2.5coder': {
@@ -387,7 +387,7 @@ const openSourceModelOptions_assumingOAICompat = {
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: false,
-		contextWindow: 32_000, reservedOutputTokenSpace: 4_096,
+		contextWindow: 32_000, reservedOutputTokenSpace: 16_384,
 	},
 	'qwq': {
 		supportsFIM: false, // no FIM, yes reasoning
@@ -693,7 +693,7 @@ const anthropicModelOptions = {
 	},
 	'claude-3-opus-20240229': {
 		contextWindow: 200_000,
-		reservedOutputTokenSpace: 4_096,
+		reservedOutputTokenSpace: 16_384,
 		cost: { input: 15.00, cache_read: 1.50, cache_write: 18.75, output: 75.00 },
 		downloadable: false,
 		supportsFIM: false,
@@ -704,7 +704,7 @@ const anthropicModelOptions = {
 	'claude-3-sonnet-20240229': { // no point of using this, but including this for people who put it in
 		contextWindow: 200_000, cost: { input: 3.00, output: 15.00 },
 		downloadable: false,
-		reservedOutputTokenSpace: 4_096,
+		reservedOutputTokenSpace: 16_384,
 		supportsFIM: false,
 		specialToolFormat: 'anthropic-style',
 		supportsSystemMessage: 'separated',
@@ -1257,7 +1257,7 @@ const mistralModelOptions = { // https://mistral.ai/products/la-plateforme#prici
 	},
 	'ministral-8b-latest': { // ollama 'mistral'
 		contextWindow: 131_000,
-		reservedOutputTokenSpace: 4_096,
+		reservedOutputTokenSpace: 16_384,
 		cost: { input: 0.10, output: 0.10 },
 		supportsFIM: false,
 		downloadable: { sizeGb: 4.1 },
@@ -1266,7 +1266,7 @@ const mistralModelOptions = { // https://mistral.ai/products/la-plateforme#prici
 	},
 	'ministral-3b-latest': {
 		contextWindow: 131_000,
-		reservedOutputTokenSpace: 4_096,
+		reservedOutputTokenSpace: 16_384,
 		cost: { input: 0.04, output: 0.04 },
 		supportsFIM: false,
 		downloadable: { sizeGb: 'not-known' },
