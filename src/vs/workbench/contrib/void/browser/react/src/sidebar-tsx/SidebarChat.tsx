@@ -1427,7 +1427,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 					))}
 				</div>
 			)}
-			<div className='text-[13px] leading-relaxed text-void-fg-1 font-medium'>{chatMessage.displayContent}</div>
+			<div className='text-[13px] leading-relaxed text-void-fg-1 font-medium break-words'>{chatMessage.displayContent}</div>
 		</div>
 	}
 	else if (mode === 'edit') {
@@ -1609,12 +1609,39 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 	const isWriting = !isDone
 	// Start open when writing, stay open after done (user can collapse manually)
 	const [isOpen, setIsOpen] = useState(true)
-	// Auto-open when reasoning starts
+	// Track thinking duration
+	const startTimeRef = useRef<number | null>(null)
+	const [duration, setDuration] = useState<number | null>(null)
+
+	// Track if we've already opened (to prevent fighting with user clicks during streaming)
+	const hasAutoOpenedRef = useRef(false)
+
+	// Auto-open only when reasoning first starts (transition from not-writing to writing)
 	useEffect(() => {
-		if (isWriting) setIsOpen(true)
+		if (isWriting && !hasAutoOpenedRef.current) {
+			setIsOpen(true)
+			hasAutoOpenedRef.current = true
+		}
+		// Reset when done so next reasoning session can auto-open
+		if (!isWriting) {
+			hasAutoOpenedRef.current = false
+		}
+	}, [isWriting])
+
+	// Track start time and calculate duration
+	useEffect(() => {
+		if (isWriting && startTimeRef.current === null) {
+			// Thinking just started
+			startTimeRef.current = Date.now()
+		} else if (!isWriting && startTimeRef.current !== null) {
+			// Thinking just finished
+			const elapsed = Date.now() - startTimeRef.current
+			setDuration(elapsed)
+		}
 	}, [isWriting])
 
 	const scrollRef = useRef<HTMLDivElement>(null)
+	const contentId = useRef(`reasoning-content-${Math.random().toString(36).slice(2, 9)}`)
 
 	// Auto-scroll to bottom as content streams in
 	useEffect(() => {
@@ -1623,43 +1650,68 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 		}
 	}, [children, isWriting, isOpen])
 
-	const statusText = isWriting ? 'Reasoning' : 'Thought Process'
+	// Keyboard accessibility
+	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault()
+			setIsOpen(v => !v)
+		}
+	}
+
+	// Format duration nicely
+	const formatDuration = (ms: number): string => {
+		const totalSeconds = Math.floor(ms / 1000)
+		const minutes = Math.floor(totalSeconds / 60)
+		const seconds = totalSeconds % 60
+
+		if (minutes > 0) {
+			return `${minutes}m ${seconds}s`
+		}
+		return `${seconds}s`
+	}
+
+	// Status text with duration
+	const statusText = isWriting ? 'Thinking' : duration !== null ? `Thought for ${formatDuration(duration)}` : 'Thinking Complete'
 
 	return (
 		<div className="my-3 mx-1">
-			<div className={`tool-card-premium overflow-hidden ${isWriting ? 'border-void-accent/30' : ''}`}>
+			<div className={`reasoning-card overflow-hidden ${isWriting ? 'reasoning-card-active' : ''}`}>
 				<div
-					className="tool-header group"
+					className="reasoning-header group"
 					onClick={() => setIsOpen(v => !v)}
+					onKeyDown={handleKeyDown}
+					role="button"
+					tabIndex={0}
+					aria-expanded={isOpen}
+					aria-controls={contentId.current}
 				>
 					<div className="flex items-center gap-2">
 						<ChevronRight
 							size={12}
-							className={`transition-transform duration-200 text-void-fg-4 group-hover:text-void-fg-2 ${isOpen ? 'rotate-90 text-void-accent' : ''}`}
+							className={`reasoning-chevron ${isOpen ? 'reasoning-chevron-open' : ''}`}
 						/>
 						<div className="flex items-center gap-2">
-							<Brain size={12} className={isWriting ? 'text-void-accent animate-breathe' : 'text-void-fg-4'} />
-							<span className={`text-[10px] font-bold uppercase tracking-wider ${isWriting ? 'text-void-accent' : 'text-void-fg-3 group-hover:text-void-fg-2'}`}>
+							<Brain size={12} className={`reasoning-icon ${isWriting ? 'reasoning-icon-active' : ''}`} />
+							<span className={`reasoning-status ${isWriting ? 'reasoning-status-active' : ''}`}>
 								{statusText}
 							</span>
 						</div>
 					</div>
 
 					{isWriting && (
-						<div className="pill pill-accent">
-							<span className="text-[9px] font-bold uppercase tracking-widest">Thinking</span>
-							<Loader2 className="w-2.5 h-2.5 animate-spin text-void-accent" />
+						<div className="reasoning-badge">
+							<span className="reasoning-badge-text">Thinking</span>
+							<Loader2 className="w-2.5 h-2.5 animate-spin reasoning-spinner" />
 						</div>
 					)}
 				</div>
 
 				<div
 					ref={scrollRef}
-					className={`
-					overflow-auto transition-all duration-300 ease-in-out custom-scrollbar
-					${isOpen ? 'opacity-100 max-h-[800px] border-t border-void-border-2/50 p-3' : 'max-h-0 opacity-0'}
-				`}>
-					<div className='!select-text cursor-auto text-[11px] leading-relaxed text-void-fg-3 font-medium italic'>
+					id={contentId.current}
+					className={`reasoning-content-wrapper ${isOpen ? 'reasoning-content-open' : 'reasoning-content-closed'}`}
+				>
+					<div className='reasoning-content'>
 						{children}
 					</div>
 				</div>

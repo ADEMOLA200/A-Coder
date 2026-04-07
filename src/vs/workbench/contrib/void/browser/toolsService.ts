@@ -33,6 +33,17 @@ import { ICommandService } from '../../../../platform/commands/common/commands.j
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
 import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
 import { IOpenerService } from '../../../../platform/opener/common/opener.js'
+import { IMCPService } from '../common/mcpService.js'
+import {
+	isChromeMCPAvailable,
+	isMCPPageActive,
+	mcpNavigateToUrl,
+	mcpGetPageText,
+	mcpClickElement,
+	mcpTypeIntoElement,
+	mcpTakeScreenshot,
+	mcpFetchUrl
+} from './chromeMCPHelper.js'
 
 
 /**
@@ -311,6 +322,7 @@ export class ToolsService implements IToolsService {
 		@IVisionService private readonly _visionService: IVisionService,
 		@ICommandService private readonly _commandService: ICommandService,
 		@IOpenerService private readonly _openerService: IOpenerService,
+		@IMCPService private readonly _mcpService: IMCPService,
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
@@ -2981,19 +2993,32 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 						const webviewId = await this._webviewToolService.createWebview({ url, title });
 						opts?.onData?.(`Webview ${webviewId} opened for local file.`);
 						return { result: { webviewId, title: title || url, isLocal: true } };
-					} else {
-						// Use BrowserWindow for external websites (separate window)
-						const channel = this._mainProcessService.getChannel('void-channel-browser-window');
-						const response = await channel.call('openBrowserWindow', { url, title }) as { success: boolean; data?: { windowId: string, title: string }; error?: string };
-
-						if (!response.success) {
-							throw new Error(response.error || 'Failed to open browser window');
-						}
-
-						const { windowId, title: windowTitle } = response.data!;
-						opts?.onData?.(`Browser window ${windowId} opened.`);
-						return { result: { webviewId: windowId, title: windowTitle, isLocal: false } };
 					}
+
+					// Try Chrome DevTools MCP first for external URLs
+					if (isChromeMCPAvailable(this._mcpService)) {
+						try {
+							opts?.onData?.(`Using Chrome DevTools MCP...`);
+							const result = await mcpNavigateToUrl(this._mcpService, url, title);
+							opts?.onData?.(`Page loaded successfully via Chrome MCP.`);
+							return { result };
+						} catch (mcpError) {
+							console.warn('Chrome DevTools MCP failed, falling back to BrowserWindow:', mcpError);
+							opts?.onData?.(`MCP failed, using fallback...`);
+						}
+					}
+
+					// Fallback: Use BrowserWindow for external websites (separate window)
+					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+					const response = await channel.call('openBrowserWindow', { url, title }) as { success: boolean; data?: { windowId: string, title: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to open browser window');
+					}
+
+					const { windowId, title: windowTitle } = response.data!;
+					opts?.onData?.(`Browser window ${windowId} opened.`);
+					return { result: { webviewId: windowId, title: windowTitle, isLocal: false } };
 				} catch (error) {
 					throw new Error(`Failed to open URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
 				}
@@ -3014,6 +3039,20 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				opts?.onData?.(`Fetching URL: ${url}...`);
 
 				try {
+					// Try Chrome DevTools MCP first for better JS rendering
+					if (isChromeMCPAvailable(this._mcpService) && isMCPPageActive()) {
+						try {
+							opts?.onData?.(`Using Chrome DevTools MCP for fetch...`);
+
+							const { html, text } = await mcpFetchUrl(this._mcpService, url, extract_text);
+							const result: BuiltinToolResultType['fetch_url'] = { html, text };
+							return { result };
+						} catch (mcpError) {
+							console.warn('Chrome DevTools MCP fetch failed, falling back:', mcpError);
+						}
+					}
+
+					// Fallback to BrowserChannel
 					const channel = this._mainProcessService.getChannel('void-channel-browser');
 					const response = await channel.call('fetchUrl', { url, extractText: extract_text }) as { success: boolean; data?: { html: string; text?: string }; error?: string };
 
@@ -3069,7 +3108,22 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				opts?.onData?.(`Clicking element: ${selector}...`);
 
 				try {
-					// Use browser-window channel to click element (works with visible BrowserWindow)
+					// MCP page - use Chrome DevTools MCP
+					if (webview_id === 'mcp-page' || webview_id.startsWith('mcp-')) {
+						if (!isChromeMCPAvailable(this._mcpService)) {
+							throw new Error('Chrome DevTools MCP not available');
+						}
+						if (!isMCPPageActive()) {
+							throw new Error('No active MCP page. Use open_url first.');
+						}
+
+						opts?.onData?.(`Using Chrome DevTools MCP...`);
+						const message = await mcpClickElement(this._mcpService, selector);
+						opts?.onData?.(`Element clicked via MCP.`);
+						return { result: { message } };
+					}
+
+					// Fallback: Use browser-window channel to click element
 					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
 					const response = await channel.call('clickElement', { windowId: webview_id, selector }) as { success: boolean; data?: { message: string }; error?: string };
 
@@ -3086,7 +3140,21 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				opts?.onData?.(`Extracting page text...`);
 
 				try {
-					// Use browser-window channel to get text (works with visible BrowserWindow)
+					// MCP page - use Chrome DevTools MCP
+					if (webview_id === 'mcp-page' || webview_id.startsWith('mcp-')) {
+						if (!isChromeMCPAvailable(this._mcpService)) {
+							throw new Error('Chrome DevTools MCP not available');
+						}
+						if (!isMCPPageActive()) {
+							throw new Error('No active MCP page. Use open_url first.');
+						}
+
+						opts?.onData?.(`Using Chrome DevTools MCP...`);
+						const text = await mcpGetPageText(this._mcpService, selector);
+						return { result: { text } };
+					}
+
+					// Fallback: Use browser-window channel to get text
 					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
 					const response = await channel.call('getPageText', { windowId: webview_id, selector }) as { success: boolean; data?: { text: string }; error?: string };
 
@@ -3099,78 +3167,129 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 					throw new Error(`Failed to extract page text: ${error instanceof Error ? error.message : 'Unknown error'}`);
 				}
 			},
-			webview_screenshot: async ({ webview_id, filename, question }, opts) => {
-				opts?.onData?.(`Capturing screenshot...`);
+webview_screenshot: async ({ webview_id, filename, question }, opts) => {
+					opts?.onData?.(`Capturing screenshot...`);
 
-				// Check if this is a BrowserWindow (bw*) or VS Code webview (wv*)
-				const isBrowserWindow = webview_id.startsWith('bw');
+					try {
+						let imageData: string;
 
-				try {
-					let imageData: string;
+						// MCP page - use Chrome DevTools MCP
+						if (webview_id === 'mcp-page' || webview_id.startsWith('mcp-')) {
+							if (!isChromeMCPAvailable(this._mcpService)) {
+								throw new Error('Chrome DevTools MCP not available');
+							}
+							if (!isMCPPageActive()) {
+								throw new Error('No active MCP page. Use open_url first.');
+							}
 
-					if (isBrowserWindow) {
-						// Use browser-window channel for BrowserWindow screenshots
-						const channel = this._mainProcessService.getChannel('void-channel-browser-window');
-						const response = await channel.call('captureWindowScreenshot', { windowId: webview_id }) as { success: boolean; data?: { imageData: string }; error?: string };
+							opts?.onData?.(`Capturing via Chrome DevTools MCP...`);
 
-						if (!response.success) {
-							throw new Error(response.error || `BrowserWindow ${webview_id} does not exist. Use open_url first.`);
+							// Take screenshot using Chrome DevTools MCP
+							const imageDataResult = await mcpTakeScreenshot(this._mcpService);
+
+							// Process with vision model
+							const base64Data = imageDataResult.replace(/^data:image\/png;base64,/, '');
+							const imageAttachment = {
+								base64: base64Data,
+								mimeType: 'image/png',
+								name: filename || 'screenshot.png'
+							};
+
+							const visionAnalysis = await this._visionService.processImages(
+								[imageAttachment],
+								question || 'Describe what you see in this screenshot.'
+							);
+
+							return {
+								result: {
+									imageData: imageDataResult,
+									filePath: filename || undefined,
+									visionAnalysis
+								}
+							};
 						}
 
-						imageData = response.data!.imageData;
-					} else {
-						// Use VS Code webview for local files
-						if (!this._webviewToolService.webviewExists(webview_id)) {
-							throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+						// Check if this is a BrowserWindow (bw*) or VS Code webview (wv*)
+						const isBrowserWindow = webview_id.startsWith('bw');
+
+						if (isBrowserWindow) {
+							// Use browser-window channel for BrowserWindow screenshots
+							const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+							const response = await channel.call('captureWindowScreenshot', { windowId: webview_id }) as { success: boolean; data?: { imageData: string }; error?: string };
+
+							if (!response.success) {
+								throw new Error(response.error || `BrowserWindow ${webview_id} does not exist. Use open_url first.`);
+							}
+
+							imageData = response.data!.imageData;
+						} else {
+							// Use VS Code webview for local files
+							if (!this._webviewToolService.webviewExists(webview_id)) {
+								throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+							}
+
+							const webviewMetadata = this._webviewToolService.getWebviewMetadata(webview_id);
+							if (!webviewMetadata) {
+								throw new Error(`Webview metadata not found for ID ${webview_id}`);
+							}
+
+							// Capture the page using the browser channel
+							const channel = this._mainProcessService.getChannel('void-channel-browser');
+							const response = await channel.call('capturePage', { url: webviewMetadata.url }) as { success: boolean; data?: { imageData: string }; error?: string };
+
+							if (!response.success) {
+								throw new Error(response.error || 'Failed to capture screenshot');
+							}
+
+							imageData = response.data!.imageData;
 						}
 
-						const webviewMetadata = this._webviewToolService.getWebviewMetadata(webview_id);
-						if (!webviewMetadata) {
-							throw new Error(`Webview metadata not found for ID ${webview_id}`);
-						}
+						// Remove data URL prefix for vision service
+						const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
 
-						// Capture the page using the browser channel
-						const channel = this._mainProcessService.getChannel('void-channel-browser');
-						const response = await channel.call('capturePage', { url: webviewMetadata.url }) as { success: boolean; data?: { imageData: string }; error?: string };
+						// Process screenshot with vision model
+						const imageAttachment = {
+							base64: base64Data,
+							mimeType: 'image/png',
+							name: filename || 'screenshot.png'
+						};
 
-						if (!response.success) {
-							throw new Error(response.error || 'Failed to capture screenshot');
-						}
+						const visionAnalysis = await this._visionService.processImages(
+							[imageAttachment],
+							question || 'Describe what you see in this screenshot.'
+						);
 
-						imageData = response.data!.imageData;
+						return {
+							result: {
+								imageData,
+								filePath: filename || undefined,
+								visionAnalysis
+							}
+						};
+					} catch (error) {
+						throw new Error(`Failed to capture screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
 					}
-
-					// Remove data URL prefix for vision service
-					const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
-
-					// Process screenshot with vision model
-					const imageAttachment = {
-						base64: base64Data,
-						mimeType: 'image/png',
-						name: filename || 'screenshot.png'
-					};
-
-					const visionAnalysis = await this._visionService.processImages(
-						[imageAttachment],
-						question || 'Describe what you see in this screenshot.'
-					);
-
-					return {
-						result: {
-							imageData,
-							filePath: filename || undefined,
-							visionAnalysis
-						}
-					};
-				} catch (error) {
-					throw new Error(`Failed to capture screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
-				}
-			},
+				},
 			type_into_element: async ({ webview_id, selector, text }, opts) => {
 				opts?.onData?.(`Typing into element: ${selector}...`);
 
 				try {
-					// Use browser-window channel to type into element (works with visible BrowserWindow)
+					// MCP page - use Chrome DevTools MCP
+					if (webview_id === 'mcp-page' || webview_id.startsWith('mcp-')) {
+						if (!isChromeMCPAvailable(this._mcpService)) {
+							throw new Error('Chrome DevTools MCP not available');
+						}
+						if (!isMCPPageActive()) {
+							throw new Error('No active MCP page. Use open_url first.');
+						}
+
+						opts?.onData?.(`Using Chrome DevTools MCP...`);
+						const message = await mcpTypeIntoElement(this._mcpService, selector, text);
+						opts?.onData?.(`Text entered via MCP.`);
+						return { result: { message } };
+					}
+
+					// Fallback: Use browser-window channel to type into element
 					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
 					const response = await channel.call('typeIntoElement', { windowId: webview_id, selector, text }) as { success: boolean; data?: { message: string }; error?: string };
 

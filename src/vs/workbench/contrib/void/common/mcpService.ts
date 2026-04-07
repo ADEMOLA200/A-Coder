@@ -45,7 +45,16 @@ export const IMCPService = createDecorator<IMCPService>('mcpConfigService');
 
 
 const MCP_CONFIG_FILE_NAME = 'mcp.json';
-const MCP_CONFIG_SAMPLE = { mcpServers: {} }
+
+// Default MCP servers that come pre-configured with A-Coder
+const MCP_CONFIG_SAMPLE = {
+	mcpServers: {
+		'chrome-devtools': {
+			command: 'npx',
+			args: ['-y', 'chrome-devtools-mcp@latest'],
+		}
+	}
+}
 const MCP_CONFIG_SAMPLE_STRING = JSON.stringify(MCP_CONFIG_SAMPLE, null, 2);
 
 

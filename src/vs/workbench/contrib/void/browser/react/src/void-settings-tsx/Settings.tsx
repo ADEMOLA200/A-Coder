@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -388,6 +388,9 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 	// State to track which model's config card is expanded (inline, not modal)
 	const [expandedModel, setExpandedModel] = useState<{ modelName: string, providerName: ProviderName } | null>(null);
 
+	// View mode: list or grid
+	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
 	// States for add model functionality
 	const [isAddModelOpen, setIsAddModelOpen] = useState(false);
 	const [showCheckmark, setShowCheckmark] = useState(false);
@@ -567,103 +570,225 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 				value={searchQuery}
 				onChangeValue={setSearchQuery}
 				placeholder="Search models..."
-				className="!bg-transparent !border-none !p-0 text-sm"
+				className="!bg-transparent !border-none !p-0 text-sm flex-1"
 				compact={true}
 			/>
+			{/* View Toggle */}
+			<div className="flex items-center gap-1 bg-void-bg-1 rounded-md p-0.5">
+				<button
+					onClick={() => setViewMode('list')}
+					className={`p-1.5 rounded-sm transition-colors ${viewMode === 'list' ? 'bg-void-bg-3 text-void-fg-1' : 'text-void-fg-3 hover:text-void-fg-2'}`}
+					data-tooltip-id='void-tooltip'
+					data-tooltip-content='List View'
+				>
+					<List size={14} />
+				</button>
+				<button
+					onClick={() => setViewMode('grid')}
+					className={`p-1.5 rounded-sm transition-colors ${viewMode === 'grid' ? 'bg-void-bg-3 text-void-fg-1' : 'text-void-fg-3 hover:text-void-fg-2'}`}
+					data-tooltip-id='void-tooltip'
+					data-tooltip-content='Grid View'
+				>
+					<LayoutGrid size={14} />
+				</button>
+			</div>
 		</div>
 
-		{filteredModelDump.map((m, i) => {
-			const { isHidden, type, modelName, providerName, providerEnabled } = m
+		{viewMode === 'list' ? (
+			// List View
+			filteredModelDump.map((m, i) => {
+				const { isHidden, type, modelName, providerName, providerEnabled } = m
 
-			const isNewProviderName = (i > 0 ? filteredModelDump[i - 1] : undefined)?.providerName !== providerName
+				const isNewProviderName = (i > 0 ? filteredModelDump[i - 1] : undefined)?.providerName !== providerName
 
-			const providerTitle = displayInfoOfProviderName(providerName).title
+				const providerTitle = displayInfoOfProviderName(providerName).title
 
-			const disabled = !providerEnabled
-			const value = disabled ? false : !isHidden
+				const disabled = !providerEnabled
+				const value = disabled ? false : !isHidden
 
-			const tooltipName = (
-				disabled ? `Add ${providerTitle} to enable`
-					: value === true ? 'Show in Dropdown'
-						: 'Hide from Dropdown'
-			)
-
-
-			const detailAboutModel = type === 'autodetected' ?
-				<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
-				: type === 'custom' ?
-					<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
-					: undefined
-
-			const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
-			const isExpanded = expandedModel?.modelName === modelName && expandedModel?.providerName === providerName;
-
-			return <div key={`${modelName}${providerName}`}>
-				<div
-					className={`flex items-center justify-between gap-4 py-3 px-4 hover:bg-void-bg-2 transition-colors cursor-default group`}
-				>
-					{/* left part is width:full */}
-					<div className={`flex flex-grow items-center gap-4`}>
-						<span className='w-full max-w-32 text-sm font-medium text-void-fg-2'>{isNewProviderName ? providerTitle : ''}</span>
-						<span className='w-fit max-w-[400px] truncate text-sm text-void-fg-1'>{modelName}</span>
-					</div>
-
-					{/* right part is anything that fits */}
-					<div className="flex items-center gap-3 w-fit">
-
-						{/* Config button - toggles inline card */}
-						{disabled ? null : (
-							<button
-								onClick={() => {
-									if (isExpanded) {
-										setExpandedModel(null);
-									} else {
-										setExpandedModel({ modelName, providerName });
-									}
-								}}
-								data-tooltip-id='void-tooltip'
-								data-tooltip-place='right'
-								data-tooltip-content={isExpanded ? 'Hide Config' : 'Show Config'}
-								className={`${hasOverrides || isExpanded ? 'text-void-fg-1' : 'opacity-0 group-hover:opacity-100 text-void-fg-3'} hover:text-void-fg-1 transition-all p-1`}
-							>
-								<Plus size={14} className={`${isExpanded ? 'rotate-45' : ''} transition-transform`} />
-							</button>
-						)}
-
-					{/* Blue star */}
-					{detailAboutModel}
+				const tooltipName = (
+					disabled ? `Add ${providerTitle} to enable`
+						: value === true ? 'Show in Dropdown'
+							: 'Hide from Dropdown'
+				)
 
 
-					{/* Switch */}
-					<VoidSwitch
-						value={value}
-						onChange={() => { settingsStateService.toggleModelHidden(providerName, modelName); }}
-						disabled={disabled}
-						size='sm'
+				const detailAboutModel = type === 'autodetected' ?
+					<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
+					: type === 'custom' ?
+						<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
+						: undefined
 
-						data-tooltip-id='void-tooltip'
-						data-tooltip-place='right'
-						data-tooltip-content={tooltipName}
-					/>
+				const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
+				const isExpanded = expandedModel?.modelName === modelName && expandedModel?.providerName === providerName;
 
-					{/* X button */}
-					<div className={`w-5 flex items-center justify-center`}>
-						{type === 'default' || type === 'autodetected' ? null : <button
-							onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
+				return <div key={`${modelName}${providerName}`}>
+					<div
+						className={`flex items-center justify-between gap-4 py-3 px-4 hover:bg-void-bg-2 transition-colors cursor-default group`}
+					>
+						{/* left part is width:full */}
+						<div className={`flex flex-grow items-center gap-4`}>
+							<span className='w-full max-w-32 text-sm font-medium text-void-fg-2'>{isNewProviderName ? providerTitle : ''}</span>
+							<span className='w-fit max-w-[400px] truncate text-sm text-void-fg-1'>{modelName}</span>
+						</div>
+
+						{/* right part is anything that fits */}
+						<div className="flex items-center gap-3 w-fit">
+
+							{/* Config button - toggles inline card */}
+							{disabled ? null : (
+								<button
+									onClick={() => {
+										if (isExpanded) {
+											setExpandedModel(null);
+										} else {
+											setExpandedModel({ modelName, providerName });
+										}
+									}}
+									data-tooltip-id='void-tooltip'
+									data-tooltip-place='right'
+									data-tooltip-content={isExpanded ? 'Hide Config' : 'Show Config'}
+									className={`${hasOverrides || isExpanded ? 'text-void-fg-1' : 'opacity-0 group-hover:opacity-100 text-void-fg-3'} hover:text-void-fg-1 transition-all p-1`}
+								>
+									<Plus size={14} className={`${isExpanded ? 'rotate-45' : ''} transition-transform`} />
+								</button>
+							)}
+
+						{/* Blue star */}
+						{detailAboutModel}
+
+
+						{/* Switch */}
+						<VoidSwitch
+							value={value}
+							onChange={() => { settingsStateService.toggleModelHidden(providerName, modelName); }}
+							disabled={disabled}
+							size='sm'
+
 							data-tooltip-id='void-tooltip'
 							data-tooltip-place='right'
-							data-tooltip-content='Delete'
-							className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity p-1 hover:bg-void-bg-3 rounded`}
-						>
-							<X size={14} className="text-void-fg-3" />
-						</button>}
+							data-tooltip-content={tooltipName}
+						/>
+
+						{/* X button */}
+						<div className={`w-5 flex items-center justify-center`}>
+							{type === 'default' || type === 'autodetected' ? null : <button
+								onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
+								data-tooltip-id='void-tooltip'
+								data-tooltip-place='right'
+								data-tooltip-content='Delete'
+								className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity p-1 hover:bg-void-bg-3 rounded`}
+							>
+								<X size={14} className="text-void-fg-3" />
+							</button>}
+						</div>
 					</div>
 				</div>
+				{/* Inline config card - shows when expanded */}
+				{isExpanded && <div className="px-4 pb-4 bg-void-bg-2/30 border-t border-void-border-2">{renderConfigCard(modelName, providerName, type)}</div>}
 			</div>
-			{/* Inline config card - shows when expanded */}
-			{isExpanded && <div className="px-4 pb-4 bg-void-bg-2/30 border-t border-void-border-2">{renderConfigCard(modelName, providerName, type)}</div>}
-		</div>
-		})}
+			})
+		) : (
+			// Grid View
+			<div className="model-grid">
+				{filteredModelDump.map((m, i) => {
+					const { isHidden, type, modelName, providerName, providerEnabled } = m
+					const providerTitle = displayInfoOfProviderName(providerName).title
+					const disabled = !providerEnabled
+					const value = disabled ? false : !isHidden
+					const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
+					const isExpanded = expandedModel?.modelName === modelName && expandedModel?.providerName === providerName;
+
+					const detailAboutModel = type === 'autodetected' ?
+						<Asterisk size={12} className="brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-content='Detected locally' />
+						: type === 'custom' ?
+							<Asterisk size={12} className="brightness-115 stroke-[2] text-[var(--vscode-void-accent)]" data-tooltip-id='void-tooltip' data-tooltip-content='Custom model' />
+							: undefined
+
+					return (
+						<div
+							key={`${modelName}${providerName}`}
+							className={`model-card group ${disabled ? 'model-card-disabled' : ''} ${isExpanded ? 'model-card-expanded' : ''}`}
+							style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+						>
+							{/* Provider Badge */}
+							<div className="model-card-provider-badge">
+								{providerTitle}
+							</div>
+
+							{/* Actions - positioned in top right */}
+							<div className="model-card-actions">
+								{/* Config button */}
+								{!disabled && (
+									<button
+										onClick={() => {
+											if (isExpanded) {
+												setExpandedModel(null);
+											} else {
+												setExpandedModel({ modelName, providerName });
+											}
+										}}
+										data-tooltip-id='void-tooltip'
+										data-tooltip-content={isExpanded ? 'Hide Config' : 'Show Config'}
+										className={`model-card-action-btn ${hasOverrides || isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+									>
+										<Plus size={14} className={`${isExpanded ? 'rotate-45' : ''} transition-transform`} />
+									</button>
+								)}
+
+								{/* Delete button */}
+								{type !== 'default' && type !== 'autodetected' && (
+									<button
+										onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
+										data-tooltip-id='void-tooltip'
+										data-tooltip-content='Delete'
+										className={`model-card-action-btn ${hasOverrides ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+									>
+										<X size={14} />
+									</button>
+								)}
+							</div>
+
+							{/* Model Name */}
+							<div className="model-card-name">
+								<span className="truncate">{modelName}</span>
+								{detailAboutModel}
+							</div>
+
+							{/* Status indicator */}
+							<div className="model-card-status">
+								<div className={`model-card-status-dot ${value ? 'active' : ''}`} />
+								<span className="model-card-status-text">
+									{disabled ? 'Disabled' : value ? 'Active' : 'Hidden'}
+								</span>
+							</div>
+
+							{/* Footer with toggle */}
+							<div className="model-card-footer">
+								<span className="model-card-switch-label">
+									{disabled ? 'Enable provider' : 'Toggle visibility'}
+								</span>
+								<VoidSwitch
+									value={value}
+									onChange={() => { settingsStateService.toggleModelHidden(providerName, modelName); }}
+									disabled={disabled}
+									size='sm'
+									data-tooltip-id='void-tooltip'
+									data-tooltip-content={disabled ? `Add ${providerTitle} to enable` : value ? 'Show in Dropdown' : 'Hide from Dropdown'}
+								/>
+							</div>
+
+							{/* Expanded Config */}
+							{isExpanded && (
+								<div className="model-card-expanded-content">
+									{renderConfigCard(modelName, providerName, type)}
+								</div>
+							)}
+						</div>
+					);
+				})}
+			</div>
+		)}
 
 		{/* Add Model Section */}
 		{showCheckmark ? (
@@ -2094,15 +2219,19 @@ const SkillsList = () => {
 			return;
 		}
 
-		// Parse GitHub URL
-		const githubMatch = installUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+		// Parse GitHub URL - supports both repo and subdirectory URLs
+		// Format 1: https://github.com/user/repo
+		// Format 2: https://github.com/user/repo/tree/branch/path/to/skill
+		const githubMatch = installUrl.match(/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+))?(?:\/(.+))?/);
 		if (!githubMatch) {
 			notificationService.error('Invalid GitHub URL. Use format: https://github.com/user/repo');
 			return;
 		}
 
-		const repoPath = githubMatch[1];
-		const skillName = repoPath.split('/')[1].replace(/-skill$/, '');
+		const [, owner, repo, branch = 'main', skillPath = ''] = githubMatch;
+		const skillName = skillPath
+			? skillPath.split('/').pop() || repo.replace(/-skill$/, '')
+			: repo.replace(/-skill$/, '');
 
 		setInstallingSkill(skillName);
 		setIsInstallFromUrl(false);
@@ -2116,29 +2245,76 @@ const SkillsList = () => {
 				await fileService.createFolder(skillsDir);
 			}
 
-			// Clone from GitHub using terminal service
-			const terminalToolService = accessor.get('ITerminalToolService');
-			const cloneUrl = `https://github.com/${repoPath}.git`;
 			const skillDir = URI.joinPath(skillsDir, skillName);
 
-			const { resPromise } = await terminalToolService.runCommand(
-				`git clone --depth 1 "${cloneUrl}" "${skillDir.fsPath}"`,
-				{ type: 'temporary', cwd: skillsDir.fsPath }
-			);
+			// Check if already installed
+			try {
+				await fileService.resolve(skillDir);
+				notificationService.warn(`Skill "${skillName}" is already installed.`);
+				setInstallingSkill(null);
+				return;
+			} catch {
+				// Not installed, proceed
+			}
 
-			const result = await resPromise;
-			if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
-				// Remove .git folder to save space
-				try {
-					const gitDir = URI.joinPath(skillDir, '.git');
-					await fileService.del(gitDir, { recursive: true });
-				} catch {
-					// Ignore
+			const terminalToolService = accessor.get('ITerminalToolService');
+			const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+
+			// If no subpath, clone directly (skill IS the repo)
+			if (!skillPath) {
+				const { resPromise } = await terminalToolService.runCommand(
+					`git clone --depth 1 "${cloneUrl}" "${skillDir.fsPath}"`,
+					{ type: 'temporary', cwd: skillsDir.fsPath }
+				);
+
+				const result = await resPromise;
+				if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
+					// Remove .git folder
+					try {
+						const gitDir = URI.joinPath(skillDir, '.git');
+						await fileService.del(gitDir, { recursive: true });
+					} catch {
+						// Ignore
+					}
+					notificationService.info(`Skill "${skillName}" installed successfully!`);
+					refreshSkills();
+				} else {
+					throw new Error(result.result || 'Git clone failed');
 				}
-				notificationService.info(`Skill "${skillName}" installed successfully!`);
-				refreshSkills();
 			} else {
-				throw new Error(result.result || 'Git clone failed');
+				// Clone to temp dir, then copy the skill subdirectory
+				const tempDir = URI.joinPath(skillsDir, `.temp-${skillName}-${Date.now()}`);
+
+				const { resPromise } = await terminalToolService.runCommand(
+					`git clone --depth 1 "${cloneUrl}" "${tempDir.fsPath}"`,
+					{ type: 'temporary', cwd: skillsDir.fsPath }
+				);
+
+				const result = await resPromise;
+				if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
+					const sourceDir = URI.joinPath(tempDir, skillPath);
+
+					try {
+						await fileService.resolve(sourceDir);
+						await fileService.createFolder(skillDir);
+
+						const sourceStat = await fileService.resolve(sourceDir);
+						if (sourceStat.children) {
+							for (const child of sourceStat.children) {
+								await fileService.copy(child.resource, URI.joinPath(skillDir, child.name), { overwrite: true });
+							}
+						}
+
+						await fileService.del(tempDir, { recursive: true });
+						notificationService.info(`Skill "${skillName}" installed successfully!`);
+						refreshSkills();
+					} catch {
+						await fileService.del(tempDir, { recursive: true });
+						throw new Error(`Could not find skill at path: ${skillPath}`);
+					}
+				} else {
+					throw new Error(result.result || 'Git clone failed');
+				}
 			}
 		} catch (e: any) {
 			notificationService.error(`Failed to install skill: ${e.message || e}`);
@@ -2174,30 +2350,76 @@ const SkillsList = () => {
 
 			const terminalToolService = accessor.get('ITerminalToolService');
 
-			// Parse GitHub URL to get clone URL
-			const githubMatch = skill.url.match(/github\.com\/([^/]+\/[^/]+)/);
+			// Parse GitHub URL to get owner, repo, branch, and path
+			// URL format: https://github.com/owner/repo/tree/branch/path/to/skill
+			const githubMatch = skill.url.match(/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+))?(?:\/(.+))?/);
 			if (!githubMatch) {
 				throw new Error('Invalid skill URL');
 			}
 
-			const cloneUrl = `https://github.com/${githubMatch[1]}.git`;
+			const [, owner, repo, branch = 'main', skillPath = ''] = githubMatch;
+			const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+
+			// Create a temp directory for cloning
+			const tempDir = URI.joinPath(skillsDir, `.temp-${skill.id}-${Date.now()}`);
 
 			const { resPromise } = await terminalToolService.runCommand(
-				`git clone --depth 1 "${cloneUrl}" "${skillDir.fsPath}"`,
+				`git clone --depth 1 "${cloneUrl}" "${tempDir.fsPath}"`,
 				{ type: 'temporary', cwd: skillsDir.fsPath }
 			);
 
 			const result = await resPromise;
 			if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
-				// Remove .git folder
+				// Find the skill directory within the cloned repo
+				// The skillPath might be like "skills/my-skill" or just "my-skill"
+				const sourceDir = skillPath
+					? URI.joinPath(tempDir, skillPath)
+					: URI.joinPath(tempDir, skill.id);
+
 				try {
-					const gitDir = URI.joinPath(skillDir, '.git');
-					await fileService.del(gitDir, { recursive: true });
+					// Check if the source directory exists
+					await fileService.resolve(sourceDir);
+
+					// Move the skill directory to its final location
+					await fileService.createFolder(URI.joinPath(skillsDir, skill.id));
+
+					// Copy all files from source to destination
+					const sourceStat = await fileService.resolve(sourceDir);
+					if (sourceStat.children) {
+						for (const child of sourceStat.children) {
+							await fileService.copy(child.resource, URI.joinPath(skillDir, child.name), { overwrite: true });
+						}
+					}
+
+					// Clean up temp directory
+					await fileService.del(tempDir, { recursive: true });
+
+					notificationService.info(`Skill "${skill.name}" installed successfully!`);
+					refreshSkills();
 				} catch {
-					// Ignore
+					// If skillPath doesn't exist, try to find the skill directly in repo root
+					// This handles repos where the skill is at the root level
+					try {
+						const rootSkillDir = URI.joinPath(tempDir, skill.id);
+						await fileService.resolve(rootSkillDir);
+
+						await fileService.createFolder(URI.joinPath(skillsDir, skill.id));
+						const rootStat = await fileService.resolve(rootSkillDir);
+						if (rootStat.children) {
+							for (const child of rootStat.children) {
+								await fileService.copy(child.resource, URI.joinPath(skillDir, child.name), { overwrite: true });
+							}
+						}
+
+						await fileService.del(tempDir, { recursive: true });
+						notificationService.info(`Skill "${skill.name}" installed successfully!`);
+						refreshSkills();
+					} catch {
+						// Clean up temp and throw
+						await fileService.del(tempDir, { recursive: true });
+						throw new Error(`Could not find skill directory in repository. Expected: ${skillPath || skill.id}`);
+					}
 				}
-				notificationService.info(`Skill "${skill.name}" installed successfully!`);
-				refreshSkills();
 			} else {
 				throw new Error(result.result || 'Git clone failed');
 			}

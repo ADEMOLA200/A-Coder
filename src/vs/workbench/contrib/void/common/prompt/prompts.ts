@@ -1441,24 +1441,28 @@ Example: [
 	// --- Browser / Webview Tools ---
 	open_url: {
 		name: 'open_url',
-		description: `Opens a URL in a new webview panel within VSCode. The webview can be referenced by other tools using the returned webviewId.
+		description: `Opens a URL in a browser for viewing and interaction.
 
-**What you'll receive:** A webviewId (e.g., "wv1", "wv2") that can be used with other webview tools.
+**PRIORITY:** When Chrome DevTools MCP is available, it is automatically used (preferred) for better session persistence, element interaction, and network inspection. Falls back to VSCode webview when MCP is unavailable.
+
+**What you'll receive:** A webviewId that can be used with other browser tools:
+- "mcp-page" when using Chrome DevTools MCP (preferred)
+- "wv1", "wv2", etc. when using VSCode webview (fallback)
 
 **When to use:**
 - To browse documentation or websites
 - To debug web applications
 - To view HTML pages
-- Before using other webview tools like get_page_text or webview_screenshot
+- Before using other browser tools like get_page_text or webview_screenshot
 
 **Example:**
-- open_url(url="https://docs.python.org", title="Python Docs") → Opens Python documentation in a webview
-- open_url(url="https://example.com") → Opens example.com in a webview
+- open_url(url="https://docs.python.org", title="Python Docs") → Opens Python documentation
+- open_url(url="https://example.com") → Opens example.com
 
-**Important:** Use webview_id returned by this tool in subsequent webview operations.`,
+**Important:** Use the webview_id returned by this tool in subsequent browser operations.`,
 		params: {
 			url: { description: 'Required. The URL to open. Must be http:// or https://.' },
-			title: { description: 'Optional. A title for the webview tab. Defaults to the URL.' }
+			title: { description: 'Optional. A title for the browser tab. Defaults to the URL.' }
 		}
 	},
 	open_html: {
@@ -1504,7 +1508,7 @@ Example: [
 	},
 	open_devtools: {
 		name: 'open_devtools',
-		description: `Opens Chrome DevTools for a webview, useful for debugging web applications.
+		description: `Opens Chrome DevTools for a browser page, useful for debugging web applications.
 
 **What you'll receive:** A confirmation message when DevTools is opened.
 
@@ -1513,12 +1517,12 @@ Example: [
 - To inspect DOM elements and CSS
 - To view console logs`,
 		params: {
-			webview_id: { description: 'Required. The webview ID returned by open_url (e.g., "wv1").' }
+			webview_id: { description: 'Required. The webview ID returned by open_url ("mcp-page" for Chrome MCP, or "wv1", "wv2", etc. for VSCode webview).' }
 		}
 	},
 	click_element: {
 		name: 'click_element',
-		description: `Clicks an element in a webview using a CSS selector.
+		description: `Clicks an element in a browser page using a CSS selector.
 
 **What you'll receive:** A confirmation message when the element is clicked.
 
@@ -1533,13 +1537,13 @@ Example: [
 
 **Important:** The webview must have been opened with open_url first.`,
 		params: {
-			webview_id: { description: 'Required. The webview ID returned by open_url (e.g., "wv1").' },
+			webview_id: { description: 'Required. The webview ID returned by open_url ("mcp-page" for Chrome MCP, or "wv1", "wv2", etc. for VSCode webview).' },
 			selector: { description: 'Required. A CSS selector to find the element to click (e.g., "button.primary", "#submit-btn", ".nav-link").' }
 		}
 	},
 	get_page_text: {
 		name: 'get_page_text',
-		description: `Extracts the visible text content from a webview.
+		description: `Extracts the visible text content from a browser page.
 
 **What you'll receive:** The text content of the page, optionally scoped to a specific element.
 
@@ -1552,13 +1556,13 @@ Example: [
 - get_page_text(webview_id="wv1") → Returns all visible text on the page
 - get_page_text(webview_id="wv1", selector="article.main") → Returns text only from the article with class "main"`,
 		params: {
-			webview_id: { description: 'Required. The webview ID returned by open_url (e.g., "wv1").' },
+			webview_id: { description: 'Required. The webview ID returned by open_url ("mcp-page" for Chrome MCP, or "wv1", "wv2", etc. for VSCode webview).' },
 			selector: { description: 'Optional. A CSS selector to scope the text extraction to a specific element.' }
 		}
 	},
 	webview_screenshot: {
 		name: 'webview_screenshot',
-		description: `Takes a screenshot of a webview and analyzes it with the vision model.
+		description: `Takes a screenshot of a browser page and analyzes it with the vision model.
 
 **What you'll receive:**
 - The screenshot as base64 PNG
@@ -1575,9 +1579,9 @@ Example: [
 - webview_screenshot(webview_id="wv1") → Takes screenshot and returns analysis
 - webview_screenshot(webview_id="wv1", question="Describe the navigation menu") → Asks vision model a specific question
 
-**Important:** The webview must have been opened with open_url first. Requires a vision model to be configured.`,
+**Important:** The browser page must have been opened with open_url first. Requires a vision model to be configured.`,
 		params: {
-			webview_id: { description: 'Required. The webview ID returned by open_url (e.g., "wv1").' },
+			webview_id: { description: 'Required. The webview ID returned by open_url ("mcp-page" for Chrome MCP, or "wv1", "wv2", etc. for VSCode webview).' },
 			filename: { description: 'Optional. A filename to save the screenshot (e.g., "screenshot.png").' },
 			question: { description: 'Optional. A question to guide the vision model\'s analysis of the screenshot.' }
 		}
@@ -1624,7 +1628,7 @@ Example: [
 	},
 	type_into_element: {
 		name: 'type_into_element',
-		description: `Types text into an input field or text area in a webview.
+		description: `Types text into an input field or text area in a browser page.
 
 **What you'll receive:** A confirmation message indicating the text was typed.
 
@@ -1637,9 +1641,9 @@ Example: [
 - type_into_element(webview_id="wv1", selector="input[name=\\'username\\']", text="john.doe") → Types username into input
 - type_into_element(webview_id="wv1", selector="textarea.message", text="Hello world") → Types message into textarea
 
-**Important:** The webview must have been opened with open_url first. The element must be an input, textarea, or contentEditable element.`,
+**Important:** The browser page must have been opened with open_url first. The element must be an input, textarea, or contentEditable element.`,
 		params: {
-			webview_id: { description: 'Required. The webview ID returned by open_url (e.g., "wv1").' },
+			webview_id: { description: 'Required. The webview ID returned by open_url ("mcp-page" for Chrome MCP, or "wv1", "wv2", etc. for VSCode webview).' },
 			selector: { description: 'Required. A CSS selector to find the element to type into (e.g., "input[name=username]", "textarea.message", "#content").' },
 			text: { description: 'Required. The text to type into the element.' }
 		}
@@ -1867,7 +1871,7 @@ The system will execute the tool and provide the result in the following format:
 3. Use this format for ALL tool calls.
 4. Provide all required arguments as specified in the tool definitions.
 
-5. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`) over MCP tools.`;
+5. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`) over MCP tools, EXCEPT for browser operations where Chrome DevTools MCP tools are preferred when available (they provide session persistence, better element interaction, and network inspection).`;
 
 /**
  * System prompt explaining ReAct-style XML tool calling format
@@ -1917,7 +1921,7 @@ CRITICAL INSTRUCTIONS:
 4. Use "Thought:" prefix to explain your reasoning before each action. This helps the user follow your logic.
 5. For simple tasks, you can skip the "Thought:" prefix and call tools directly.
 
-6. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`) over MCP tools for all core IDE operations. Use MCP tools ONLY for specialized tasks that native tools cannot perform.
+6. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`) over MCP tools for all core IDE operations, EXCEPT for browser operations where Chrome DevTools MCP tools are preferred when available (they provide session persistence, better element interaction, and network inspection). Use MCP tools ONLY for specialized tasks that native tools cannot perform.
 
 CONTEXT MARKERS FOR CODE EDITS:
 When using edit_file, always include surrounding context in your ORIGINAL blocks:
@@ -2048,7 +2052,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 11. You do not need to ask for permission to use tools.
 12. Only skip tools if the user is asking a simple question you can answer directly (like "hi" or "what can you do?").
 13. Many tools only work if the user has a workspace open.
-14. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`, \`get_dir_tree\`) over MCP tools for all core IDE operations (file management, editing, searching, and terminal tasks). Use MCP tools ONLY for specialized tasks that native tools cannot perform (e.g., external research, web search, or specific API integrations).
+14. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`, \`get_dir_tree\`) over MCP tools for all core IDE operations (file management, editing, searching, and terminal tasks), EXCEPT for browser operations where Chrome DevTools MCP tools are preferred when available (they provide session persistence, better element interaction, and network inspection). Use MCP tools ONLY for specialized tasks that native tools cannot perform (e.g., external research, web search, or specific API integrations).
 </tool_calling>`
 			console.log(`[prompts] Native tool calling enabled (specialToolFormat: ${specialToolFormat})`)
 		}

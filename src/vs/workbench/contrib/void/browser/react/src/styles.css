@@ -449,6 +449,12 @@
 	border-top-left-radius: var(--void-radius-xs);
 	padding: 12px 16px;
 	position: relative;
+	/* Text wrapping for sidebar width */
+	max-width: 100%;
+	overflow-wrap: break-word;
+	word-wrap: break-word;
+	word-break: break-word;
+	hyphens: auto;
 }
 
 .message-user::before {
@@ -565,6 +571,555 @@
 
 .tool-header:hover {
 	background: var(--void-bg-2-hover);
+}
+
+/* ============================================
+   REASONING / THINKING CARD
+   Premium collapsible container for LLM reasoning
+   ============================================ */
+
+.reasoning-card {
+	background: var(--void-depth-floating);
+	backdrop-filter: blur(8px);
+	border-radius: var(--void-radius-md);
+	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+	transition: all var(--void-duration-normal) var(--void-ease-out);
+	position: relative;
+	overflow: hidden;
+}
+
+.reasoning-card:hover {
+	box-shadow: var(--void-shadow-md);
+}
+
+.reasoning-card-active {
+	border-color: color-mix(in srgb, var(--void-accent-primary) 30%, transparent);
+	box-shadow: var(--void-shadow-sm), var(--void-glow-subtle);
+}
+
+.reasoning-card::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vscode-foreground) 6%, transparent), transparent);
+}
+
+.reasoning-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 16px;
+	cursor: pointer;
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+	border-radius: var(--void-radius-md) var(--void-radius-md) 0 0;
+}
+
+.reasoning-header:hover {
+	background: var(--void-bg-2-hover);
+}
+
+.reasoning-header:focus {
+	outline: none;
+	background: var(--void-bg-2-hover);
+}
+
+.reasoning-header:focus-visible {
+	outline: 2px solid var(--void-accent-primary);
+	outline-offset: -2px;
+}
+
+.reasoning-chevron {
+	transition: transform 200ms ease-out;
+	color: var(--void-fg-4);
+}
+
+.reasoning-chevron:hover {
+	color: var(--void-fg-2);
+}
+
+.reasoning-chevron-open {
+	transform: rotate(90deg);
+	color: var(--void-accent-primary);
+}
+
+.reasoning-icon {
+	color: var(--void-fg-4);
+	transition: color 200ms ease-out;
+}
+
+.reasoning-icon-active {
+	color: var(--void-accent-primary);
+	animation: breathe 2s ease-in-out infinite;
+}
+
+.reasoning-status {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--void-fg-3);
+	transition: color 200ms ease-out;
+}
+
+.reasoning-status:hover {
+	color: var(--void-fg-2);
+}
+
+.reasoning-status-active {
+	color: var(--void-accent-primary);
+}
+
+.reasoning-badge {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: 9999px;
+	background: color-mix(in srgb, var(--void-accent-primary) 15%, transparent);
+	border: 1px solid color-mix(in srgb, var(--void-accent-primary) 30%, transparent);
+}
+
+.reasoning-badge-text {
+	font-size: 9px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: var(--void-accent-primary);
+}
+
+.reasoning-spinner {
+	color: var(--void-accent-primary);
+}
+
+.reasoning-content-wrapper {
+	transition: all 300ms ease-out;
+}
+
+.reasoning-content-open {
+	max-height: 2000px;
+	opacity: 1;
+	overflow: auto;
+	border-top: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+	padding: 12px;
+}
+
+.reasoning-content-closed {
+	max-height: 0;
+	opacity: 0;
+	overflow: hidden;
+	padding: 0 12px;
+}
+
+.reasoning-content {
+	user-select: text;
+	cursor: auto;
+	font-size: 11px;
+	line-height: 1.6;
+	color: var(--void-fg-3);
+	font-weight: 500;
+	font-style: italic;
+}
+
+/* Custom scrollbar for reasoning content */
+.reasoning-content-wrapper::-webkit-scrollbar {
+	width: 6px;
+}
+
+.reasoning-content-wrapper::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.reasoning-content-wrapper::-webkit-scrollbar-thumb {
+	background: var(--void-border-2);
+	border-radius: 3px;
+}
+
+.reasoning-content-wrapper::-webkit-scrollbar-thumb:hover {
+	background: var(--void-fg-4);
+}
+
+/* ============================================
+   MODEL CARD - Grid View (Premium Design)
+   ============================================ */
+
+.model-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px;
+	border-radius: 10px;
+	border: 1px solid var(--void-border-2);
+	background: var(--void-bg-1);
+	transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+	position: relative;
+	cursor: default;
+}
+
+.model-card::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 50%);
+	pointer-events: none;
+}
+
+.model-card:hover {
+	border-color: color-mix(in srgb, var(--void-accent) 30%, var(--void-border-1));
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+}
+
+.model-card:active {
+	transform: translateY(0);
+}
+
+.model-card-disabled {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.model-card-disabled .model-card-provider-badge {
+	background: var(--void-bg-3);
+}
+
+.model-card-expanded {
+	border-color: var(--void-accent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--void-accent) 20%, transparent);
+}
+
+.model-card-provider-badge {
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--void-fg-4);
+	background: color-mix(in srgb, var(--void-accent) 8%, var(--void-bg-2));
+	padding: 3px 8px;
+	border-radius: 4px;
+	align-self: flex-start;
+	border: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+}
+
+.model-card-name {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--void-fg-1);
+	min-height: 20px;
+	line-height: 1.3;
+}
+
+.model-card-name span {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-card-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 2px;
+}
+
+.model-card-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--void-fg-4);
+	transition: background 150ms ease;
+}
+
+.model-card-status-dot.active {
+	background: color-mix(in srgb, #10b981 70%, transparent);
+	box-shadow: 0 0 6px color-mix(in srgb, #10b981 40%, transparent);
+}
+
+.model-card-status-text {
+	font-size: 10px;
+	color: var(--void-fg-4);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.model-card-actions {
+	display: flex;
+	gap: 2px;
+	opacity: 0;
+	transition: opacity 150ms ease;
+	position: absolute;
+	top: 10px;
+	right: 10px;
+}
+
+.model-card:hover .model-card-actions {
+	opacity: 1;
+}
+
+.model-card-action-btn {
+	padding: 5px;
+	border-radius: 5px;
+	color: var(--void-fg-3);
+	transition: all 120ms ease;
+	cursor: pointer;
+	background: transparent;
+	border: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.model-card-action-btn:hover {
+	color: var(--void-fg-1);
+	background: var(--void-bg-3);
+}
+
+.model-card-action-btn:active {
+	transform: scale(0.95);
+}
+
+.model-card-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: auto;
+	padding-top: 8px;
+	border-top: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+}
+
+.model-card-switch-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.model-card-switch-label {
+	font-size: 10px;
+	color: var(--void-fg-4);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.model-card-expanded-content {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--void-border-2);
+	animation: modelCardExpand 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modelCardExpand {
+	from {
+		opacity: 0;
+		max-height: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		max-height: 500px;
+		transform: translateY(0);
+	}
+}
+
+/* Grid container for model cards */
+.model-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 12px;
+	padding: 16px;
+}
+
+@media (min-width: 640px) {
+	.model-grid {
+		grid-template-columns: repeat(3, 1fr);
+	}
+}
+
+@media (min-width: 1024px) {
+	.model-grid {
+		grid-template-columns: repeat(4, 1fr);
+	}
+}
+
+@media (min-width: 1280px) {
+	.model-grid {
+		grid-template-columns: repeat(5, 1fr);
+	}
+}
+
+/* Staggered entrance animation */
+.model-card:nth-child(1) { animation-delay: 0ms; }
+.model-card:nth-child(2) { animation-delay: 30ms; }
+.model-card:nth-child(3) { animation-delay: 60ms; }
+.model-card:nth-child(4) { animation-delay: 90ms; }
+.model-card:nth-child(5) { animation-delay: 120ms; }
+.model-card:nth-child(6) { animation-delay: 150ms; }
+.model-card:nth-child(7) { animation-delay: 180ms; }
+.model-card:nth-child(8) { animation-delay: 210ms; }
+.model-card:nth-child(9) { animation-delay: 240ms; }
+.model-card:nth-child(10) { animation-delay: 270ms; }
+
+.model-card {
+	animation: modelCardIn 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes modelCardIn {
+	from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+/* ============================================
+   REACT PHASE INDICATOR
+   Thought/Action/Observation phases with CSS variables
+   ============================================ */
+
+.react-phase-indicator {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 16px;
+	border-radius: 12px;
+	border: 1px solid transparent;
+}
+
+.react-phase-transition {
+	transition: all 300ms ease-out;
+}
+
+.react-phase-transitioning {
+	opacity: 0.5;
+	filter: blur(1px);
+	transform: scale(0.98);
+}
+
+/* Thought phase - Purple */
+.react-phase-thought {
+	--phase-color: var(--void-purple, #a855f7);
+	--phase-bg: color-mix(in srgb, var(--void-purple, #a855f7) 10%, transparent);
+	--phase-border: color-mix(in srgb, var(--void-purple, #a855f7) 20%, transparent);
+	background-color: var(--phase-bg);
+	border-color: var(--phase-border);
+}
+
+/* Action phase - Blue */
+.react-phase-action {
+	--phase-color: var(--void-blue, #0ea5e9);
+	--phase-bg: color-mix(in srgb, var(--void-blue, #0ea5e9) 10%, transparent);
+	--phase-border: color-mix(in srgb, var(--void-blue, #0ea5e9) 20%, transparent);
+	background-color: var(--phase-bg);
+	border-color: var(--phase-border);
+}
+
+/* Observation phase - Green */
+.react-phase-observation {
+	--phase-color: var(--void-green, #10b981);
+	--phase-bg: color-mix(in srgb, var(--void-green, #10b981) 10%, transparent);
+	--phase-border: color-mix(in srgb, var(--void-green, #10b981) 20%, transparent);
+	background-color: var(--phase-bg);
+	border-color: var(--phase-border);
+}
+
+.react-phase-icon {
+	padding: 8px;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	background-color: color-mix(in srgb, var(--phase-color) 13%, transparent);
+	color: var(--phase-color);
+}
+
+.react-phase-content {
+	flex: 1;
+	overflow: hidden;
+}
+
+.react-phase-text {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--phase-color);
+}
+
+.react-phase-description {
+	font-size: 10px;
+	color: var(--void-fg-3);
+	font-weight: 500;
+	margin-top: 2px;
+	opacity: 0.8;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.react-phase-detail {
+	font-size: 10px;
+	color: var(--void-fg-2);
+	margin-top: 4px;
+	font-style: italic;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	background: color-mix(in srgb, white 5%, transparent);
+	padding: 2px 6px;
+	border-radius: 4px;
+}
+
+.react-phase-dots {
+	display: flex;
+	gap: 4px;
+}
+
+.react-phase-dots-static .react-phase-dot {
+	animation: none;
+}
+
+.react-phase-dot {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background-color: var(--phase-color);
+	animation: react-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes react-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+.react-phase-spinner {
+	width: 12px;
+	height: 12px;
+	animation: spin 1s linear infinite;
+	color: var(--phase-color);
+}
+
+.react-phase-spinner-static {
+	width: 12px;
+	height: 12px;
+	color: var(--phase-color);
+}
+
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 
 /* ============================================

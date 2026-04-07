@@ -143,6 +143,7 @@ export const TypingIndicator = ({
 /**
  * ReAct phase indicator for showing Thought/Action/Observation phases
  * Optimized with debouncing and smooth transitions to prevent jitter
+ * Uses CSS variables for theme consistency
  */
 export const ReActPhaseIndicator = ({
 	phase,
@@ -192,24 +193,21 @@ export const ReActPhaseIndicator = ({
 	const phaseConfig = {
 		thought: {
 			icon: <Brain size={16} />,
-			color: '#a855f7', // purple-500
-			bgColor: 'rgba(168, 85, 247, 0.1)',
 			text: 'Thinking',
-			description: 'Reasoning about next steps'
+			description: 'Reasoning about next steps',
+			className: 'react-phase-thought'
 		},
 		action: {
 			icon: null,
-			color: '#0ea5e9', // blue-500
-			bgColor: 'rgba(14, 165, 233, 0.1)',
 			text: 'Taking Action',
-			description: 'Executing tools'
+			description: 'Executing tools',
+			className: 'react-phase-action'
 		},
 		observation: {
 			icon: <Eye size={16} />,
-			color: '#10b981', // emerald-500
-			bgColor: 'rgba(16, 185, 129, 0.1)',
 			text: 'Observing',
-			description: 'Analyzing results'
+			description: 'Analyzing results',
+			className: 'react-phase-observation'
 		}
 	};
 
@@ -217,64 +215,53 @@ export const ReActPhaseIndicator = ({
 
 	return (
 		<div
-			className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${prefersReducedMotion ? '' : 'transition-all duration-300'} ${isTransitioning && !prefersReducedMotion ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}
-			style={{
-				borderColor: `${config.color}33`,
-				backgroundColor: config.bgColor,
-				transform: isTransitioning && !prefersReducedMotion ? 'scale(0.98)' : 'scale(1)',
-			}}
+			className={`react-phase-indicator ${config.className} ${prefersReducedMotion ? '' : 'react-phase-transition'} ${isTransitioning && !prefersReducedMotion ? 'react-phase-transitioning' : ''}`}
 		>
 			{/* Phase icon */}
-			<div
-				className="p-2 rounded-lg flex items-center justify-center shadow-sm"
-				style={{ backgroundColor: `${config.color}22`, color: config.color }}
-			>
+			<div className="react-phase-icon">
 				{config.icon}
 			</div>
 
 			{/* Phase info */}
-			<div className="flex-1 overflow-hidden">
+			<div className="react-phase-content">
 				<div className="flex items-center gap-2">
-					<span
-						className="text-[11px] font-bold uppercase tracking-wider"
-						style={{ color: config.color }}
-					>
+					<span className="react-phase-text">
 						{config.text}
 					</span>
 					{/* Thinking dots for thought phase - skip animation for reduced motion */}
 					{displayPhase === 'thought' && !prefersReducedMotion && (
-						<div className="flex gap-1">
-							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0s' }} />
-							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.2s' }} />
-							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.4s' }} />
+						<div className="react-phase-dots">
+							<div className="react-phase-dot" style={{ animationDelay: '0s' }} />
+							<div className="react-phase-dot" style={{ animationDelay: '0.2s' }} />
+							<div className="react-phase-dot" style={{ animationDelay: '0.4s' }} />
 						</div>
 					)}
 					{/* Static dots for reduced motion preference */}
 					{displayPhase === 'thought' && prefersReducedMotion && (
-						<div className="flex gap-1">
-							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
-							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
-							<div className="w-1 h-1 rounded-full" style={{ backgroundColor: config.color }} />
+						<div className="react-phase-dots react-phase-dots-static">
+							<div className="react-phase-dot" />
+							<div className="react-phase-dot" />
+							<div className="react-phase-dot" />
 						</div>
 					)}
 					{/* Spinner for action phase - skip for reduced motion */}
 					{displayPhase === 'action' && !prefersReducedMotion && (
-						<Loader2 className="w-3 h-3 animate-spin" style={{ color: config.color }} />
+						<Loader2 className="react-phase-spinner" />
 					)}
 					{/* Static icon for reduced motion */}
 					{displayPhase === 'action' && prefersReducedMotion && (
-						<Loader2 className="w-3 h-3" style={{ color: config.color }} />
+						<Loader2 className="react-phase-spinner-static" />
 					)}
 				</div>
 
 				{/* Phase description */}
-				<div className="text-[10px] text-void-fg-3 font-medium mt-0.5 truncate opacity-80">
+				<div className="react-phase-description">
 					{config.description}
 				</div>
 
 				{/* Phase content if available */}
 				{phaseContent && (
-					<div className="text-[10px] text-void-fg-2 mt-1 italic truncate font-medium bg-white/5 px-1.5 py-0.5 rounded" title={phaseContent}>
+					<div className="react-phase-detail" title={phaseContent}>
 						{phaseContent}
 					</div>
 				)}

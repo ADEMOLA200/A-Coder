@@ -263,7 +263,7 @@ type VoidStaticProviderInfo = { // doesn't change (not stateful)
 
 
 const defaultModelOptions = {
-	contextWindow: 4_096,
+	contextWindow: 256_695,
 	reservedOutputTokenSpace: 16_384, // Increased from 4096 to allow larger file content in tool calls
 	cost: { input: 0, output: 0 },
 	downloadable: false,
