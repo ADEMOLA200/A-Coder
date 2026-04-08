@@ -809,7 +809,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 		{isMenuOpen && (
 			<div
 				ref={refs.setFloating}
-				className="z-[100] border-void-border-2 bg-void-bg-1/95 backdrop-blur-xl border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+				className="z-[100] border-void-border-2 bg-void-bg-1 border rounded-xl shadow-lg flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
 				style={{
 					position: strategy,
 					top: y ?? 0,
@@ -819,7 +819,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 				onWheel={(e) => e.stopPropagation()}
 			>
 				{/* Breadcrumbs Header */}
-				{isBreadcrumbsShowing && <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-void-fg-3 bg-void-bg-2/50 border-b border-void-border-2 sticky top-0 z-10 select-none pointer-events-none">
+				{isBreadcrumbsShowing && <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-void-fg-3 bg-void-bg-2 border-b border-void-border-2 sticky top-0 z-10 select-none pointer-events-none">
 					{optionText ?
 						<div className="flex items-center">
 							<span>{optionText}</span>
@@ -1438,10 +1438,10 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 			{isOpen && (
 				<div
 					ref={refs.setFloating}
-					className={`z-[300] rounded-xl backdrop-blur-md shadow-lg flex flex-col overflow-hidden
+					className={`z-[300] rounded-xl shadow-lg flex flex-col overflow-hidden
 						${isDark
-							? 'border border-white/10 bg-black/70 shadow-black/40'
-							: 'border border-black/10 bg-white/90 shadow-black/10'}`}
+							? 'border border-void-border-2 bg-void-bg-1 shadow-black/20'
+							: 'border border-void-border-2 bg-void-bg-1 shadow-black/10'}`}
 					style={{
 						position: strategy,
 						top: y ?? 0,
@@ -1456,19 +1456,14 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 					onWheel={(e) => e.stopPropagation()}
 				>
 					{searchable && (
-						<div className={`p-2 border-b ${isDark ? 'border-white/10' : 'border-black/5'}`}>
+						<div className={`p-2 border-b border-void-border-2`}>
 							<input
 								ref={searchInputRef}
 								type="text"
 								value={filterText}
 								onChange={(e) => setFilterText(e.target.value)}
 								placeholder="Search..."
-								className={`w-full px-2 py-1 text-xs rounded border bg-transparent focus:outline-none 
-									${isDark
-										? 'border-white/10 text-white placeholder-white/40'
-										: 'border-black/10 text-black placeholder-black/40'
-									}
-								`}
+								className={`w-full px-2 py-1 text-xs rounded border bg-transparent focus:outline-none border-void-border-2 text-void-fg-1 placeholder-void-fg-4`}
 								onClick={(e) => e.stopPropagation()}
 								onKeyDown={(e) => {
 									e.stopPropagation();
@@ -1496,8 +1491,8 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 										className={`flex items-center px-2.5 py-1.5 pr-4 cursor-pointer whitespace-nowrap
 									transition-colors duration-100 rounded-md mx-1
 									${thisOptionIsSelected
-												? 'bg-blue-500/80 text-white'
-												: `text-void-fg-2 ${isDark ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-black/5 hover:text-black'}`}
+												? 'bg-void-accent text-void-fg-0'
+												: 'text-void-fg-2 hover:bg-void-bg-2 hover:text-void-fg-1'}
 								`}
 										onClick={() => {
 											onChangeOption(option);

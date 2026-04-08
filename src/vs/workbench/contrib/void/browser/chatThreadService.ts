@@ -17,7 +17,7 @@ import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj }
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
+import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
 import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
@@ -76,6 +76,27 @@ const MAX_MESSAGE_QUEUE_PER_THREAD = 10;
 
 // MEMORY OPTIMIZATION: Maximum total size of all images in a message (10MB)
 const MAX_TOTAL_IMAGE_SIZE_MB = 10;
+
+// PARALLEL TOOL CALLING: Tools that are safe to execute in parallel.
+// Read-only tools have no side effects and can always run concurrently.
+// create_file_or_folder is also safe because creating different files/folders
+// doesn't conflict — and it's gated by auto-approve, so it only runs in parallel
+// when the user has auto-approved edits.
+// edit_file, rewrite_file, delete, run_command, run_code, repo operations must
+// run sequentially to avoid conflicts.
+const SAFE_PARALLEL_TOOLS: ReadonlySet<string> = new Set([
+	'read_file',
+	'outline_file',
+	'ls_dir',
+	'get_dir_tree',
+	'search_pathnames_only',
+	'search_for_files',
+	'search_in_file',
+	'read_lint_errors',
+	'fast_context',
+	'codebase_search',
+	'create_file_or_folder',
+])
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -902,10 +923,22 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		}
 		return false
 	}
-	private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool' }) => {
+
+private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool' }) => {
 		const swapped = this._swapOutLatestStreamingToolWithResult(threadId, tool)
 		if (swapped) return
 		this._addMessageToThread(threadId, tool)
+	}
+
+	// Update or add a tool message. In parallel mode, always appends a new message
+	// instead of replacing the last one, preventing concurrent tools from overwriting each other.
+	private _updateToolMessage = (threadId: string, tool: ChatMessage & { role: 'tool' }, parallelMode: boolean) => {
+		if (parallelMode) {
+			// In parallel mode, always append - never replace the last message
+			this._addMessageToThread(threadId, tool)
+		} else {
+			this._updateLatestTool(threadId, tool)
+		}
 	}
 
 	approveLatestToolRequest(threadId: string, toolId?: string) {
@@ -1186,6 +1219,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		toolId: string,
 		mcpServerName: string | undefined,
 		opts: { preapproved: true, unvalidatedToolParams: RawToolParamsObj, validatedParams: ToolCallParams<ToolName>, thought_signature?: string } | { preapproved: false, unvalidatedToolParams: RawToolParamsObj, thought_signature?: string },
+		parallelMode?: boolean,
 	): Promise<{ awaitingUserApproval?: boolean, interrupted?: boolean }> => {
 
 		// ... internal vars ...
@@ -1251,14 +1285,18 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		// Use predictive progress message
 		const progressMessage = this.getPredictiveProgressMessage(toolName, toolParams);
 		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: progressMessage, result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature } as const
-		this._updateLatestTool(threadId, runningTool)
+		this._updateToolMessage(threadId, runningTool, !!parallelMode)
 
 		let interrupted = false
 		let resolveInterruptor: (r: () => void) => void = () => { }
 		const interruptorPromise = new Promise<() => void>(res => { resolveInterruptor = res })
 		try {
 
-			this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: progressMessage, rawParams: opts.unvalidatedToolParams, mcpServerName } })
+			// In parallel mode, skip stream state updates since multiple tools share the same thread state.
+			// Only set stream state for sequential tool execution.
+			if (!parallelMode) {
+				this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: progressMessage, rawParams: opts.unvalidatedToolParams, mcpServerName } })
+			}
 
 			if (isBuiltInTool) {
 				const { result, interruptTool } = await this._toolsService.callTool[toolName](toolParams as any, {
@@ -1329,7 +1367,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			if (interrupted) { return { interrupted: true } } // the tool result is added where we interrupt, not here
 
 			const errorMessage = getErrorMessage(error)
-			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
 			return {}
 		}
 
@@ -1388,7 +1426,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		} catch (error) {
 			const errorMessage = this.toolErrMsgs.errWhenStringifying(error)
 			const fullErrorStr = `${errorMessage}\n\nNOTE: If you've tried this before, consider a different approach.`;
-			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: fullErrorStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: fullErrorStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
 
 			// Update history
 			if (!this.toolCallHistory[threadId]) this.toolCallHistory[threadId] = [];
@@ -1405,7 +1443,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		}
 
 		// 5. add to history and keep going
-		this._updateLatestTool(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
 
 		// SIDE EFFECT: if it's load_skill, update the thread's loadedSkills
 		if (toolName === 'load_skill' && (toolResult as any).success) {
@@ -1926,7 +1964,72 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 					let anyToolRan = false;
 
+					// Separate tool calls into groups: safe for parallel execution vs sequential.
+					// Only built-in read-only tools that auto-approve can run in parallel.
+					// Write tools, MCP tools, and tools requiring approval must run sequentially
+					// to avoid race conditions on shared state (file edits, terminal, etc.).
+					const parallelSafe: typeof toolCalls = []
+					const sequential: typeof toolCalls = []
+
 					for (const toolCall of toolCalls) {
+						const isBuiltin = isABuiltinToolName(toolCall.name)
+						const isReadOnly = SAFE_PARALLEL_TOOLS.has(toolCall.name)
+						const needsApproval = isBuiltin
+							? !!approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]
+							: true // MCP tools always need approval
+						const autoApprove = needsApproval
+							? !!this._settingsService.state.globalSettings.autoApprove[isBuiltin ? approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]! : 'MCP tools']
+							: true
+
+						// A tool can run in parallel only if it's a built-in read-only tool that auto-approves
+						if (isBuiltin && isReadOnly && autoApprove) {
+							parallelSafe.push(toolCall)
+						} else {
+							sequential.push(toolCall)
+						}
+					}
+
+					// Run parallel-safe tools concurrently when there are 2+ read-only tools.
+					// Uses parallelMode=true in _runToolCall which appends messages instead of
+					// replacing the last one, preventing concurrent tools from overwriting each other.
+					if (parallelSafe.length > 1) {
+						console.log(`[chatThreadService] Running ${parallelSafe.length} read-only tools in parallel: ${parallelSafe.map(t => t.name).join(', ')}`)
+						const parallelResults = await Promise.all(
+							parallelSafe.map(toolCall =>
+								this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true)
+							)
+						)
+						for (const result of parallelResults) {
+							if (result.interrupted) {
+								this._setStreamState(threadId, undefined)
+								return
+							}
+							if (result.awaitingUserApproval) {
+								isRunningWhenEnd = 'awaiting_user'
+								shouldSendAnotherMessage = false
+							} else {
+								anyToolRan = true
+							}
+						}
+					} else if (parallelSafe.length === 1) {
+						// Single parallel-safe tool, run normally
+						const toolCall = parallelSafe[0]
+						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
+						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
+						if (interrupted) {
+							this._setStreamState(threadId, undefined)
+							return
+						}
+						if (awaitingUserApproval) {
+							isRunningWhenEnd = 'awaiting_user'
+							shouldSendAnotherMessage = false
+						} else {
+							anyToolRan = true
+						}
+					}
+
+					// Run sequential tools one at a time
+					for (const toolCall of sequential) {
 						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const paramsStr = JSON.stringify(toolCall.rawParams);
 						console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
@@ -1943,7 +2046,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							this._setStreamState(threadId, undefined)
 							return
 						}
-						
+
 						if (awaitingUserApproval) {
 							isRunningWhenEnd = 'awaiting_user';
 							shouldSendAnotherMessage = false;

@@ -1607,26 +1607,11 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneReasoning: boolean, isStreaming: boolean, children: React.ReactNode }) => {
 	const isDone = isDoneReasoning || !isStreaming
 	const isWriting = !isDone
-	// Start open when writing, stay open after done (user can collapse manually)
-	const [isOpen, setIsOpen] = useState(true)
+	// Start collapsed — user can expand to see thinking details
+	const [isOpen, setIsOpen] = useState(false)
 	// Track thinking duration
 	const startTimeRef = useRef<number | null>(null)
 	const [duration, setDuration] = useState<number | null>(null)
-
-	// Track if we've already opened (to prevent fighting with user clicks during streaming)
-	const hasAutoOpenedRef = useRef(false)
-
-	// Auto-open only when reasoning first starts (transition from not-writing to writing)
-	useEffect(() => {
-		if (isWriting && !hasAutoOpenedRef.current) {
-			setIsOpen(true)
-			hasAutoOpenedRef.current = true
-		}
-		// Reset when done so next reasoning session can auto-open
-		if (!isWriting) {
-			hasAutoOpenedRef.current = false
-		}
-	}, [isWriting])
 
 	// Track start time and calculate duration
 	useEffect(() => {

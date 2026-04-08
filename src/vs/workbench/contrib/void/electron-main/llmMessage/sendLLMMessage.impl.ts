@@ -508,6 +508,11 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		messages: messages as any,
 		stream: true,
 		...nativeToolsObj,
+		// Enable parallel tool calls for models that support native tool calling.
+		// This tells the model it can return multiple tool calls in a single response.
+		// OpenAI default is true, but being explicit ensures Ollama and other
+		// OpenAI-compatible providers also receive the signal.
+		...(specialToolFormat === 'openai-style' && potentialTools && potentialTools.length > 0 ? { parallel_tool_calls: true } : {}),
 		...includeInPayload,
 		...additionalOpenAIPayload
 		// max_completion_tokens: maxTokens,
@@ -518,6 +523,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		messageCount: options.messages.length,
 		hasTools: 'tools' in options,
 		toolCount: (options as any).tools?.length ?? 0,
+		parallelToolCalls: (options as any).parallel_tool_calls ?? false,
 		stream: options.stream
 	}))
 

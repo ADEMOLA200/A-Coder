@@ -76,9 +76,9 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 				ref={modalRef}
 				className={`
 					w-80 pointer-events-auto
-					bg-void-bg-1/95 backdrop-blur-xl
+					bg-void-bg-1
 					border border-void-border-2 rounded-2xl
-					shadow-2xl shadow-black/40
+					shadow-lg shadow-black/20
 					flex flex-col overflow-hidden
 					animate-in fade-in slide-in-from-top-4 duration-200
 				`}
@@ -126,10 +126,10 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 								return (
 									<div
 										key={name}
-										className="group relative flex flex-col rounded-xl bg-void-bg-2/30 border border-void-border-2 hover:border-void-border-1 transition-all mb-1 shadow-sm overflow-hidden"
+										className="group relative flex flex-col rounded-xl bg-void-bg-2 border border-void-border-2 hover:border-void-border-1 transition-all mb-1 shadow-sm overflow-hidden"
 									>
 										<div 
-											className="flex items-center gap-3 p-3 cursor-pointer hover:bg-void-bg-2/50 transition-colors"
+											className="flex items-center gap-3 p-3 cursor-pointer hover:bg-void-bg-2 transition-colors"
 											onClick={() => toggleServerExpansion(name)}
 										>
 											{/* Status indicator */}
@@ -168,7 +168,7 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 
 										{/* Expandable Tools List */}
 										{isExpanded && (
-											<div className="px-3 pb-3 pt-1 border-t border-void-border-2 bg-void-bg-1/30">
+											<div className="px-3 pb-3 pt-1 border-t border-void-border-2 bg-void-bg-1">
 												<div className="space-y-1.5 mt-2">
 													{toolCount === 0 ? (
 														<p className="text-[10px] text-void-fg-4 italic px-2">No tools available</p>
@@ -198,7 +198,7 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 				</div>
 
 				{/* Footer */}
-				<div className="p-3 bg-void-bg-2/30 border-t border-void-border-2 flex flex-col gap-2">
+				<div className="p-3 bg-void-bg-2 border-t border-void-border-2 flex flex-col gap-2">
 					<button
 						onClick={handleOpenSettings}
 						className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 rounded-xl text-void-fg-1 transition-all text-sm font-semibold shadow-sm group"
