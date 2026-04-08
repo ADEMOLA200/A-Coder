@@ -755,9 +755,10 @@
 	border-radius: 10px;
 	border: 1px solid var(--void-border-2);
 	background: var(--void-bg-1);
-	transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+	transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
 	position: relative;
 	cursor: default;
+	overflow: hidden;
 }
 
 .model-card::before {
@@ -765,18 +766,17 @@
 	position: absolute;
 	inset: 0;
 	border-radius: inherit;
-	background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 50%);
+	background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-foreground) 2%, transparent) 0%, transparent 50%);
 	pointer-events: none;
 }
 
 .model-card:hover {
 	border-color: color-mix(in srgb, var(--void-accent) 30%, var(--void-border-1));
-	transform: translateY(-1px);
-	box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+	box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
 }
 
 .model-card:active {
-	transform: translateY(0);
+	box-shadow: none;
 }
 
 .model-card-disabled {
@@ -791,6 +791,7 @@
 .model-card-expanded {
 	border-color: var(--void-accent);
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--void-accent) 20%, transparent);
+	grid-column: 1 / -1;
 }
 
 .model-card-provider-badge {
@@ -932,41 +933,18 @@
 /* Grid container for model cards */
 .model-grid {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
-	gap: 12px;
-	padding: 16px;
+	grid-template-columns: 1fr;
+	gap: 10px;
+	padding: 12px;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 500px) {
 	.model-grid {
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(2, 1fr);
 	}
 }
 
-@media (min-width: 1024px) {
-	.model-grid {
-		grid-template-columns: repeat(4, 1fr);
-	}
-}
-
-@media (min-width: 1280px) {
-	.model-grid {
-		grid-template-columns: repeat(5, 1fr);
-	}
-}
-
-/* Staggered entrance animation */
-.model-card:nth-child(1) { animation-delay: 0ms; }
-.model-card:nth-child(2) { animation-delay: 30ms; }
-.model-card:nth-child(3) { animation-delay: 60ms; }
-.model-card:nth-child(4) { animation-delay: 90ms; }
-.model-card:nth-child(5) { animation-delay: 120ms; }
-.model-card:nth-child(6) { animation-delay: 150ms; }
-.model-card:nth-child(7) { animation-delay: 180ms; }
-.model-card:nth-child(8) { animation-delay: 210ms; }
-.model-card:nth-child(9) { animation-delay: 240ms; }
-.model-card:nth-child(10) { animation-delay: 270ms; }
-
+/* Entrance animation (delay set via inline style per card) */
 .model-card {
 	animation: modelCardIn 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
