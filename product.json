@@ -1,8 +1,8 @@
 {
 	"nameShort": "A-Coder",
 	"nameLong": "A-Coder",
-	"voidVersion": "1.6.6",
-	"voidRelease": "0061",
+	"voidVersion": "1.6.7",
+	"voidRelease": "0062",
 	"applicationName": "a-coder",
 	"dataFolderName": ".a-coder",
 	"win32MutexName": "acodereditor",
