@@ -52,7 +52,7 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 	}, [chatThreadsService, metricsService, threadId, toolId])
 
 	return (
-		<div className="rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-4 shadow-xl my-3 mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
+		<div className="rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-4 shadow-lg my-3 mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
 			<div className="px-4 py-3 font-mono text-[13px] leading-relaxed relative group">
 				<div className="flex items-start gap-2">
 					<span className="text-void-accent font-bold opacity-70 mt-1"><Play size={10} strokeWidth={3} /></span>
@@ -60,7 +60,7 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 				</div>
 				<div className="mt-2 text-[10px] text-void-fg-4 font-bold uppercase tracking-wider flex items-center gap-1.5"><Folder size={10} />{displayPath}</div>
 			</div>
-			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-2 bg-void-bg-2/30">
+			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-2 bg-void-bg-2">
 				<button onClick={onCopy} className="p-2 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 rounded-lg transition-all active:scale-90" data-tooltip-id='void-tooltip' data-tooltip-content='Copy command' data-tooltip-place='top'><CopyIcon size={14} /></button>
 				<button onClick={onRun} className="flex items-center gap-2 px-4 py-1.5 bg-[var(--vscode-button-background)] text-white hover:bg-[var(--vscode-button-hoverBackground)] rounded-lg shadow-sm text-xs font-bold uppercase tracking-wider transition-all active:scale-95"><Play size={12} strokeWidth={3} />Run</button>
 				<button onClick={onSkip} className="px-3 py-1.5 bg-void-bg-2 text-void-fg-2 hover:bg-void-bg-3 rounded-lg text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all active:scale-95">Skip</button>

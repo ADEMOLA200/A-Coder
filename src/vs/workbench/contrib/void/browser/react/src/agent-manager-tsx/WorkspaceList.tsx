@@ -54,8 +54,8 @@ const WorkspaceCard = ({
 			className={`
 				group w-full text-left p-3 rounded-xl border transition-all duration-200
 				${isSelected
-					? 'bg-void-accent/10 border-void-accent/30 shadow-lg shadow-void-accent/10'
-					: 'bg-void-bg-2/40 border-void-border-2 hover:bg-void-bg-2/60 hover:border-void-border-1'
+					? 'bg-void-accent/10 border-void-accent/30 shadow-md shadow-void-accent/10'
+					: 'bg-void-bg-2 border-void-border-2 hover:bg-void-bg-3 hover:border-void-border-1'
 				}
 			`}
 		>
@@ -74,7 +74,7 @@ const WorkspaceCard = ({
 						<span className="text-sm font-semibold text-void-fg-1 truncate">{workspace.name}</span>
 						<StatusIndicator status={workspace.status} color={workspace.color} />
 					</div>
-					<span className="text-[10px] text-void-fg-4 truncate block opacity-60 font-mono">
+					<span className="text-[10px] text-void-fg-4 truncate block opacity-70 font-mono">
 						{workspace.path.split('/').pop() || workspace.path}
 					</span>
 				</div>
@@ -86,7 +86,7 @@ const WorkspaceCard = ({
 			</div>
 
 			{/* Stats row */}
-			<div className="flex items-center gap-4 mt-3 pt-2 border-t border-void-border-2/50">
+			<div className="flex items-center gap-4 mt-3 pt-2 border-t border-void-border-2">
 				<div className="flex items-center gap-1.5">
 					<MessageSquare className="w-3 h-3 text-void-fg-4" />
 					<span className="text-[10px] font-medium text-void-fg-3">{workspace.threads.length} threads</span>
@@ -127,11 +127,11 @@ export const WorkspaceList = () => {
 	if (workspaces.length === 0) {
 		return (
 			<div className="flex flex-col items-center justify-center p-8 text-void-fg-4">
-				<div className="w-12 h-12 rounded-xl bg-void-bg-2/50 border border-dashed border-void-border-2 flex items-center justify-center mb-3">
+				<div className="w-12 h-12 rounded-xl bg-void-bg-2 border border-dashed border-void-border-2 flex items-center justify-center mb-3">
 					<Folder className="w-6 h-6 opacity-30" />
 				</div>
 				<p className="text-xs font-medium text-void-fg-3">No workspaces connected</p>
-				<p className="text-[10px] text-void-fg-4 mt-1 opacity-60">Open another VS Code window to see it here</p>
+				<p className="text-[10px] text-void-fg-4 mt-1 opacity-70">Open another VS Code window to see it here</p>
 			</div>
 		);
 	}
@@ -168,8 +168,8 @@ export const MiniWorkspaceList = () => {
 					className={`
 						flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all
 						${selectedId === workspace.id
-							? 'bg-void-accent/20 border border-void-accent/30'
-							: 'bg-void-bg-2/40 border border-void-border-2 hover:border-void-border-1'
+							? 'bg-void-accent/10 border border-void-accent/20'
+							: 'bg-void-bg-2 border border-void-border-2 hover:border-void-border-1'
 						}
 					`}
 					title={workspace.name}

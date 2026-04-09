@@ -747,7 +747,7 @@
    MODEL CARD - Grid View (Premium Design)
    ============================================ */
 
-.model-card {
+.void-model-card {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
@@ -761,7 +761,7 @@
 	overflow: hidden;
 }
 
-.model-card::before {
+.void-model-card::before {
 	content: '';
 	position: absolute;
 	inset: 0;
@@ -770,31 +770,31 @@
 	pointer-events: none;
 }
 
-.model-card:hover {
+.void-model-card:hover {
 	border-color: color-mix(in srgb, var(--void-accent) 30%, var(--void-border-1));
 	box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
 }
 
-.model-card:active {
+.void-model-card:active {
 	box-shadow: none;
 }
 
-.model-card-disabled {
+.void-model-card-disabled {
 	opacity: 0.5;
 	pointer-events: none;
 }
 
-.model-card-disabled .model-card-provider-badge {
+.void-model-card-disabled .void-model-card-provider-badge {
 	background: var(--void-bg-3);
 }
 
-.model-card-expanded {
+.void-model-card-expanded {
 	border-color: var(--void-accent);
 	box-shadow: 0 0 0 1px color-mix(in srgb, var(--void-accent) 20%, transparent);
 	grid-column: 1 / -1;
 }
 
-.model-card-provider-badge {
+.void-model-card-provider-badge {
 	font-size: 9px;
 	font-weight: 600;
 	text-transform: uppercase;
@@ -807,7 +807,7 @@
 	border: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
 }
 
-.model-card-name {
+.void-model-card-name {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -818,21 +818,21 @@
 	line-height: 1.3;
 }
 
-.model-card-name span {
+.void-model-card-name span {
 	flex: 1;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.model-card-status {
+.void-model-card-status {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	margin-top: 2px;
 }
 
-.model-card-status-dot {
+.void-model-card-status-dot {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
@@ -840,19 +840,19 @@
 	transition: background 150ms ease;
 }
 
-.model-card-status-dot.active {
+.void-model-card-status-dot.void-active {
 	background: color-mix(in srgb, #10b981 70%, transparent);
 	box-shadow: 0 0 6px color-mix(in srgb, #10b981 40%, transparent);
 }
 
-.model-card-status-text {
+.void-model-card-status-text {
 	font-size: 10px;
 	color: var(--void-fg-4);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
 
-.model-card-actions {
+.void-model-card-actions {
 	display: flex;
 	gap: 2px;
 	opacity: 0;
@@ -862,11 +862,11 @@
 	right: 10px;
 }
 
-.model-card:hover .model-card-actions {
+.void-model-card:hover .void-model-card-actions {
 	opacity: 1;
 }
 
-.model-card-action-btn {
+.void-model-card-action-btn {
 	padding: 5px;
 	border-radius: 5px;
 	color: var(--void-fg-3);
@@ -879,16 +879,16 @@
 	justify-content: center;
 }
 
-.model-card-action-btn:hover {
+.void-model-card-action-btn:hover {
 	color: var(--void-fg-1);
 	background: var(--void-bg-3);
 }
 
-.model-card-action-btn:active {
+.void-model-card-action-btn:active {
 	transform: scale(0.95);
 }
 
-.model-card-footer {
+.void-model-card-footer {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -897,20 +897,20 @@
 	border-top: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
 }
 
-.model-card-switch-wrapper {
+.void-model-card-switch-wrapper {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 }
 
-.model-card-switch-label {
+.void-model-card-switch-label {
 	font-size: 10px;
 	color: var(--void-fg-4);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
 
-.model-card-expanded-content {
+.void-model-card-expanded-content {
 	margin-top: 12px;
 	padding-top: 12px;
 	border-top: 1px solid var(--void-border-2);
@@ -931,7 +931,7 @@
 }
 
 /* Grid container for model cards */
-.model-grid {
+.void-model-grid {
 	display: grid;
 	grid-template-columns: 1fr;
 	gap: 10px;
@@ -939,17 +939,73 @@
 }
 
 @media (min-width: 500px) {
-	.model-grid {
+	.void-model-grid {
 		grid-template-columns: repeat(2, 1fr);
 	}
 }
 
 /* Entrance animation (delay set via inline style per card) */
-.model-card {
+.void-model-card {
 	animation: modelCardIn 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 @keyframes modelCardIn {
+	from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+/* ============================================
+   SETTINGS PAGE - Card entrance animations
+   ============================================ */
+
+.void-settings-animate-in {
+	animation: void-fade-in-up 0.6s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Staggered children animation for settings sections */
+.void-settings-stagger > * {
+	animation: void-fade-in-up 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.void-settings-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.void-settings-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.void-settings-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.void-settings-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.void-settings-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.void-settings-stagger > *:nth-child(6) { animation-delay: 200ms; }
+.void-settings-stagger > *:nth-child(7) { animation-delay: 240ms; }
+.void-settings-stagger > *:nth-child(8) { animation-delay: 280ms; }
+.void-settings-stagger > *:nth-child(9) { animation-delay: 320ms; }
+.void-settings-stagger > *:nth-child(10) { animation-delay: 360ms; }
+.void-settings-stagger > *:nth-child(11) { animation-delay: 400ms; }
+.void-settings-stagger > *:nth-child(12) { animation-delay: 440ms; }
+
+/* Settings SettingBox card entrance */
+.void-setting-card-enter {
+	animation: void-card-enter 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Staggered entrance for SettingBox items within a SettingCard */
+.void-settings-box-stagger > * {
+	animation: void-card-enter 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.void-settings-box-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.void-settings-box-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.void-settings-box-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.void-settings-box-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.void-settings-box-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.void-settings-box-stagger > *:nth-child(6) { animation-delay: 300ms; }
+.void-settings-box-stagger > *:nth-child(7) { animation-delay: 360ms; }
+.void-settings-box-stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+@keyframes void-card-enter {
 	from {
 		opacity: 0;
 		transform: translateY(8px) scale(0.98);
@@ -2722,29 +2778,6 @@
 		transform: translateX(0);
 	}
 }
-
-/* Settings page container animation */
-.void-settings-animate-in {
-	animation: void-fade-in-up 0.6s cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-
-/* Staggered children animation for settings sections */
-.void-settings-stagger > * {
-	animation: void-fade-in-up 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-
-.void-settings-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.void-settings-stagger > *:nth-child(2) { animation-delay: 40ms; }
-.void-settings-stagger > *:nth-child(3) { animation-delay: 80ms; }
-.void-settings-stagger > *:nth-child(4) { animation-delay: 120ms; }
-.void-settings-stagger > *:nth-child(5) { animation-delay: 160ms; }
-.void-settings-stagger > *:nth-child(6) { animation-delay: 200ms; }
-.void-settings-stagger > *:nth-child(7) { animation-delay: 240ms; }
-.void-settings-stagger > *:nth-child(8) { animation-delay: 280ms; }
-.void-settings-stagger > *:nth-child(9) { animation-delay: 320ms; }
-.void-settings-stagger > *:nth-child(10) { animation-delay: 360ms; }
-.void-settings-stagger > *:nth-child(11) { animation-delay: 400ms; }
-.void-settings-stagger > *:nth-child(12) { animation-delay: 440ms; }
 
 /* Premium Double-Bezel Card Architecture */
 .void-setting-card-outer {

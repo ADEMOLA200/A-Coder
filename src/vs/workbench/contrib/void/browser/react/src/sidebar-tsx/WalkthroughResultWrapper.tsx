@@ -117,6 +117,35 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	const toolName = toolMessage.name
 	const toolType = toolMessage.type
 
+	// Define openWalkthrough callback BEFORE any early returns (hooks must not be conditional)
+	const openWalkthrough = useCallback(async () => {
+		if (!agentManagerService) {
+			console.error('agentManagerService not available')
+			return
+		}
+
+		const latestResult = latestResultRef.current
+		if (!latestResult?.filePath || !latestResult?.preview) {
+			console.error('No valid walkthrough data to open')
+			return
+		}
+
+		try {
+			await agentManagerService.openWalkthroughPreview(latestResult.filePath, latestResult.preview, { threadId })
+			refreshPreviewTabs(latestResult.filePath, latestResult.preview)
+		} catch (error) {
+			console.error('Failed to open walkthrough:', error)
+			if (commandService) {
+				try {
+					const uri = URI.file(latestResult.filePath)
+					await commandService.executeCommand('vscode.open', uri)
+				} catch (fallbackError) {
+					console.error('Fallback also failed:', fallbackError)
+				}
+			}
+		}
+	}, [agentManagerService, commandService, threadId])
+
 	// Show loading state if tool is still running (check type, not result)
 	// This matches how other wrappers work - they check toolMessage.type directly
 	if (toolType === 'running_now' || toolType === 'tool_request') {
@@ -191,40 +220,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		return null
 	}
 
-	// Use a ref to always get the latest result in openWalkthrough to avoid stale closure
-	const openWalkthrough = useCallback(async () => {
-		if (!agentManagerService) {
-			console.error('agentManagerService not available')
-			return
-		}
 
-		// Get the latest result from the ref to avoid stale closure
-		const latestResult = latestResultRef.current
-		if (!latestResult?.filePath || !latestResult?.preview) {
-			console.error('No valid walkthrough data to open')
-			return
-		}
-
-		try {
-			// Open the preview in editor
-			await agentManagerService.openWalkthroughPreview(latestResult.filePath, latestResult.preview, { threadId })
-
-			// Try to refresh the preview tab if it's already open
-			refreshPreviewTabs(latestResult.filePath, latestResult.preview)
-
-		} catch (error) {
-			console.error('Failed to open walkthrough:', error)
-			// Last resort fallback to raw file open
-			if (commandService) {
-				try {
-					const uri = URI.file(latestResult.filePath)
-					await commandService.executeCommand('vscode.open', uri)
-				} catch (fallbackError) {
-					console.error('Fallback also failed:', fallbackError)
-				}
-			}
-		}
-	}, [agentManagerService, commandService, threadId])
 
 	const getActionIcon = () => {
 		switch (result.action) {
@@ -255,7 +251,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		<div className="@@void-scope">
 			<div className="walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-4 shadow-sm">
 				{/* Header */}
-				<div className="bg-void-bg-4/50 px-3 py-2">
+				<div className="bg-void-bg-3 px-3 py-2">
 					<div
 						className="flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors rounded px-2 py-1"
 						onClick={() => setIsExpanded(!isExpanded)}
@@ -308,7 +304,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 								</button>
 							)}
 						</div>
-						<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
+						<div className="bg-void-bg-3 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
 							<ChatMarkdownRender
 								key={refreshKey}
 								string={displayPreview}

@@ -165,14 +165,14 @@ export const AgentManager = ({ className }: { className: string }) => {
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
 			<div className="absolute inset-0 flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans antialiased" role="application" aria-label="A-Coder Agent Manager">
 				{/* Header */}
-				<header className="h-16 border-b border-void-border-2 flex items-center justify-between px-6 flex-shrink-0 bg-void-bg-2/60 backdrop-blur-xl z-50">
+				<header className="h-16 border-b border-void-border-2 flex items-center justify-between px-6 flex-shrink-0 bg-void-bg-2 z-50">
 					<div className="flex items-center gap-4">
-						<div className="w-10 h-10 rounded-xl bg-gradient-to-br from-void-accent to-void-accent-hover flex items-center justify-center shadow-lg shadow-void-accent/30" aria-hidden="true">
+						<div className="w-10 h-10 rounded-xl bg-void-accent flex items-center justify-center shadow-md" aria-hidden="true">
 							<Zap className="text-white w-5 h-5 fill-current" />
 						</div>
 						<div className="hidden sm:flex flex-col">
 							<h1 className="text-base font-bold text-void-fg-1 tracking-tight leading-none">A-Coder</h1>
-							<span className="text-[10px] text-void-fg-4/60 font-medium">AI Assistant</span>
+							<span className="text-[10px] text-void-fg-4 font-medium">AI Assistant</span>
 						</div>
 					</div>
 
@@ -212,9 +212,9 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 				<div className="flex-1 flex overflow-hidden h-full min-h-0 bg-void-bg-3">
 					{/* Left Sidebar */}
-					<nav className="hidden sm:flex w-56 flex-shrink-0 border-r border-void-border-2 bg-void-bg-2/20 flex-col z-40 h-full" aria-label="Main navigation">
-						<div className="p-3 border-b border-void-border-2/50">
-							<div className="px-3 py-2 rounded-lg bg-void-bg-1/50">
+					<nav className="hidden sm:flex w-56 flex-shrink-0 border-r border-void-border-2 bg-void-bg-2 flex-col z-40 h-full" aria-label="Main navigation">
+						<div className="p-3 border-b border-void-border-2">
+							<div className="px-3 py-2 rounded-lg bg-void-bg-1">
 								<span className="text-[10px] font-bold text-void-fg-4 uppercase tracking-wider block mb-1">Workspace</span>
 								<span className="text-sm font-semibold text-void-fg-1 truncate block" title={workspaceFolders[0]?.name || 'No workspace'}>
 									{workspaceFolders[0]?.name || 'No workspace'}
@@ -253,9 +253,9 @@ export const AgentManager = ({ className }: { className: string }) => {
 							/>
 						</div>
 
-						<div className="p-3 border-t border-void-border-2/50">
-							<div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gradient-to-r from-void-accent/5 to-transparent border border-void-accent/10">
-								<div className="w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center" aria-hidden="true">
+						<div className="p-3 border-t border-void-border-2">
+							<div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-void-bg-1 border border-void-accent/20">
+								<div className="w-8 h-8 rounded-lg bg-void-accent/20 flex items-center justify-center" aria-hidden="true">
 									<Sparkles className="w-4 h-4 text-void-accent" />
 								</div>
 								<div className="flex-1 min-w-0">
@@ -268,8 +268,8 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 					{/* Thread/Content Sidebar */}
 					{showSidebar && activeTab !== 'dashboard' && (
-						<aside className="w-80 border-r border-void-border-2 flex flex-col bg-void-bg-2/10 flex-shrink-0 absolute inset-y-0 left-0 z-30 sm:static h-full min-h-0" aria-label={activeTab === 'chats' ? 'Conversations sidebar' : 'Files sidebar'}>
-							<div className="p-4 border-b border-void-border-2 bg-void-bg-2/30 flex items-center justify-between flex-shrink-0">
+						<aside className="w-80 border-r border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 absolute inset-y-0 left-0 z-30 sm:static h-full min-h-0" aria-label={activeTab === 'chats' ? 'Conversations sidebar' : 'Files sidebar'}>
+							<div className="p-4 border-b border-void-border-2 bg-void-bg-2 flex items-center justify-between flex-shrink-0">
 								<div className="flex items-center gap-2">
 									<h2 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider">
 										{activeTab === 'chats' ? 'Conversations' : 'Workspace Files'}
@@ -309,7 +309,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 						{!showSidebar && activeTab !== 'dashboard' && (
 							<button
 								onClick={handleShowSidebar}
-								className="absolute top-4 left-4 z-40 p-2 bg-void-bg-2/80 backdrop-blur-xl border border-void-border-2 rounded-xl shadow-lg hover:bg-void-bg-2 text-void-accent transition-all focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+								className="absolute top-4 left-4 z-40 p-2 bg-void-bg-2 border border-void-border-2 rounded-xl shadow-lg hover:bg-void-bg-3 text-void-accent transition-all focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
 								title="Show Sidebar"
 								aria-label="Show sidebar"
 							>
@@ -344,14 +344,14 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 					{/* Right Preview Pane */}
 					{showPreview && (
-						<aside className="w-[400px] xl:w-[500px] border-l border-void-border-2 flex flex-col bg-void-bg-2/20 flex-shrink-0 absolute inset-y-0 right-0 xl:static z-40 h-full min-h-0" aria-label="File preview">
-							<div className="h-14 border-b border-void-border-2 flex items-center justify-between px-4 bg-void-bg-2/40 flex-shrink-0">
+						<aside className="w-[400px] xl:w-[500px] border-l border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 absolute inset-y-0 right-0 xl:static z-40 h-full min-h-0" aria-label="File preview">
+							<div className="h-14 border-b border-void-border-2 flex items-center justify-between px-4 bg-void-bg-2 flex-shrink-0">
 								<div className="flex items-center gap-3 min-w-0 flex-1">
 									<div className="p-2 rounded-lg bg-void-bg-3 border border-void-border-2 text-void-accent" aria-hidden="true">
 										<Code className="w-4 h-4" />
 									</div>
 									<div className="flex flex-col min-w-0">
-										<span className="text-[10px] font-bold text-void-fg-4/60 uppercase tracking-wider">Preview</span>
+										<span className="text-[10px] font-bold text-void-fg-4 uppercase tracking-wider">Preview</span>
 										<span className="text-xs font-semibold text-void-fg-1 truncate tracking-tight" title={previewTitle}>
 											{previewTitle}
 										</span>
@@ -399,7 +399,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 					{!showPreview && (
 						<button
 							onClick={handleShowPreview}
-							className="absolute bottom-6 right-6 w-12 h-12 bg-void-accent text-white rounded-xl shadow-lg shadow-void-accent/30 flex items-center justify-center hover:bg-void-accent-hover transition-all z-50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2"
+							className="absolute bottom-6 right-6 w-12 h-12 bg-void-accent text-white rounded-xl shadow-md flex items-center justify-center hover:bg-void-accent-hover transition-all z-50 border border-void-border-2 focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2"
 							title="Show Preview"
 							aria-label="Show preview pane"
 						>

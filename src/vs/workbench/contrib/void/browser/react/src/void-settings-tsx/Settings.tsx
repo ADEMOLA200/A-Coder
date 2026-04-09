@@ -60,7 +60,7 @@ export const SettingRow = ({
 export const SettingBox = ({ children, className = '', variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'nested' }) => {
 	if (variant === 'nested') {
 		return (
-			<div className={`p-1.5 rounded-[1.25rem] bg-void-bg-2/30 ring-1 ring-void-border-2/40 ${className}`}>
+			<div className={`p-1.5 rounded-[1.25rem] bg-void-bg-2/30 ring-1 ring-void-border-2/40 setting-card-enter ${className}`}>
 				<div className="p-5 rounded-[calc(1.25rem-6px)] bg-void-depth-elevated shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
 					{children}
 				</div>
@@ -68,7 +68,7 @@ export const SettingBox = ({ children, className = '', variant = 'default' }: { 
 		)
 	}
 	return (
-		<div className={`p-5 rounded-xl bg-void-depth-elevated border border-void-border-2/60 shadow-sm ${className}`}>
+		<div className={`p-5 rounded-xl bg-void-depth-elevated border border-void-border-2/60 shadow-sm setting-card-enter ${className}`}>
 			{children}
 		</div>
 	)
@@ -104,7 +104,7 @@ export const SettingCard = ({
 				<p className="text-[13px] text-void-fg-3/70 mt-2 leading-relaxed max-w-lg">{description}</p>
 			)}
 		</div>
-		<div className="space-y-6">
+		<div className="space-y-6 settings-box-stagger">
 			{children}
 		</div>
 	</div>
@@ -2907,7 +2907,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 
 			{/* ───────────── PREMIUM MAIN PANE ───────────── */}
 			<main className="flex-1 h-full overflow-y-auto bg-void-depth-base">
-				<div className="max-w-3xl mx-auto px-12 py-16 pb-40 void-settings-animate-in">
+				<div key={selectedSection} className="max-w-3xl mx-auto px-12 py-16 pb-40 settings-animate-in">
 					{/* Premium Header */}
 					<div className="flex items-center justify-between mb-16">
 						<div>
@@ -2920,7 +2920,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 					</div>
 
 					{/* Content sections with staggered entry */}
-					<div className="space-y-12 void-settings-stagger">
+					<div className="space-y-12 settings-stagger">
 
 					{/* Models section */}
 					<div className={shouldShowTab('models') ? '' : 'hidden'}>

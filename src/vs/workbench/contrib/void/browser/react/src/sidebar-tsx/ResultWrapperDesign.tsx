@@ -108,7 +108,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ children }) => {
 						className="fixed inset-0 z-10"
 						onClick={() => setIsOpen(false)}
 					/>
-					<div className="absolute right-0 top-full mt-1 bg-void-bg-1 border border-void-border-2 rounded-lg shadow-xl py-1 min-w-32 z-20">
+					<div className="absolute right-0 top-full mt-1 bg-void-bg-1 border border-void-border-2 rounded-lg shadow-lg py-1 min-w-32 z-20">
 						{children}
 					</div>
 				</>

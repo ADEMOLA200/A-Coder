@@ -330,7 +330,7 @@ My requested changes:`
 			<div className="implementation-plan-preview border border-void-border-2 rounded-lg overflow-hidden shadow-sm bg-void-bg-4">
 				{/* Header */}
 				<div
-					className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors border-b border-void-border-2 bg-void-bg-4/50"
+					className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors border-b border-void-border-2 bg-void-bg-3"
 					onClick={() => setIsExpanded(!isExpanded)}
 				>
 					<div className="flex items-center gap-2 min-w-0 flex-1">
@@ -390,7 +390,7 @@ My requested changes:`
 										const statusColor = status === 'completed' ? 'text-green-400' : status === 'in_progress' ? 'text-blue-400' : status === 'failed' ? 'text-red-400' : 'text-void-fg-3'
 
 										return (
-											<div key={index} className="flex items-start gap-3 p-2 bg-void-bg-4/40 rounded-md border border-void-border-2">
+											<div key={index} className="flex items-start gap-3 p-2 bg-void-bg-3 rounded-md border border-void-border-2">
 												<div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
 													<span className={statusColor}>{statusIcon}</span>
 												</div>
@@ -453,7 +453,7 @@ My requested changes:`
 								<button
 									onClick={handleApprove}
 									disabled={isApproving}
-									className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
+									className="px-3 py-1.5 bg-void-accent hover:bg-void-accent-hover disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
 								>
 									{isApproving ? (
 										<>
@@ -471,7 +471,7 @@ My requested changes:`
 								</button>
 								<button
 									onClick={handleRequestChanges}
-									className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
+									className="px-3 py-1.5 bg-void-warning hover:bg-void-warning-hover text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
 								>
 									{'\u{270F}\u{FE0F}'} Request Changes
 								</button>

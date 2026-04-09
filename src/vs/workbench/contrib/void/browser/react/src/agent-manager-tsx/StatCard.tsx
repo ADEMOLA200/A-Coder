@@ -12,18 +12,14 @@ interface StatCardProps {
 	value: string | number;
 	trend?: string;
 	color: string;
-	glowColor?: string;
 }
 
-export const StatCard = memo(({ icon: Icon, label, value, trend, color, glowColor }: StatCardProps) => {
+export const StatCard = memo(({ icon: Icon, label, value, trend, color }: StatCardProps) => {
 	return (
-		<div className={`relative overflow-hidden rounded-2xl border border-void-border-2 bg-gradient-to-br ${color} shadow-lg hover:shadow-2xl transition-all duration-300 group`}>
-			{glowColor && (
-				<div className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500 ${glowColor}`} aria-hidden="true" />
-			)}
-			<div className="relative p-5">
+		<div className={`relative overflow-hidden rounded-2xl border border-void-border-2 bg-gradient-to-br ${color} shadow-md hover:shadow-lg transition-all duration-300 group`}>
+			<div className="p-5">
 				<div className="flex items-start justify-between mb-4">
-					<div className="p-3 rounded-xl bg-void-bg-3/80 backdrop-blur-md border border-void-border-2 shadow-inner">
+					<div className="p-3 rounded-xl bg-void-bg-3 border border-void-border-2">
 						<Icon className="w-5 h-5 text-void-fg-1" aria-hidden="true" />
 					</div>
 					{trend && (
@@ -34,7 +30,7 @@ export const StatCard = memo(({ icon: Icon, label, value, trend, color, glowColo
 				</div>
 				<div className="space-y-1">
 					<div className="text-3xl font-black text-void-fg-1 tracking-tighter">{value}</div>
-					<div className="text-[10px] font-bold text-void-fg-4/70 uppercase tracking-widest">{label}</div>
+					<div className="text-[10px] font-bold text-void-fg-4 uppercase tracking-widest">{label}</div>
 				</div>
 			</div>
 		</div>

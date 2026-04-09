@@ -173,7 +173,7 @@ This will download the Electron binary and create the app structure.
 | Create DMG | ``````hdiutil create -volname "A-Coder" -srcfolder ../VSCode-darwin-arm64/A-Coder.app -ov -format UDZO A-Coder.dmg`````` |
 | Remove quarantine | `sudo xattr -d com.apple.quarantine "/Applications/A-Coder.app"` (required before running on macOS) |
 
-npm run compile && npm run buildreact && npm run gulp -- vscode-darwin-arm64 && hdiutil create -volname "A-Coder" -srcfolder ../VSCode-darwin-arm64/A-Coder.app -ov -format UDZO A-Coder.dmg
+npm run buildreact && npm run compile && npm run gulp -- vscode-darwin-arm64 && hdiutil create -volname "A-Coder" -srcfolder ../VSCode-darwin-arm64/A-Coder.app -ov -format UDZO A-Coder.dmg
 
 
 ## Additional Resources

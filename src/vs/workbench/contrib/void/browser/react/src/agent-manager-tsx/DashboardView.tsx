@@ -32,15 +32,15 @@ const ActionButton = memo(({ onClick, icon: Icon, title, subtitle, primary }: Ac
 	return (
 		<button
 			onClick={onClick}
-			className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 w-full text-left"
+			className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-3 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 w-full text-left"
 			aria-label={title}
 		>
-			<div className={`p-3 rounded-xl ${primary ? 'bg-void-accent shadow-lg shadow-void-accent/30' : 'bg-void-bg-3 border border-void-border-2'} group-hover:scale-110 transition-all flex-shrink-0`}>
+			<div className={`p-3 rounded-xl ${primary ? 'bg-void-accent shadow-md shadow-void-accent/20' : 'bg-void-bg-3 border border-void-border-2'} group-hover:scale-110 transition-all flex-shrink-0`}>
 				<Icon className={`w-5 h-5 ${primary ? 'text-white' : 'text-void-fg-4 group-hover:text-void-accent'} transition-colors`} aria-hidden="true" />
 			</div>
 			<div className="min-w-0">
 				<span className="block text-sm font-semibold text-void-fg-1">{title}</span>
-				<span className="block text-[10px] text-void-fg-4/60 font-medium">{subtitle}</span>
+				<span className="block text-[10px] text-void-fg-4 font-medium">{subtitle}</span>
 			</div>
 		</button>
 	);
@@ -55,7 +55,7 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 				<div className="flex items-center justify-between mb-8">
 					<div>
 						<h2 className="text-2xl font-bold text-void-fg-1 tracking-tight">Dashboard</h2>
-						<p className="text-xs text-void-fg-4/60 mt-1">Overview of your activity and workspace</p>
+						<p className="text-xs text-void-fg-4 mt-1">Overview of your activity and workspace</p>
 					</div>
 					<div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
 						<div className="relative" aria-hidden="true">
@@ -127,7 +127,7 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 
 					<div className="flex flex-col gap-4">
 						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider mb-1">Stats Summary</h3>
-						<div className="p-4 rounded-xl border border-void-border-2 bg-void-bg-2/30">
+						<div className="p-4 rounded-xl border border-void-border-2 bg-void-bg-2">
 							<div className="space-y-3">
 								<div className="flex justify-between items-center">
 									<span className="text-xs text-void-fg-4">Total Threads</span>

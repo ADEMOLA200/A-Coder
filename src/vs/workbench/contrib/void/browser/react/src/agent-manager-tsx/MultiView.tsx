@@ -27,7 +27,7 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 							<Globe className="w-5 h-5 text-void-accent" aria-hidden="true" />
 							All Workspaces
 						</h2>
-						<p className="text-xs text-void-fg-4/60 mt-1">Monitor activity across all your VS Code windows</p>
+						<p className="text-xs text-void-fg-4 mt-1">Monitor activity across all your VS Code windows</p>
 					</div>
 					<div className="flex items-center gap-2">
 						{multiStats.activeWorkspaces > 0 && (
@@ -44,19 +44,19 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 
 				{/* Aggregated stats */}
 				<div className="grid grid-cols-4 gap-3" role="region" aria-label="Workspace statistics">
-					<div className="p-3 rounded-xl bg-void-bg-2/40 border border-void-border-2">
+					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalWorkspaces}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Workspaces</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2/40 border border-void-border-2">
+					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalThreads}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Threads</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2/40 border border-void-border-2">
+					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalMessages}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Messages</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2/40 border border-void-border-2">
+					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
 						<div className="text-lg font-bold text-void-accent">{multiStats.activeOperations}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Active</div>
 					</div>
@@ -67,7 +67,7 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 			<div className="flex-1 flex overflow-hidden min-h-0">
 				{/* Left: Workspace list */}
 				<div className="w-80 border-r border-void-border-2 flex flex-col">
-					<div className="p-4 border-b border-void-border-2/50">
+					<div className="p-4 border-b border-void-border-2">
 						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider">Workspaces</h3>
 					</div>
 					<div className="flex-1 overflow-y-auto p-3">

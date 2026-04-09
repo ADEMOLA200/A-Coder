@@ -450,7 +450,7 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 // --- Shared Components ---
 
 export const ToolChildrenWrapper = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-	return <div className={`${className ? className : ''} cursor-default select-none border-t border-void-border-2/50`}>
+	return <div className={`${className ? className : ''} cursor-default select-none border-t border-void-border-2`}>
 		<div className='px-2 min-w-full overflow-y-auto max-h-[600px]'>
 			{children}
 		</div>
@@ -485,7 +485,7 @@ export const BottomChildren = ({ children, title }: { children: React.ReactNode,
 	return (
 		<div className="w-full px-2 mt-2">
 			<div
-				className={`flex items-center cursor-pointer select-none transition-all duration-200 px-3 py-2 rounded-xl hover:bg-void-bg-2/50 group bg-void-bg-2/20 border border-void-border-2/50`}
+				className={`flex items-center cursor-pointer select-none transition-all duration-200 px-3 py-2 rounded-xl hover:bg-void-bg-2 group bg-void-bg-2 border border-void-border-2`}
 				onClick={() => setIsOpen(o => !o)}
 			>
 				<ChevronRight
@@ -540,7 +540,7 @@ export const ToolHeaderWrapper = ({
 	const isDesc1Clickable = !!desc1OnClick
 	const isReadingTool = (title && typeof title === 'string' && (title.toLowerCase().includes('read') || title.toLowerCase().includes('searched') || title.toLowerCase().includes('listed'))) || false
 	const isCodingTool = (title && typeof title === 'string' && (title.toLowerCase().includes('edit') || title.toLowerCase().includes('rewrite') || title.toLowerCase().includes('created'))) || false
-	const containerClasses = `w-full rounded-xl overflow-hidden transition-all duration-200 bg-void-bg-2/40 border border-void-border-2 hover:border-void-border-1 hover:bg-void-bg-2/60 ${isCodingTool ? 'shadow-[0_0_15px_-5px_rgba(0,127,212,0.15)] ring-1 ring-void-accent/5' : 'shadow-sm'} ${className}`
+	const containerClasses = `w-full rounded-xl overflow-hidden transition-all duration-200 bg-void-bg-2 border border-void-border-2 hover:border-void-border-1 hover:bg-void-bg-2-hover ${isCodingTool ? 'shadow-sm ring-1 ring-void-accent/10' : 'shadow-sm'} ${className}`
 	const desc1HTML = <span className={`text-void-fg-4 text-xs italic truncate ml-2 ${isDesc1Clickable ? 'cursor-pointer hover:brightness-125 transition-all duration-150' : ''}`} onClick={desc1OnClick} {...desc1Info ? { 'data-tooltip-id': 'void-tooltip', 'data-tooltip-content': desc1Info, 'data-tooltip-place': 'top', 'data-tooltip-delay-show': 1000 } : {}}>{desc1}</span>
 
 	return (
@@ -564,7 +564,7 @@ export const ToolHeaderWrapper = ({
 						{hasNextPage && <span className="text-[10px] font-bold text-void-accent bg-void-accent/10 px-1.5 py-0.5 rounded uppercase tracking-wider">More</span>}
 					</div>
 				</div>
-				{children !== undefined && <div className={`overflow-auto transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1/20 ${isExpanded ? 'opacity-100 max-h-[800px] py-3' : 'max-h-0 opacity-0'} px-3 text-void-fg-2`}>{children}</div>}
+				{children !== undefined && <div className={`overflow-auto transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1 ${isExpanded ? 'opacity-100 max-h-[800px] py-3' : 'max-h-0 opacity-0'} px-3 text-void-fg-2`}>{children}</div>}
 			</div>
 			{bottomChildren && <div className="mt-1 animate-in fade-in duration-200">{bottomChildren}</div>}
 		</div>

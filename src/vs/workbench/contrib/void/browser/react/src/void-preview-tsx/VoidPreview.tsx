@@ -118,7 +118,7 @@ Please begin execution now.`;
 			<div className="void-preview-container h-full flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans">
 				
 				{/* Top Header */}
-				<header className="px-6 py-4 flex-shrink-0 flex items-center justify-between border-b border-void-border-2 bg-void-bg-2/50 backdrop-blur-md z-20">
+				<header className="px-6 py-4 flex-shrink-0 flex items-center justify-between border-b border-void-border-2 bg-void-bg-2 z-20">
 					<div className="flex items-center gap-3 overflow-hidden">
 						<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center border border-void-accent/20">
 							<svg className="w-5 h-5 text-void-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,7 +166,7 @@ Please begin execution now.`;
 						)}
 
 						{/* The Card */}
-						<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-xl shadow-black/10 overflow-hidden ring-1 ring-white/5">
+						<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-lg shadow-black/10 overflow-hidden">
 							
 							{/* Document Header Decor */}
 							<div className="h-1.5 w-full bg-void-accent/40" />
@@ -208,7 +208,7 @@ Please begin execution now.`;
 				{/* Floating Action Bar */}
 				{showActions && (
 					<div className="absolute bottom-8 left-0 right-0 flex justify-center z-30 pointer-events-none px-4">
-						<div className="bg-void-bg-2/80 backdrop-blur-xl border border-void-border-1 rounded-2xl p-2 shadow-2xl shadow-black/40 flex items-center gap-2 pointer-events-auto ring-1 ring-white/10 scale-110 md:scale-100 transition-transform duration-300">
+						<div className="bg-void-bg-2 border border-void-border-1 rounded-2xl p-2 shadow-lg shadow-black/20 flex items-center gap-2 pointer-events-auto scale-110 md:scale-100 transition-transform duration-300">
 							
 							<button
 								onClick={handleReject}

@@ -26,15 +26,15 @@ export const NavButton = memo(({ active, onClick, icon: Icon, label, title }: Na
 			<div className={`
 				flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
 				${active
-					? 'bg-void-accent text-white shadow-lg shadow-void-accent/30'
-					: 'text-void-fg-4 hover:text-void-fg-1 hover:bg-void-bg-2/50'
+					? 'bg-void-accent text-white shadow-md shadow-void-accent/20'
+					: 'text-void-fg-4 hover:text-void-fg-1 hover:bg-void-bg-3'
 				}
 			`}>
 				<Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
 				{label && <span className="text-sm font-medium tracking-tight">{label}</span>}
 			</div>
 			{active && (
-				<div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-void-accent rounded-r-full shadow-[0_0_10px_rgba(var(--void-accent-rgb),0.5)]" aria-hidden="true" />
+				<div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-void-accent rounded-r-full shadow-sm shadow-void-accent/30" aria-hidden="true" />
 			)}
 		</button>
 	);

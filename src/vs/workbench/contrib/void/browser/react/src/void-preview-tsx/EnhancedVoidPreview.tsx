@@ -231,7 +231,7 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 					{/* Main Content */}
 					<main className="flex-1 overflow-y-auto custom-scrollbar group/content" onClick={handleContentClick}>
 						<article className="max-w-4xl mx-auto px-6 py-12">
-							<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-xl overflow-hidden" ref={contentRef}>
+							<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-lg overflow-hidden" ref={contentRef}>
 								<div className="h-1.5 w-full bg-void-accent/30" />
 								<div className="p-8 md:p-12 relative cursor-text">
 									{/* Hover Instruction */}
@@ -262,8 +262,8 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 
 					{/* Comments Sidebar */}
 					{comments.length > 0 && (
-						<aside className="w-80 bg-void-bg-2 border-l border-void-border-2 flex flex-col animate-in slide-in-from-right duration-300 z-20 shadow-2xl">
-							<div className="p-4 border-b border-void-border-2 flex items-center justify-between bg-void-bg-1/50">
+						<aside className="w-80 bg-void-bg-2 border-l border-void-border-2 flex flex-col animate-in slide-in-from-right duration-300 z-20 shadow-lg">
+							<div className="p-4 border-b border-void-border-2 flex items-center justify-between bg-void-bg-1">
 								<h3 className="text-xs font-black uppercase tracking-widest text-void-fg-3 flex items-center gap-2">
 									<Plus size={14} className="text-void-accent" />
 									Requested Changes
@@ -288,7 +288,7 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 									</div>
 								))}
 							</div>
-							<div className="p-4 border-t border-void-border-2 bg-void-bg-3/50">
+							<div className="p-4 border-t border-void-border-2 bg-void-bg-3">
 								<button 
 									onClick={handleRequestChanges}
 									className="w-full py-2.5 bg-void-accent text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-void-accent/20 hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
@@ -302,12 +302,12 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 
 				{/* Floating Comment Input */}
 				{activeCommentSection && (
-					<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActiveCommentSection(null)}>
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-in fade-in duration-200" onClick={() => setActiveCommentSection(null)}>
 						<div 
-							className="bg-void-bg-2 border border-void-border-1 rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300"
+							className="bg-void-bg-2 border border-void-border-1 rounded-[24px] shadow-lg w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300"
 							onClick={e => e.stopPropagation()}
 						>
-							<div className="p-6 border-b border-void-border-2 bg-void-bg-1/50">
+							<div className="p-6 border-b border-void-border-2 bg-void-bg-1">
 								<div className="flex items-center gap-2 mb-2">
 									<Plus size={14} className="text-void-accent" />
 									<span className="text-[10px] font-black uppercase tracking-widest text-void-accent">Request Modification</span>
